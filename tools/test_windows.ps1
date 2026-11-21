@@ -185,8 +185,9 @@ function Build-All {
     Assert-File (Join-Path $Root "bin\build\gc_simple.lib") "bin/build/gc_simple.lib"
     Assert-File (Join-Path $Root "bin\core\Fmt.myl") "bin/core/Fmt.myl"
     Assert-File (Join-Path $Root "bin\std\src\Io.myl") "bin/std/src/Io.myl"
-    Assert-File (Join-Path $Root "bin\std-win32\native\mylis_file.lib") "bin/std-win32/native/mylis_file.lib"
-    Assert-File (Join-Path $Root "bin\std-win32\native\mylis_event.lib") "bin/std-win32/native/mylis_event.lib"
+    Assert-File (Join-Path $Root "bin\std-win32\native\event.rs") "bin/std-win32/native/event.rs"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_file.lib") "bin/build/std-win32/native/mylis_file.lib"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_event.lib") "bin/build/std-win32/native/mylis_event.lib"
     Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_process.lib") "bin/build/std-win32/native/mylis_process.lib"
     Write-Ok "bin/ 目录布局完整"
 }
@@ -330,6 +331,7 @@ function Test-Package {
     Assert-File (Join-Path $pkgRoot "std\src\Io.myl") "包内 std/src/Io.myl"
     Assert-File (Join-Path $pkgRoot "build\mylrt.lib") "包内 build/mylrt.lib"
     Assert-File (Join-Path $pkgRoot "build\mylgc.lib") "包内 build/mylgc.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_event.lib") "包内 build/std-win32/native/mylis_event.lib"
     Assert-File (Join-Path $pkgRoot "mylis-toolchain.json") "包内 mylis-toolchain.json"
     Assert-File (Join-Path $pkgRoot "mylis-build.json") "包内 mylis-build.json"
 
