@@ -62,10 +62,10 @@ mod poller {
 }
 
 #[cfg(unix)]
-fn wait_readable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
+fn wait_event(fd: i32, events: i16, timeout_ms: i64) -> Result<bool, i64> {
     let mut pfd = poller::PollFd {
         fd,
-        events: 1, // POLLIN
+        events: events as std::os::raw::c_short,
         revents: 0,
     };
     let timeout = if timeout_ms < 0 {
@@ -88,12 +88,72 @@ fn wait_readable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
     }
 }
 
+#[cfg(unix)]
+fn wait_readable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
+    wait_event(fd, 1, timeout_ms) // POLLIN
+}
+
+#[cfg(unix)]
+fn wait_writable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
+    wait_event(fd, 4, timeout_ms) // POLLOUT
+}
+
 #[cfg(not(unix))]
 fn wait_readable(_fd: i32, timeout_ms: i64) -> Result<bool, i64> {
     if timeout_ms >= 0 {
         return Err(-95); // EOPNOTSUPP: std-posix 的超时依赖 poll
     }
     Ok(true)
+}
+
+#[cfg(not(unix))]
+fn wait_writable(_fd: i32, timeout_ms: i64) -> Result<bool, i64> {
+    if timeout_ms >= 0 {
+        return Err(-95);
+    }
+    Ok(true)
+}
+
+#[cfg(unix)]
+fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> Result<usize, i64> {
+    use std::os::unix::io::AsRawFd;
+    let start = Instant::now();
+    let mut written = 0usize;
+    while written < bytes.len() {
+        let remaining = if timeout_ms < 0 {
+            -1
+        } else {
+            let elapsed = start.elapsed().as_millis() as i64;
+            let left = timeout_ms - elapsed;
+            if left < 0 {
+                return Err(-110); // ETIMEDOUT
+            }
+            left
+        };
+        if !wait_writable(input.as_raw_fd(), remaining)? {
+            return Err(-110);
+        }
+        // 512 字节不超过 POSIX 保证的 PIPE_BUF，poll 报可写后不会阻塞在 write。
+        let chunk = std::cmp::min(bytes.len() - written, 512);
+        match input.write(&bytes[written..written + chunk]) {
+            Ok(0) => return Err(-32), // EPIPE
+            Ok(n) => written += n,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(-(error.raw_os_error().unwrap_or(22) as i64)),
+        }
+    }
+    Ok(written)
+}
+
+#[cfg(not(unix))]
+fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> Result<usize, i64> {
+    if timeout_ms >= 0 {
+        return Err(-95);
+    }
+    match input.write_all(bytes) {
+        Ok(()) => Ok(bytes.len()),
+        Err(error) => Err(-(error.raw_os_error().unwrap_or(22) as i64)),
+    }
 }
 
 enum LineOutcome {
@@ -445,12 +505,12 @@ pub extern "C" fn mylis_process_pipe_read_copy(
     n as i64
 }
 
-#[no_mangle]
-pub extern "C" fn mylis_process_pipe_write(
+fn pipe_write_common(
     handle: i64,
     data: *const u8,
     offset: i64,
     count: i64,
+    timeout_ms: i64,
 ) -> i64 {
     if data.is_null() || offset < 0 || count < 0 {
         return -22;
@@ -472,10 +532,32 @@ pub extern "C" fn mylis_process_pipe_write(
         None => return -22,
     };
     let bytes = unsafe { std::slice::from_raw_parts(data.add(8 + start), n) };
-    match input.write_all(bytes) {
-        Ok(()) => n as i64,
-        Err(error) => -(error.raw_os_error().unwrap_or(22) as i64),
+    match write_with_timeout(input, bytes, timeout_ms) {
+        Ok(written) if written == n => written as i64,
+        Ok(_) => -110, // 部分写入后超时；调用方必须按失败处理并重启 worker
+        Err(code) => code,
     }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_process_pipe_write(
+    handle: i64,
+    data: *const u8,
+    offset: i64,
+    count: i64,
+) -> i64 {
+    pipe_write_common(handle, data, offset, count, -1)
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_process_pipe_write_timeout(
+    handle: i64,
+    data: *const u8,
+    offset: i64,
+    count: i64,
+    timeout_ms: i64,
+) -> i64 {
+    pipe_write_common(handle, data, offset, count, timeout_ms)
 }
 
 #[no_mangle]

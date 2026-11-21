@@ -1,6 +1,6 @@
 // Worker：基于 Popen2 的进程隔离通信层。
 // 每行一条消息，调用方约定用 JSON 序列化；不共享 Mylis 对象、不共享 GC 堆。
-// 子进程 stderr 继承父进程；不做非阻塞/select。
+// 子进程 stderr 继承父进程；只做同步行协议，不做异步/事件回调。
 import { IoError } from "IoError.myl";
 import { Json } from "Json.myl";
 import { WorkerReply } from "WorkerReply.myl";
@@ -30,8 +30,14 @@ pub class Worker {
 
     // 发送一条消息；消息内的换行会破坏行协议，请用 Json::Stringify 生成。
     pub fn send(string message) -> Result<i64, IoError> {
+        return this.sendTimeout(message, -1);
+    }
+
+    // 带超时发送一条消息；超时返回 IoError(110)。
+    // 超时可能只写入了半条消息，行协议已失步，调用方应 terminate 该 worker。
+    pub fn sendTimeout(string message, i64 timeoutMs) -> Result<i64, IoError> {
         string framed = message + "\n";
-        return this.pipe.write(Str::Bytes(framed));
+        return this.pipe.writeTimeout(Str::Bytes(framed), timeoutMs);
     }
 
     // 读取一条响应；子进程关闭 stdout 后返回 None。
@@ -76,7 +82,7 @@ pub class Worker {
     }
 
     fn callCore(string message, i64 timeoutMs) -> Result<string, IoError> {
-        Result<i64, IoError> sent = this.send(message);
+        Result<i64, IoError> sent = this.sendTimeout(message, timeoutMs);
         match (sent) {
             Err(sendError) => { return Err(sendError); }
             Ok(ignored) => {

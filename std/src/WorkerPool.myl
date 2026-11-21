@@ -110,7 +110,8 @@ pub class WorkerPool {
                                     slots.set(i, -1);
                                     completed = completed + 1;
                                     if (next < total) {
-                                        Result<i64, IoError> sentNext = this.workers.get(i).send(tasks.get(next));
+                                        string nextTask = tasks.get(next);
+                                        Result<i64, IoError> sentNext = this.workers.get(i).sendTimeout(nextTask, timeoutMs);
                                         match (sentNext) {
                                             Ok(ignored) => { slots.set(i, next); next = next + 1; }
                                             Err(error) => {
@@ -150,7 +151,8 @@ pub class WorkerPool {
                         }
                     }
                 } else if (next < total) {
-                    Result<i64, IoError> sent = this.workers.get(i).send(tasks.get(next));
+                    string nextTask = tasks.get(next);
+                    Result<i64, IoError> sent = this.workers.get(i).sendTimeout(nextTask, timeoutMs);
                     match (sent) {
                         Ok(ignored) => { slots.set(i, next); next = next + 1; }
                         Err(error) => {

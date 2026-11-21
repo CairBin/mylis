@@ -4,7 +4,7 @@
 
 - `file.rs`：Rust `staticlib`，导出 C ABI `mylis_file_*`；包含文件读写、目录枚举、目录创建/删除、元数据大小、seek/tell
 - `io.rs`：stdin、argv、环境变量与进程退出，导出 C ABI `mylis_io_*`
-- `process.rs`：shell 命令执行（`/bin/sh -c`，Windows 为 `cmd /C`）；`run` 同步捕获 stdout/stderr，`spawn` 返回子进程句柄并支持 pid/wait/kill/close，`popen` 提供单向字节管道，`popen2` 提供 stdin/stdout 双向管道；`pipe_read_line` 按行读取（1 读到一行、0 EOF、负数 `-errno`），`pipe_read_line_timeout` 增加毫秒超时（超时 `-110`），`pipe_terminate` 强制结束并回收子进程；导出 C ABI `mylis_process_*`；不做异步回调
+- `process.rs`：shell 命令执行（`/bin/sh -c`，Windows 为 `cmd /C`）；`run` 同步捕获 stdout/stderr，`spawn` 返回子进程句柄并支持 pid/wait/kill/close，`popen` 提供单向字节管道，`popen2` 提供 stdin/stdout 双向管道；`pipe_read_line` 按行读取（1 读到一行、0 EOF、负数 `-errno`），`pipe_read_line_timeout` 增加毫秒超时（超时 `-110`），`pipe_write_timeout` 增加毫秒写超时（超时 `-110`，可能部分写入），`pipe_terminate` 强制结束并回收子进程；导出 C ABI `mylis_process_*`；不做异步回调
 - `time.rs`：wall clock、单调时钟与 sleep，导出 C ABI `mylis_time_*`
 - `net.rs`：Rust `staticlib`，导出 C ABI：`mylis_tcp_*` / `mylis_udp_*`
 - `event.rs`：事件后端；Linux `epoll`，其他 POSIX `poll`，导出 `mylis_event_new/add/remove/wait/close`

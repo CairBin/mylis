@@ -3,7 +3,7 @@
 import { IoError } from "IoError.myl";
 import { ProcessStatus } from "ProcessStatus.myl";
 import { myrt_str_cstr } from "core/Mylrt_bind";
-import { mylis_process_pipe_pid, mylis_process_pipe_read_all, mylis_process_pipe_read_line_timeout, mylis_process_pipe_last_status, mylis_process_pipe_read_copy, mylis_process_pipe_write, mylis_process_pipe_close_input, mylis_process_pipe_close, mylis_process_pipe_terminate, mylis_process_last_wait_exit_code, mylis_process_last_wait_signal, mylis_process_free_string } from "Process_bind.myl";
+import { mylis_process_pipe_pid, mylis_process_pipe_read_all, mylis_process_pipe_read_line_timeout, mylis_process_pipe_last_status, mylis_process_pipe_read_copy, mylis_process_pipe_write_timeout, mylis_process_pipe_close_input, mylis_process_pipe_close, mylis_process_pipe_terminate, mylis_process_last_wait_exit_code, mylis_process_last_wait_signal, mylis_process_free_string } from "Process_bind.myl";
 
 pub class ProcessPipe {
     i64 handle;
@@ -83,12 +83,18 @@ pub class ProcessPipe {
         return Ok(rc);
     }
 
-    // 写模式把字节写入子进程 stdin。
+    // 写模式把字节写入子进程 stdin；管道满时阻塞，直到子进程读取或关闭。
     pub fn write(u8[] data) -> Result<i64, IoError> {
+        return this.writeTimeout(data, -1);
+    }
+
+    // 写模式把字节写入子进程 stdin；最多等待 timeoutMs 毫秒，超时返回 IoError(110)。
+    // 可能已经写入一部分字节；超时后管道协议可能失步，调用方应 terminate 子进程。
+    pub fn writeTimeout(u8[] data, i64 timeoutMs) -> Result<i64, IoError> {
         i64 count = data.len() as i64;
         i64 rc = 0;
         unsafe {
-            rc = mylis_process_pipe_write(this.handle, data, 0, count);
+            rc = mylis_process_pipe_write_timeout(this.handle, data, 0, count, timeoutMs);
         }
         if (rc < 0) {
             return Err(new IoError((-rc) as i32));

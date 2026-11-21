@@ -460,16 +460,22 @@ run_process_case ProcessPopenApi mir
 run_process_case ProcessPopenApi ast
 run_process_case ProcessPopen2Api mir
 run_process_case ProcessPopen2Api ast
+run_process_case ProcessWriteTimeoutApi mir
+run_process_case ProcessWriteTimeoutApi ast
 run_process_case ProcessLineApi mir
 run_process_case ProcessLineApi ast
 run_process_case ProcessTimeoutApi mir
 run_process_case ProcessTimeoutApi ast
 run_process_case WorkerTimeoutApi mir
 run_process_case WorkerTimeoutApi ast
+run_process_case WorkerWriteTimeoutApi mir
+run_process_case WorkerWriteTimeoutApi ast
 run_process_case WorkerTerminateApi mir
 run_process_case WorkerTerminateApi ast
 run_process_case WorkerPoolTimeoutApi mir
 run_process_case WorkerPoolTimeoutApi ast
+run_process_case WorkerPoolWriteTimeoutApi mir
+run_process_case WorkerPoolWriteTimeoutApi ast
 run_process_stdflag_case
 run_worker_case WorkerApi mir WorkerEcho
 run_worker_case WorkerApi ast WorkerEcho

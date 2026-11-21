@@ -27,6 +27,8 @@ char*   mylis_process_pipe_read_line_timeout(int64_t handle, int64_t timeout_ms)
 int64_t mylis_process_pipe_last_status(void);
 int64_t mylis_process_pipe_read_copy(int64_t handle, void* data, int64_t offset, int64_t count);
 int64_t mylis_process_pipe_write(int64_t handle, const void* data, int64_t offset, int64_t count);
+int64_t mylis_process_pipe_write_timeout(int64_t handle, const void* data, int64_t offset, int64_t count, int64_t timeout_ms);
+/* 写超时返回 -110；可能已经写入部分字节，调用方应重置对端。 */
 int64_t mylis_process_pipe_close_input(int64_t handle);
 int64_t mylis_process_pipe_close(int64_t handle);
 int64_t mylis_process_pipe_terminate(int64_t handle);

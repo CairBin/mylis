@@ -4,7 +4,7 @@
 
 - `native/file.rs`：文件后端，`libmylis_file.a`
 - `native/io.rs`：stdio/argv/env/exit 后端，`libmylis_io.a`
-- `native/process.rs`：shell 进程后端，`libmylis_process.a`；Run 同步捕获输出，Spawn 提供 pid/wait/kill/close，Popen/Popen2 提供单向或双向字节管道；ProcessPipe 还支持按行读取、超时读取和强制 terminate，供 Worker/WorkerPool 使用
+- `native/process.rs`：shell 进程后端，`libmylis_process.a`；Run 同步捕获输出，Spawn 提供 pid/wait/kill/close，Popen/Popen2 提供单向或双向字节管道；ProcessPipe 还支持按行读取、超时读取、超时写入和强制 terminate，供 Worker/WorkerPool 使用
 - `native/time.rs`：时间与 sleep 后端，`libmylis_time.a`
 - `native/net.rs`：TCP/UDP 后端，`libmylis_net.a`
 - `native/event.rs`：Linux epoll / 其他 POSIX poll 事件后端，`libmylis_event.a`

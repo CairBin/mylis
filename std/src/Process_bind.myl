@@ -34,6 +34,9 @@ pub unsafe fn mylis_process_pipe_read_copy(i64 handle, u8[] data, i64 offset, i6
 pub unsafe fn mylis_process_pipe_write(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
 
 @header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_write_timeout(i64 handle, u8[] data, i64 offset, i64 count, i64 timeout_ms) -> i64;
+
+@header("mylis_process.h")
 pub unsafe fn mylis_process_pipe_close_input(i64 handle) -> i64;
 
 @header("mylis_process.h")
