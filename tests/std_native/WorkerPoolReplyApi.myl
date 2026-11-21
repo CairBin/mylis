@@ -1,0 +1,53 @@
+import { WorkerPool } from "WorkerPool.myl";
+import { WorkerReplyResult } from "WorkerReplyResult.myl";
+import { IoError } from "IoError.myl";
+import { Stdio } from "Stdio.myl";
+import { Vec } from "Vec.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("WORKER_CMD");
+    match (command) {
+        None => { println("missing-worker"); return 1; }
+        Some(path) => {
+            Result<WorkerPool, IoError> spawned = WorkerPool::Spawn(path, 2);
+            match (spawned) {
+                Ok(pool) => {
+                    Vec<string> tasks = new Vec<string>();
+                    tasks.push("a");
+                    tasks.push("fail");
+                    tasks.push("boom");
+                    tasks.push("bad");
+                    tasks.push("c");
+                    Result<Vec<WorkerReplyResult>, IoError> results = pool.callAllReplies(tasks);
+                    match (results) {
+                        Ok(values) => {
+                            i64 i = 0;
+                            while (i < values.len) {
+                                WorkerReplyResult item = values.get(i);
+                                println_i64(item.errorCode as i64);
+                                if (item.errorCode != 0) {
+                                    println("transport");
+                                } else {
+                                    println_bool(item.reply.ok);
+                                    if (item.reply.ok) {
+                                        println(item.reply.value);
+                                    } else {
+                                        println_i64(item.reply.code as i64);
+                                        println(item.reply.message);
+                                    }
+                                }
+                                i = i + 1;
+                            }
+                        }
+                        Err(error) => { println_i64(error.code as i64); }
+                    }
+                    Result<i64, IoError> closed = pool.close();
+                    match (closed) { Ok(n1) => { println_i64(n1); } Err(error2) => { println_i64(error2.code as i64); } }
+                }
+                Err(error3) => { println_i64(error3.code as i64); }
+            }
+        }
+    }
+    return 0;
+}

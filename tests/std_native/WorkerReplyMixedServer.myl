@@ -1,0 +1,26 @@
+// 结构化响应的混合 worker：正常成功、远端业务失败、进程退出、非法 JSON。
+import { WorkerReply } from "WorkerReply.myl";
+import { Json } from "Json.myl";
+import { Stdio } from "Stdio.myl";
+import { println } from "Io.myl";
+
+fn main() -> i32 {
+    while (true) {
+        Option<string> line = Stdio::ReadLine();
+        match (line) {
+            None => { return 0; }
+            Some(request) => {
+                if (request == "fail") {
+                    println(Json::Stringify(WorkerReply::Failure(7, "bad request").toJson()));
+                } else if (request == "boom") {
+                    Stdio::Exit(7);
+                } else if (request == "bad") {
+                    println("not-json");
+                } else {
+                    println(Json::Stringify(WorkerReply::Success(request).toJson()));
+                }
+            }
+        }
+    }
+    return 0;
+}

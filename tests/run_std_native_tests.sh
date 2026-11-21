@@ -487,6 +487,8 @@ run_worker_case WorkerReplyApi mir WorkerResultServer
 run_worker_case WorkerReplyApi ast WorkerResultServer
 run_worker_case WorkerReplyInvalidApi mir WorkerReplyBadServer
 run_worker_case WorkerReplyInvalidApi ast WorkerReplyBadServer
+run_worker_case WorkerPoolReplyApi mir WorkerReplyMixedServer
+run_worker_case WorkerPoolReplyApi ast WorkerReplyMixedServer
 run_platform_case mir
 run_platform_case ast
 

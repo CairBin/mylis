@@ -1,7 +1,11 @@
 // WorkerPool：固定数量的独立 worker 进程，做同步 fan-out/fan-in。
-// callAll 保持全有或全无语义；callAllResults 对单个任务失败隔离并在原槽位重启 worker。
+// callAll 保持全有或全无语义；callAllResults 对单个任务失败隔离并在原槽位重启 worker；
+// callAllReplies 在同样隔离语义上返回结构化 WorkerReplyResult。
 import { Worker } from "Worker.myl";
 import { WorkerTaskResult } from "WorkerTaskResult.myl";
+import { WorkerReply } from "WorkerReply.myl";
+import { WorkerReplyResult } from "WorkerReplyResult.myl";
+import { Json } from "Json.myl";
 import { ProcessStatus } from "ProcessStatus.myl";
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
@@ -64,6 +68,48 @@ pub class WorkerPool {
     // 每个任务单独返回成功/失败；worker 超时/退出时只重启该槽位，继续处理其他任务。
     pub fn callAllResults(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<WorkerTaskResult>, IoError> {
         return this.callAllCore(tasks, timeoutMs);
+    }
+
+    // 结构化池调用：保持 callAllResults 的单任务失败隔离，但每个任务返回
+    // WorkerReplyResult。errorCode == 0 时 reply 有效，用 reply.ok 区分远端
+    // 业务成功/失败；errorCode != 0 时是进程/传输层失败（EOF、超时、非法 JSON 等）。
+    pub fn callAllReplies(Vec<string> tasks) -> Result<Vec<WorkerReplyResult>, IoError> {
+        return this.callAllRepliesTimeout(tasks, -1);
+    }
+
+    pub fn callAllRepliesTimeout(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<WorkerReplyResult>, IoError> {
+        Result<Vec<WorkerTaskResult>, IoError> results = this.callAllResults(tasks, timeoutMs);
+        match (results) {
+            Ok(values) => { return Ok(this.toReplyResults(values)); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    fn toReplyResults(Vec<WorkerTaskResult> results) -> Vec<WorkerReplyResult> {
+        Vec<WorkerReplyResult> replies = new Vec<WorkerReplyResult>();
+        i64 i = 0;
+        while (i < results.len) {
+            WorkerTaskResult item = results.get(i);
+            if (!item.ok) {
+                replies.push(WorkerReplyResult::TransportFailure(item.code));
+            } else {
+                Result<Json, string> parsed = Json::Parse(item.value);
+                match (parsed) {
+                    Err(parseError) => {
+                        replies.push(WorkerReplyResult::TransportFailure(71));
+                    }
+                    Ok(value) => {
+                        Option<WorkerReply> reply = WorkerReply::FromJson(value);
+                        match (reply) {
+                            Some(response) => { replies.push(WorkerReplyResult::Reply(response)); }
+                            None => { replies.push(WorkerReplyResult::TransportFailure(71)); }
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return replies;
     }
 
     fn toTextResults(Vec<WorkerTaskResult> results) -> Result<Vec<string>, IoError> {

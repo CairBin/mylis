@@ -1,0 +1,32 @@
+// WorkerPool 的结构化单任务结果。
+// errorCode == 0 表示传输层成功，reply 是远端返回的 WorkerReply；
+// errorCode != 0 表示进程/传输层失败，此时 reply 只是占位值，应忽略。
+import { WorkerReply } from "WorkerReply.myl";
+
+pub class WorkerReplyResult {
+    pub i32 errorCode;
+    pub WorkerReply reply;
+
+    pub fn init(i32 transportCode, WorkerReply response) -> void {
+        this.errorCode = transportCode;
+        this.reply = response;
+    }
+
+    pub static fn Reply(WorkerReply response) -> WorkerReplyResult {
+        return new WorkerReplyResult(0, response);
+    }
+
+    pub static fn TransportFailure(i32 code) -> WorkerReplyResult {
+        return new WorkerReplyResult(code, WorkerReply::Failure(0, ""));
+    }
+
+    // 传输层是否成功；远端业务失败时也为 true。
+    pub fn transportOk() -> bool {
+        return this.errorCode == 0;
+    }
+
+    // 传输成功且远端业务成功。
+    pub fn remoteOk() -> bool {
+        return this.errorCode == 0 && this.reply.ok;
+    }
+}

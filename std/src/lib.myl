@@ -44,6 +44,7 @@ pub import "Worker.myl";
 pub import "WorkerHandler.myl";
 pub import "WorkerServer.myl";
 pub import "WorkerReply.myl";
+pub import "WorkerReplyResult.myl";
 pub import "WorkerResultHandler.myl";
 pub import "WorkerTaskResult.myl";
 pub import "WorkerPool.myl";
