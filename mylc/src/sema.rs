@@ -3887,17 +3887,12 @@ impl<'a> Sema<'a> {
             Type::Class(cid) | Type::Enum(cid) => Some(cid),
             _ => None,
         };
-        if let Some(cid) = type_id {
-            if let Some(iid) = tid {
-                if self.iface_compatible(cid, iid, e.line, e.col) {
-                    self.prog.note_impl(cid, iid);
-                    if self.prog.decls[cid].kind == DeclKind::Enum {
-                        e.coerce = Some((cid, iid));
-                    } else {
-                        e.res = Res::IfaceCast(cid, iid);
-                    }
-                    e.ty = Type::Iface(iid);
-                }
+        if let (Some(cid), Some(iid)) = (type_id, tid) {
+            if self.iface_compatible(cid, iid, e.line, e.col) {
+                self.prog.note_impl(cid, iid);
+                // 保留 class/enum 的原始类型，让格式化阶段直接调用它的
+                // toString/to_string；不要把它改写成 interface cast，否则
+                // 字段访问的 Res::Field 会被覆盖，MIR-C 无法生成字段指令。
             }
         }
     }

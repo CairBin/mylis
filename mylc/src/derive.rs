@@ -1,10 +1,11 @@
 //! 编译期反射：内置派生。
 //!
-//! 当前只实现 `@derive(ToString)`：编译器读取 class 的实例字段，在
-//! 编译期生成 `pub fn toString() -> string`，不保留任何运行时类型表。
-//! 生成代码使用字符串插值，因此字段类型必须能按语言规则插入字符串。
+//! 当前实现 `@derive(ToString)` 与 `@derive(Json)`：编译器读取 class 的实例字段，
+//! 在编译期生成 `pub fn toString() -> string` / `pub fn toJson() -> Json`，
+//! 不保留任何运行时类型表。primitive / string / class / 数组字段使用字符串插值；
+//! `Option<T>` 生成 Some/None 分支，`Vec<T>` 生成逐元素拼接，均不依赖运行时反射。
 
-use crate::ast::{AnnotArg, Decl, DeclKind};
+use crate::ast::{AnnotArg, Decl, DeclKind, Type};
 use crate::diag::{Diag, E_GENERAL};
 use crate::parser::Parser;
 
@@ -32,12 +33,13 @@ pub fn expand(d: &mut Decl, path: &str, diags: &mut Diag) {
     for (name, line, col) in derives {
         match name.as_str() {
             "ToString" => derive_to_string(d, path, line, col, diags),
+            "Json" => derive_json(d, path, line, col, diags),
             _ => diags.err(
                 E_GENERAL,
                 path,
                 line,
                 col,
-                format!("未知或尚未实现的派生 `{}`（当前支持 ToString）", name),
+                format!("未知或尚未实现的派生 `{}`（当前支持 ToString / Json）", name),
             ),
         }
     }
@@ -73,45 +75,272 @@ fn derive_to_string(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut D
     }
 
     let fields: Vec<&crate::ast::Field> = d.fields.iter().filter(|f| !f.is_static).collect();
-    let mut msg = format!("{} {{{{", d.name);
+    let mut body = format!("        string __mylis_s = \"{} {{{{\";\n", d.name);
     for (i, f) in fields.iter().enumerate() {
-        if i == 0 { msg.push(' '); } else { msg.push_str(", "); }
-        let field_expr = match &f.ty {
-            // class/enum 字段显式调用 toString，避免插值在字段类型上再走一次
-            // 接口转换；primitive/string/类型参数继续使用内建插值。
-            crate::ast::Type::Named(n) if !d.type_params.iter().any(|p| p == n) => {
-                format!("{{this.{}.toString()}}", f.name)
+        if i == 0 {
+            body.push_str("        __mylis_s = __mylis_s + \" \";\n");
+        } else {
+            body.push_str("        __mylis_s = __mylis_s + \", \";\n");
+        }
+        body.push_str(&format!(
+            "        __mylis_s = __mylis_s + \"{}: \";\n",
+            f.name
+        ));
+        match &f.ty {
+            Type::Option(_) => {
+                body.push_str(&format!(
+                    "        if (this.{}.is_some()) {{\n",
+                    f.name
+                ));
+                body.push_str(&format!(
+                    "            __mylis_s = __mylis_s + \"Some({{this.{}.unwrap()}})\";\n",
+                    f.name
+                ));
+                body.push_str("        } else {\n");
+                body.push_str("            __mylis_s = __mylis_s + \"None\";\n");
+                body.push_str("        }\n");
             }
-            _ => format!("{{this.{}}}", f.name),
-        };
-        msg.push_str(&format!("{}: {}", f.name, field_expr));
+            Type::Generic(name, _) if name.rsplit("::").next() == Some("Vec") => {
+                body.push_str("        __mylis_s = __mylis_s + \"[\";\n");
+                body.push_str(&format!("        i64 __mylis_i_{} = 0;\n", i));
+                body.push_str(&format!(
+                    "        while (__mylis_i_{i} < this.{}.len()) {{\n",
+                    f.name,
+                    i = i
+                ));
+                body.push_str(&format!(
+                    "            if (__mylis_i_{i} > 0) {{ __mylis_s = __mylis_s + \", \"; }}\n",
+                    i = i
+                ));
+                body.push_str(&format!(
+                    "            __mylis_s = __mylis_s + \"{{this.{}.get(__mylis_i_{i})}}\";\n",
+                    f.name,
+                    i = i
+                ));
+                body.push_str(&format!(
+                    "            __mylis_i_{i} = __mylis_i_{i} + 1;\n",
+                    i = i
+                ));
+                body.push_str("        }\n");
+                body.push_str("        __mylis_s = __mylis_s + \"]\";\n");
+            }
+            _ => {
+                body.push_str(&format!(
+                    "        __mylis_s = __mylis_s + \"{{this.{}}}\";\n",
+                    f.name
+                ));
+            }
+        }
     }
-    if fields.is_empty() {
-        msg.push_str(" }}");
-    } else {
-        msg.push(' ');
-        msg.push_str("}}");
-    }
+    body.push_str("        __mylis_s = __mylis_s + \" }\";\n");
+    body.push_str("        return __mylis_s;\n");
 
     let src = format!(
-        "class __MylisDerive {{\n    pub fn toString() -> string {{\n        return \"{}\";\n    }}\n}}\n",
-        msg
+        "class __MylisDerive {{\n    pub fn toString() -> string {{\n{body}    }}\n}}\n"
     );
-    let mut p = Parser::new(path, &src, diags);
-    let module = p.parse_module();
-    let method = module.decls.into_iter().find_map(|c| {
-        if c.kind == DeclKind::Class && c.name == "__MylisDerive" {
-            c.member_asts
-                .into_iter()
-                .find(|m| m.kind == DeclKind::Fn && m.name == "toString")
-        } else {
-            None
-        }
-    });
-    let Some(mut m) = method else {
+    let Some(mut m) = parse_generated_method(&src, path, diags, "toString", line, col) else {
         return;
     };
     m.line = line;
     m.col = col;
     d.member_asts.push(m);
+}
+
+/// 解析一段临时 class 源码，取出其中的方法声明；行号/列号回填到注解位置。
+fn parse_generated_method(
+    src: &str,
+    path: &str,
+    diags: &mut Diag,
+    method_name: &str,
+    line: u32,
+    col: u32,
+) -> Option<Decl> {
+    let mut p = Parser::new(path, src, diags);
+    let module = p.parse_module();
+    let mut method = module.decls.into_iter().find_map(|c| {
+        if c.kind == DeclKind::Class && c.name == "__MylisDerive" {
+            c.member_asts
+                .into_iter()
+                .find(|m| m.kind == DeclKind::Fn && m.name == method_name)
+        } else {
+            None
+        }
+    });
+    if let Some(m) = method.as_mut() {
+        m.line = line;
+        m.col = col;
+    }
+    method
+}
+
+/// 生成 `toJson`：对象字段顺序与 class 声明顺序一致，值通过 `std/Json` 构造。
+fn derive_json(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut Diag) {
+    if d.kind != DeclKind::Class {
+        diags.err(E_GENERAL, path, line, col, "`@derive(Json)` 只能用于 class");
+        return;
+    }
+    if !d.type_params.is_empty() {
+        diags.err(
+            E_GENERAL,
+            path,
+            line,
+            col,
+            "`@derive(Json)` 暂不支持泛型 class",
+        );
+        return;
+    }
+    if d.member_asts
+        .iter()
+        .any(|m| m.kind == DeclKind::Fn && m.name == "toJson")
+    {
+        diags.err(
+            E_GENERAL,
+            path,
+            line,
+            col,
+            format!("class `{}` 已经定义了 toJson，不能再派生 Json", d.name),
+        );
+        return;
+    }
+
+    let fields: Vec<&crate::ast::Field> = d.fields.iter().filter(|f| !f.is_static).collect();
+    let mut body = String::new();
+    body.push_str("        Json __mylis_obj = Json::Null();\n");
+    body.push_str("        __mylis_obj.kind = 6;\n");
+    for (i, f) in fields.iter().enumerate() {
+        if !emit_json_field(&f.ty, &f.name, "__mylis_obj", i, &mut body) {
+            diags.err(
+                E_GENERAL,
+                path,
+                line,
+                col,
+                format!(
+                    "`@derive(Json)` 暂不支持字段 `{}` 的类型（当前支持 primitive / string / class / 数组 / 一层 Option / Vec）",
+                    f.name
+                ),
+            );
+            return;
+        }
+    }
+    body.push_str("        return __mylis_obj;\n");
+
+    let src =
+        format!("class __MylisDerive {{\n    pub fn toJson() -> Json {{\n{body}    }}\n}}\n");
+    let Some(mut m) = parse_generated_method(&src, path, diags, "toJson", line, col) else {
+        return;
+    };
+    m.line = line;
+    m.col = col;
+    d.member_asts.push(m);
+}
+
+fn json_scalar_expr(ty: &Type, expr: &str) -> Option<String> {
+    let out = match ty {
+        Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::U8 | Type::U16 | Type::U32
+        | Type::U64 => format!("Json::Int({expr} as i64)"),
+        Type::F32 | Type::F64 => format!("Json::Float({expr} as f64)"),
+        Type::Bool => format!("Json::Bool({expr})"),
+        Type::Str => format!("Json::Str({expr})"),
+        // 解析前字段类型通常还是 Named；class 统一走递归 toJson。enum 先按字符串输出。
+        Type::Named(name) => {
+            if name == "string" {
+                format!("Json::Str({expr})")
+            } else if name == "bool" {
+                format!("Json::Bool({expr})")
+            } else {
+                format!("{expr}.toJson()")
+            }
+        }
+        Type::Class(_) | Type::Adt { .. } => format!("{expr}.toJson()"),
+        Type::Enum(_) => format!("Json::Str(\"{{{expr}}}\")"),
+        _ => return None,
+    };
+    Some(out)
+}
+
+fn emit_json_field(
+    ty: &Type,
+    field: &str,
+    object: &str,
+    index: usize,
+    body: &mut String,
+) -> bool {
+    let key = field;
+    if let Some(expr) = json_scalar_expr(ty, &format!("this.{field}")) {
+        body.push_str(&format!(
+            "        {object}.objectValue.set(\"{key}\", {expr});\n"
+        ));
+        return true;
+    }
+    match ty {
+        Type::Option(inner) => {
+            let Some(expr) = json_scalar_expr(inner, &format!("this.{field}.unwrap()")) else {
+                return false;
+            };
+            body.push_str(&format!("        if (this.{field}.is_some()) {{\n"));
+            body.push_str(&format!(
+                "            {object}.objectValue.set(\"{key}\", {expr});\n"
+            ));
+            body.push_str("        } else {\n");
+            body.push_str(&format!(
+                "            {object}.objectValue.set(\"{key}\", Json::Null());\n"
+            ));
+            body.push_str("        }\n");
+            true
+        }
+        Type::Array(inner) => {
+            let Some(element) = json_scalar_expr(inner, &format!("this.{field}[__mylis_i_{index}]"))
+            else {
+                return false;
+            };
+            body.push_str(&format!(
+                "        Json __mylis_j_{index} = Json::Null();\n"
+            ));
+            body.push_str(&format!("        __mylis_j_{index}.kind = 5;\n"));
+            body.push_str(&format!("        i64 __mylis_i_{index} = 0;\n"));
+            body.push_str(&format!(
+                "        while (__mylis_i_{index} < (this.{field}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "            __mylis_j_{index}.arrayValue.push({element});\n"
+            ));
+            body.push_str(&format!(
+                "            __mylis_i_{index} = __mylis_i_{index} + 1;\n"
+            ));
+            body.push_str("        }\n");
+            body.push_str(&format!(
+                "        {object}.objectValue.set(\"{key}\", __mylis_j_{index});\n"
+            ));
+            true
+        }
+        Type::Generic(name, args)
+            if name.rsplit("::").next() == Some("Vec") && args.len() == 1 =>
+        {
+            let Some(element) =
+                json_scalar_expr(&args[0], &format!("this.{field}.get(__mylis_i_{index})"))
+            else {
+                return false;
+            };
+            body.push_str(&format!(
+                "        Json __mylis_j_{index} = Json::Null();\n"
+            ));
+            body.push_str(&format!("        __mylis_j_{index}.kind = 5;\n"));
+            body.push_str(&format!("        i64 __mylis_i_{index} = 0;\n"));
+            body.push_str(&format!(
+                "        while (__mylis_i_{index} < (this.{field}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "            __mylis_j_{index}.arrayValue.push({element});\n"
+            ));
+            body.push_str(&format!(
+                "            __mylis_i_{index} = __mylis_i_{index} + 1;\n"
+            ));
+            body.push_str("        }\n");
+            body.push_str(&format!(
+                "        {object}.objectValue.set(\"{key}\", __mylis_j_{index});\n"
+            ));
+            true
+        }
+        _ => false,
+    }
 }

@@ -1,0 +1,8 @@
+@derive(Json)
+class Data {
+    pub Result<i64, string> value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

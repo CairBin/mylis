@@ -1,0 +1,73 @@
+import { println } from "Io.myl";
+import { Vec } from "Vec.myl";
+
+@derive(ToString)
+class Point {
+    pub i64 x;
+
+    pub fn init(i64 x) {
+        this.x = x;
+    }
+}
+
+@derive(ToString)
+class MaybePoint {
+    pub Option<Point> value;
+
+    pub fn init(Option<Point> value) {
+        this.value = value;
+    }
+}
+
+@derive(ToString)
+class PointList {
+    pub Vec<Point> items;
+
+    pub fn init(Vec<Point> items) {
+        this.items = items;
+    }
+}
+
+@derive(ToString)
+class MaybeInt {
+    pub Option<i64> value;
+
+    pub fn init(Option<i64> value) {
+        this.value = value;
+    }
+}
+
+@derive(ToString)
+class IntList {
+    pub Vec<i64> items;
+
+    pub fn init(Vec<i64> items) {
+        this.items = items;
+    }
+}
+
+@derive(ToString)
+class Empty {
+}
+
+fn main() -> i32 {
+    MaybePoint some = new MaybePoint(Some(new Point(1)));
+    MaybePoint none = new MaybePoint(None);
+    Vec<Point> values = new Vec<Point>();
+    values.push(new Point(2));
+    values.push(new Point(3));
+    PointList list = new PointList(values);
+    MaybeInt some_int = new MaybeInt(Some(7));
+    Vec<i64> numbers = new Vec<i64>();
+    numbers.push(4);
+    numbers.push(5);
+    IntList int_list = new IntList(numbers);
+    Empty empty = new Empty();
+    println("{some}");
+    println("{none}");
+    println("{list}");
+    println("{some_int}");
+    println("{int_list}");
+    println("{empty}");
+    return 0;
+}

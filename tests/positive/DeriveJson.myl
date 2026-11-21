@@ -1,0 +1,80 @@
+import { println } from "Io.myl";
+import { Json } from "Json.myl";
+import { Vec } from "Vec.myl";
+
+@derive(ToString, Json)
+class Point {
+    pub i64 x;
+    pub i64 y;
+
+    pub fn init(i64 x, i64 y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+@derive(Json)
+class Record {
+    pub Point point;
+    pub Option<Point> maybe;
+    pub Vec<Point> points;
+    pub i64[] nums;
+    pub string name;
+    pub bool ok;
+    pub f64 ratio;
+
+    pub fn init(Point point, Option<Point> maybe, Vec<Point> points, i64[] nums, string name, bool ok, f64 ratio) {
+        this.point = point;
+        this.maybe = maybe;
+        this.points = points;
+        this.nums = nums;
+        this.name = name;
+        this.ok = ok;
+        this.ratio = ratio;
+    }
+}
+
+@derive(Json)
+class Maybe {
+    pub Option<Point> value;
+
+    pub fn init(Option<Point> value) {
+        this.value = value;
+    }
+}
+
+@derive(Json)
+class Empty {
+}
+
+@derive(Json)
+class StaticBox {
+    pub static i64 count = 7;
+    pub i64 x;
+
+    pub fn init(i64 x) {
+        this.x = x;
+    }
+}
+
+fn main() -> i32 {
+    Vec<Point> points = new Vec<Point>();
+    points.push(new Point(5, 6));
+    Record record = new Record(
+        new Point(1, 2),
+        Some(new Point(3, 4)),
+        points,
+        [1, 2, 3],
+        "mylis",
+        true,
+        1.5
+    );
+    Maybe maybe = new Maybe(None);
+    Empty empty = new Empty();
+    StaticBox boxed = new StaticBox(9);
+    println(Json::Stringify(record.toJson()));
+    println(Json::Stringify(maybe.toJson()));
+    println(Json::Stringify(empty.toJson()));
+    println(Json::Stringify(boxed.toJson()));
+    return 0;
+}

@@ -1,3 +1,4 @@
 Point { x: 1, y: 2 }
 Named { name: mylis, ok: true }
 Segment { from: Point { x: 1, y: 2 }, to: Point { x: 3, y: 4 } }
+Bag { points: [Point { x: 5, y: 6 }, Point { x: 7, y: 8 }] }

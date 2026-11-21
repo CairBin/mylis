@@ -1,4 +1,4 @@
-@derive(Json)
+@derive(Yaml)
 class Data {
     pub i64 id;
 }

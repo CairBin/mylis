@@ -494,6 +494,10 @@ impl<'a> Codegen<'a> {
                 let v = self.gen_expr(e);
                 format!("{}({})", h, v)
             }
+            Type::Enum(eid) => {
+                let v = self.gen_expr(e);
+                self.fmt_c(&v, &Type::Enum(*eid))
+            }
             Type::Iface(id) => {
                 let v = self.gen_expr(e);
                 let w = self.tmp("ifc");

@@ -1292,7 +1292,7 @@ MIR 生成    → AST → 函数级 CFG（SSA 值 + 局部槽 + 显式终结指�
 
 ```bash
 make test
-# 正向/反向合计 121 项；MIR-C/AST-C 对拍 78 项
+# 正向/反向合计 127 项；MIR-C/AST-C 对拍 80 项
 # 另含 std native、库模式、工具链、MIR、LSP 与裸机验收
 ```
 
@@ -1610,11 +1610,11 @@ static void myl_init_statics(void) {
 - `tests/positive/{Arrays,Interp,Match,Registry}.myl`：四特性正向用例；
 - `tests/negative/{M014_interp_tostring,M015_match_exhaustive,M016_static_instance,M017_array_eq}.myl`：
   反向用例，命中 `MYL102`；
-- `bash tests/run_tests.sh` 共 **121 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
+- `bash tests/run_tests.sh` 共 **127 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
 
-### 17.7 编译期派生 `@derive(ToString)`
+### 17.7 编译期派生 `@derive(ToString)` / `@derive(Json)`
 
-`@derive(ToString)` 是本版唯一的编译期反射能力，只接受 class：
+`@derive(ToString)` 与 `@derive(Json)` 是本版仅有的编译期派生能力，都只接受 class：
 
 ```mylis
 @derive(ToString)
@@ -1641,15 +1641,59 @@ pub fn toString() -> string {
 
 - 生成发生在编译期，运行时不保留字段名、偏移或类型表，也不存在按名字查字段的 API；
 - 除检查已有 `toString` / `to_string` 冲突外，只对**字段列表**做拼接，不读取方法体、其他注解或继承信息；
-- 字段类型必须能按字符串插值规则输出；直接以类名 / 枚举名声明的 class / enum 字段会生成显式 `this.field.toString()`，因此该字段类型必须实现 `ToString`；
+- 字段类型必须能格式化：数值 / bool / string / class / enum / 数组直接走字符串插值规则；`Option<T>` 生成 `Some(<T>)` / `None` 分支；`Vec<T>` 生成逐元素拼接的 `[...]`；
+- class / enum 字段保留原始类型直接调用其 `toString` / `to_string`，不会在格式化时改写字段访问的语义；
 - 类已有 `toString` 或 `to_string` 时报 `MYL102`，不会覆盖手写方法；
 - 当前版本不支持泛型 class（`class Box<T>`）：字段类型 `T` 的字符串化链路尚未打通，`@derive(ToString)` 会直接报 `MYL102`；
-- 未知派生（如 `@derive(Json)`）、把 `@derive(ToString)` 用在 enum / interface / 函数上报 `MYL102`；
-- 同一 class 可写多个 `@derive(...)`，当前除 `ToString` 外的派生名全部报未实现。
+- 当前只展开一层 `Option` / `Vec` 容器；`Option<Option<T>>`、`Vec<Option<T>>`、`Option<Vec<T>>` 等嵌套容器暂不支持，`Result` 字段也暂不支持；
+- 未知派生（如 `@derive(Yaml)`）、把 `@derive(ToString)` 用在 enum / interface / 函数上报 `MYL102`；
+- 同一 class 可写多个 `@derive(...)`，当前支持 `ToString` 与 `Json`，其余派生名全部报未实现。
+
+#### `@derive(Json)`
+
+`@derive(Json)` 读取同一份实例字段列表，生成：
+
+```mylis
+pub fn toJson() -> Json
+```
+
+生成的方法体引用 `std/Json`，因此使用该派生的模块要显式导入：
+
+```mylis
+import { Json } from "Json.myl";
+```
+
+字段值按声明顺序写入 Json 对象（static 字段跳过），空 class 生成 `{}`。序列化文本由 `Json::Stringify` 负责：
+
+```mylis
+@derive(Json)
+class Point {
+    pub i64 x;
+    pub i64 y;
+
+    pub fn init(i64 x, i64 y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+// Json::Stringify(new Point(1, 2).toJson()) == "{\"x\":1,\"y\":2}"
+```
+
+字段映射规则：
+
+- 所有整型（`i8`…`i64` / `u8`…`u64`）转为 `Json::Int`，统一按 `i64` 表示；
+- `f32` / `f64` 转为 `Json::Float`，`bool` 转为 `Json::Bool`，`string` 转为 `Json::Str`；
+- class 字段递归调用该字段类型的 `toJson()`，因此嵌套 class 必须同样派生 `Json` 或手写 `toJson`；
+- 数组 `T[]` 与 `Vec<T>` 生成 Json 数组，元素逐项转换；
+- `Option<T>` 的 `Some` 写入内层值的 Json，`None` 写 `null`；
+- enum 字段不会自动派生 `toJson`，需要该 enum 手写 `toJson()`；`Result` / 嵌套容器 / `Map` / interface 字段暂不支持，派生直接报 `MYL102`；
+- 泛型 class、非 class 目标、已有 `toJson` 方法都报 `MYL102`；
+- 与 `ToString` 一样，派生只发生在编译期，运行时不保留字段名、偏移或类型表。
 
 这不是通用的 `#[derive]` 宏系统：编译器不执行用户代码，也不提供字段枚举 / 属性读取 API；新增派生能力必须在编译器内实现。
 
-测试覆盖：`tests/positive/DeriveToString.myl`（primitive / string / bool / 嵌套 class 字段）与 `tests/negative/{M039_derive_unknown,M040_derive_non_class,M041_derive_conflict,M042_derive_generic}.myl`（均命中 `MYL102`）。
+测试覆盖：`tests/positive/DeriveToString.myl`（primitive / string / bool / 嵌套 class / class 数组字段）、`tests/positive/DeriveToStringContainers.myl`（`Option<Point>` / `Vec<Point>` / `Option<i64>` / `Vec<i64>` / 空 class）、`tests/positive/DeriveJson.myl`（嵌套 class / `Option` / `Vec` / 数组 / 空对象）与 `tests/negative/{M039_derive_unknown,M040_derive_non_class,M041_derive_conflict,M042_derive_generic,M043_derive_json_conflict,M044_derive_json_non_class,M045_derive_json_generic,M046_derive_json_result}.myl`（均命中 `MYL102`）。
 
 ---
 

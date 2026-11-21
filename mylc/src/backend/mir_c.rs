@@ -459,7 +459,7 @@ fn fmt_c_elem(ty: &Type, x: &str, p: &MirProgram) -> Option<String> {
         Type::Class(id) | Type::Enum(id) => {
             let m = p.funcs.iter().find(|m| {
                 m.owner == Some(*id)
-                    && m.name.rsplit("::").next() == Some("to_string")
+                    && matches!(m.name.rsplit("::").next(), Some("toString") | Some("to_string"))
                     && !m.is_static
             })?;
             format!("{}({})", cname(&m.name), x)

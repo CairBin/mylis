@@ -190,7 +190,7 @@ fn esc_str(s: &str) -> String {
     for b in s.as_bytes() {
         match *b {
             b'\\' => out.push_str("\\\\"),
-            b'"' => out.push_str("\\\""),
+            b'"' => out.push_str("\\22"),
             0x20..=0x7e => out.push(*b as char),
             _ => { let _ = write!(out, "\\{:02X}", b); }
         }
@@ -1157,6 +1157,9 @@ impl<'a> FnGen<'a> {
                 let st = self.ty(&src)?;
                 let dt = self.ty(target)?;
                 let n = if src == *target {
+                    x.clone()
+                } else if is_int(&src) && is_int(target) && st == dt {
+                    // 不同整型名义类型可能落到相同的 LLVM 宽度（如 i64 与 u64），无需 cast。
                     x.clone()
                 } else if is_int(&src) && is_int(target) {
                     let sb = int_bits(&src)?;
@@ -2183,8 +2186,11 @@ fn emit(ir: &MirProgram, executable: bool, native_externs: bool, prog: Option<&P
     }
     for c in &ir.classes {
         class_ids.insert(c.decl_id, c);
-        let fields: Vec<String> = c.fields.iter().filter(|f| !f.is_static)
-            .map(|f| llty(&f.ty)).collect::<Result<_, _>>()?;
+        // 保留字段的原始下标：Res::Field 使用声明顺序（含 static 字段），
+        // 这里用 i8 占位，避免实例字段的下标整体前移。
+        let fields: Vec<String> = c.fields.iter()
+            .map(|f| if f.is_static { Ok("i8".to_string()) } else { llty(&f.ty) })
+            .collect::<Result<_, _>>()?;
         let _ = writeln!(out, "%C_{} = type {{ {} }}", c.decl_id, fields.join(", "));
     }
     for c in &ir.classes {

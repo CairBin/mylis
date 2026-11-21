@@ -33,12 +33,23 @@ class Segment {
     }
 }
 
+@derive(ToString)
+class Bag {
+    pub Point[] points;
+
+    pub fn init(Point[] points) {
+        this.points = points;
+    }
+}
+
 fn main() -> i32 {
     Point p = new Point(1, 2);
     Named n = new Named("mylis", true);
     Segment s = new Segment(p, new Point(3, 4));
+    Bag b = new Bag([new Point(5, 6), new Point(7, 8)]);
     println("{p}");
     println("{n}");
     println("{s}");
+    println("{b}");
     return 0;
 }

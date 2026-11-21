@@ -1,0 +1,6 @@
+MaybePoint { value: Some(Point { x: 1 }) }
+MaybePoint { value: None }
+PointList { items: [Point { x: 2 }, Point { x: 3 }] }
+MaybeInt { value: Some(7) }
+IntList { items: [4, 5] }
+Empty { }
