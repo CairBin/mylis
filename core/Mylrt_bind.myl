@@ -1,0 +1,49 @@
+// ============================================================================
+// myrt 运行时 C 绑定 —— core 层（分配 / 字符串 / GC / panic / 数字格式化）
+// 第 11 章固定 API —— 语言层只能通过 unsafe 域调用。
+// ============================================================================
+
+pub unsafe fn myrt_alloc(u64 size) -> i8*;
+
+pub unsafe fn myrt_register_root(i8* obj) -> void;
+
+pub unsafe fn myrt_unregister_root(i8* obj) -> void;
+
+pub unsafe fn myrt_gc_stats_dump() -> void;
+
+pub unsafe fn myrt_str_cstr(i8* p) -> string;
+
+pub unsafe fn myrt_str_ptr(string s) -> i8*;
+
+pub unsafe fn myrt_str_len(string s) -> u64;
+
+pub unsafe fn mylrt_str_cmp(string left, string right) -> i32;
+pub unsafe fn mylrt_str_starts_with(string value, string prefix) -> bool;
+pub unsafe fn mylrt_str_ends_with(string value, string suffix) -> bool;
+pub unsafe fn mylrt_str_index_of(string value, string needle) -> i64;
+pub unsafe fn mylrt_str_contains(string value, string needle) -> bool;
+pub unsafe fn mylrt_str_substring(string value, u64 start, u64 length) -> string;
+pub unsafe fn mylrt_str_trim(string value) -> string;
+pub unsafe fn mylrt_str_repeat(string value, u64 count) -> string;
+pub unsafe fn mylrt_str_replace(string value, string from, string to) -> string;
+pub unsafe fn mylrt_str_char_len(string value) -> u64;
+pub unsafe fn mylrt_str_char_index_of(string value, string needle) -> i64;
+pub unsafe fn mylrt_str_char_substring(string value, u64 start, u64 count) -> string;
+pub unsafe fn mylrt_str_char_at(string value, u64 index) -> string;
+pub unsafe fn mylrt_str_char_code_at(string value, u64 index) -> u32;
+pub unsafe fn mylrt_str_to_bytes(string value) -> u8[];
+pub unsafe fn mylrt_str_from_bytes(u8[] bytes) -> string;
+
+pub unsafe fn myrt_gc_collect() -> void;
+
+pub unsafe fn myrt_panic(string msg) -> void;
+
+pub unsafe fn myrt_i64_to_string(i64 v) -> string;
+
+pub unsafe fn myrt_u64_to_string(u64 v) -> string;
+
+pub unsafe fn myrt_f64_to_string(f64 v) -> string;
+pub unsafe fn myrt_f64_to_string_prec(f64 v, i32 precision) -> string;
+pub unsafe fn myrt_f64_to_string_fmt(f64 v, i32 width, i32 precision, i32 flags) -> string;
+
+pub unsafe fn myrt_clock() -> f64;

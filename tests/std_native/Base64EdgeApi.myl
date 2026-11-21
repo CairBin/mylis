@@ -1,0 +1,33 @@
+import { Base64 } from "Base64.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    u8[] raw = new u8[3];
+    raw[0] = 0;
+    raw[1] = 255;
+    raw[2] = 128;
+    string encoded = Base64::EncodeBytes(raw);
+    println(encoded);
+    Result<u8[], string> decoded = Base64::DecodeBytes(encoded);
+    match (decoded) {
+        Ok(data) => {
+            println_i64(data.len() as i64);
+            println_i64((data[0] as i32) as i64);
+            println_i64((data[1] as i32) as i64);
+            println_i64((data[2] as i32) as i64);
+        }
+        Err(message) => { println(message); }
+    }
+
+    Result<u8[], string> canonical = Base64::DecodeBytes("TQ==");
+    println_bool(canonical.is_ok());
+    Result<u8[], string> badBits = Base64::DecodeBytes("TR==");
+    match (badBits) { Ok(v1) => { println("bad-bits-ok"); } Err(e1) => { println(e1); } }
+    Result<u8[], string> badPad = Base64::DecodeBytes("AA=A");
+    match (badPad) { Ok(v2) => { println("bad-pad-ok"); } Err(e2) => { println(e2); } }
+    Result<u8[], string> tooMuchPad = Base64::DecodeBytes("A===");
+    match (tooMuchPad) { Ok(v3) => { println("too-much-pad-ok"); } Err(e3) => { println(e3); } }
+    Result<u8[], string> badLen = Base64::DecodeBytes("abc");
+    match (badLen) { Ok(v4) => { println("bad-len-ok"); } Err(e4) => { println(e4); } }
+    return 0;
+}

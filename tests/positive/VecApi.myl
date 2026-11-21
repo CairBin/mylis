@@ -1,0 +1,46 @@
+import { Vec } from "Vec.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn showOption(Option<i64> o) -> void {
+    match o {
+        Some(x) => { println_i64(x); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn main() -> i32 {
+    Vec<i64> v = new Vec<i64>();
+    println_i64(v.len());
+    println_bool(v.isEmpty());
+    showOption(v.first());
+    showOption(v.last());
+    showOption(v.pop());
+
+    v.push(10);
+    v.push(20);
+    v.push(30);
+    println_i64(v.len());
+    showOption(v.first());
+    showOption(v.last());
+
+    v.insert(1, 15);
+    println_i64(v.len());
+    println_i64(v.get(1));
+    println_i64(v.get(2));
+
+    showOption(v.remove(2));
+    println_i64(v.len());
+    showOption(v.remove(99));
+    println_i64(v.len());
+
+    showOption(v.pop());
+    println_i64(v.len());
+    showOption(v.last());
+    showOption(v.pop());
+    println_i64(v.len());
+    showOption(v.first());
+
+    v.clear();
+    println_i64(v.len());
+    return 0;
+}

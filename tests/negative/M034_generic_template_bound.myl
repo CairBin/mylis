@@ -1,0 +1,7 @@
+class Holder<T> {
+    pub T v;
+    pub fn init(T x) -> void { this.v = x; }
+    pub fn ShowIt() -> string { return this.v.show(); }
+}
+
+fn main() -> i32 { return 0; }

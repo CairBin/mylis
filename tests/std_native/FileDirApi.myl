@@ -1,0 +1,96 @@
+import { File } from "File.myl";
+import { IoError } from "IoError.myl";
+import { Vec } from "Vec.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    string dir = "build/tests/file_dir_api";
+    if (File::Exists(dir)) {
+        Result<i64, IoError> cleanup = File::RemoveDirAll(dir);
+    }
+    println_bool(File::IsDir(dir));
+
+    Result<i64, IoError> mk = File::Mkdir(dir);
+    match mk {
+        Ok(mkOk) => { println_i64(mkOk); }
+        Err(mkErr) => { println_i64(mkErr.code as i64); }
+    }
+    println_bool(File::IsDir(dir));
+
+    Result<i64, IoError> nested = File::MkdirAll(dir + "/nested/deep");
+    match nested {
+        Ok(mkAllOk) => { println_i64(mkAllOk); }
+        Err(mkAllErr) => { println_i64(mkAllErr.code as i64); }
+    }
+
+    Result<File, IoError> createdA = File::Create(dir + "/a.txt");
+    match createdA {
+        Ok(cfA) => { Result<i64, IoError> wA = cfA.writeAllText("a"); cfA.close(); }
+        Err(ceA) => { println_i64(ceA.code as i64); }
+    }
+    Result<File, IoError> createdB = File::Create(dir + "/b.txt");
+    match createdB {
+        Ok(cfB) => { Result<i64, IoError> wB = cfB.writeAllText("bb"); cfB.close(); }
+        Err(ceB) => { println_i64(ceB.code as i64); }
+    }
+
+    Result<Vec<string>, IoError> entries = File::ReadDir(dir);
+    match entries {
+        Ok(names) => {
+            println_i64(names.len() as i64);
+            i64 ni = 0;
+            while (ni < names.len()) {
+                println(names.get(ni));
+                ni = ni + 1;
+            }
+        }
+        Err(entriesErr) => { println_i64(entriesErr.code as i64); }
+    }
+
+    Result<i64, IoError> size = File::Size(dir + "/b.txt");
+    match size {
+        Ok(sizeOk) => { println_i64(sizeOk); }
+        Err(sizeErr) => { println_i64(sizeErr.code as i64); }
+    }
+
+    Result<File, IoError> opened = File::Open(dir + "/b.txt");
+    match opened {
+        Ok(of) => {
+            Result<i64, IoError> t0 = of.tell();
+            match t0 { Ok(t0n) => { println_i64(t0n); } Err(t0e) => { println_i64(t0e.code as i64); } }
+            Result<u8[], IoError> first = of.readSome(1);
+            match first {
+                Ok(firstData) => { println_i64(firstData.len() as i64); }
+                Err(firstErr) => { println_i64(firstErr.code as i64); }
+            }
+            Result<i64, IoError> t1 = of.tell();
+            match t1 { Ok(t1n) => { println_i64(t1n); } Err(t1e) => { println_i64(t1e.code as i64); } }
+            Result<i64, IoError> back = of.seek(0);
+            match back { Ok(backN) => { println_i64(backN); } Err(backErr) => { println_i64(backErr.code as i64); } }
+            Result<i64, IoError> t2 = of.tell();
+            match t2 { Ok(t2n) => { println_i64(t2n); } Err(t2e) => { println_i64(t2e.code as i64); } }
+            Result<u8[], IoError> all = of.readAllBytes();
+            match all {
+                Ok(allData) => { println_i64(allData.len() as i64); }
+                Err(allErr) => { println_i64(allErr.code as i64); }
+            }
+            of.close();
+        }
+        Err(openErr) => { println_i64(openErr.code as i64); }
+    }
+
+    Result<i64, IoError> removeNonEmpty = File::RemoveDir(dir);
+    match removeNonEmpty {
+        Ok(removeOk) => { println_bool(false); }
+        Err(removeErr) => { println_bool(true); }
+    }
+
+    Result<i64, IoError> removeAll = File::RemoveDirAll(dir);
+    match removeAll {
+        Ok(removeAllOk) => { println_i64(removeAllOk); }
+        Err(removeAllErr) => { println_i64(removeAllErr.code as i64); }
+    }
+    println_bool(File::Exists(dir));
+    println_bool(File::IsDir(dir));
+    return 0;
+}

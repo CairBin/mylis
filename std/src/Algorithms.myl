@@ -1,0 +1,83 @@
+// std 层：基于 Eq/Ord 的 Vec<T> 通用查询与排序，不引入额外约束。
+import { Vec } from "Vec.myl";
+import { Eq } from "core/Eq";
+import { Ord } from "core/Ord";
+
+pub fn contains<T: Eq>(Vec<T> values, T value) -> bool {
+    i64 i = 0;
+    while (i < values.len()) {
+        if (values.get(i).equals(value)) {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+pub fn index_of<T: Eq>(Vec<T> values, T value) -> i64 {
+    i64 i = 0;
+    while (i < values.len()) {
+        if (values.get(i).equals(value)) {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+// 插入排序：稳定、原地、O(n^2)，第一版不引入额外分配。
+pub fn sort<T: Ord>(Vec<T> values) -> void {
+    i64 i = 1;
+    while (i < values.len()) {
+        i64 j = i;
+        while (j > 0) {
+            if (values.get(j).compare(values.get(j - 1)) >= 0) {
+                break;
+            }
+            values.swap(j, j - 1);
+            j = j - 1;
+        }
+        i = i + 1;
+    }
+}
+
+// 把 other 的元素逐个追加到 values；泛型函数版本，避免泛型方法嵌套实例化。
+pub fn extend<T>(Vec<T> values, Vec<T> other) -> void {
+    i64 i = 0;
+    i64 n = other.len();
+    while (i < n) {
+        values.push(other.get(i));
+        i = i + 1;
+    }
+}
+
+// 在已按 Ord 排好序的 Vec 中做二分查找；找到返回下标，否则返回 None。
+pub fn binary_search<T: Ord>(Vec<T> values, T value) -> Option<i64> {
+    i64 low = 0;
+    i64 high = values.len() - 1;
+    while (low <= high) {
+        i64 mid = low + (high - low) / 2;
+        i32 cmp = values.get(mid).compare(value);
+        if (cmp == 0) {
+            return Some(mid);
+        }
+        if (cmp < 0) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return None;
+}
+
+// 判断序列是否按 Ord 非递减；空序列与单元素序列视为有序。
+pub fn is_sorted<T: Ord>(Vec<T> values) -> bool {
+    i64 i = 1;
+    while (i < values.len()) {
+        if (values.get(i).compare(values.get(i - 1)) < 0) {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}

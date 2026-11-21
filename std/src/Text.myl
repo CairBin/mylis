@@ -1,0 +1,317 @@
+// std 层：文本拆分、拼接、行处理与整数解析。
+// 只依赖 core/Str 与 Vec，不访问文件系统。
+import { Str } from "core/Str";
+import { Vec } from "Vec.myl";
+
+fn split(string value, string sep) -> Vec<string> {
+    Vec<string> out = new Vec<string>();
+    if (sep == "") {
+        out.push(value);
+        return out;
+    }
+    u64 n = Str::Len(value);
+    u64 start = 0;
+    while (start <= n) {
+        string rest = Str::Substring(value, start, n - start);
+        i64 at = Str::IndexOf(rest, sep);
+        if (at < 0) {
+            out.push(rest);
+            break;
+        }
+        out.push(Str::Substring(value, start, at as u64));
+        start = start + (at as u64) + Str::Len(sep);
+    }
+    return out;
+}
+
+fn join(Vec<string> parts, string sep) -> string {
+    string out = "";
+    i64 i = 0;
+    while (i < parts.len()) {
+        if (i > 0) {
+            out = out + sep;
+        }
+        out = out + parts.get(i);
+        i = i + 1;
+    }
+    return out;
+}
+
+fn lines(string value) -> Vec<string> {
+    Vec<string> out = new Vec<string>();
+    if (value == "") {
+        return out;
+    }
+    Vec<string> parts = split(value, "\n");
+    i64 i = 0;
+    while (i < parts.len()) {
+        string part = parts.get(i);
+        if (Str::EndsWith(part, "\r")) {
+            part = Str::Substring(part, 0, Str::Len(part) - 1);
+        }
+        out.push(part);
+        i = i + 1;
+    }
+    if (out.len() > 0) {
+        if (out.get(out.len() - 1) == "") {
+            out.pop();
+        }
+    }
+    return out;
+}
+
+fn parse_i64(string value) -> Option<i64> {
+    string s = Str::Trim(value);
+    u8[] b = Str::Bytes(s);
+    if (b.len() == 0) {
+        return None;
+    }
+    i64 i = 0;
+    bool neg = false;
+    if (b[0] == 45) {
+        neg = true;
+        i = 1;
+    } else if (b[0] == 43) {
+        i = 1;
+    }
+    if (i >= b.len() as i64) {
+        return None;
+    }
+    u64 acc = 0;
+    u64 max = 9223372036854775807;
+    u64 limit = max;
+    if (neg) {
+        limit = max + 1;
+    }
+    while (i < b.len() as i64) {
+        u8 d = b[i];
+        if (d < 48 || d > 57) {
+            return None;
+        }
+        u64 digit = (d - 48) as u64;
+        if (acc > (limit - digit) / 10) {
+            return None;
+        }
+        acc = acc * 10 + digit;
+        i = i + 1;
+    }
+    if (neg) {
+        if (acc == max + 1) {
+            return Some(-9223372036854775807 - 1);
+        }
+        return Some(-(acc as i64));
+    }
+    return Some(acc as i64);
+}
+
+fn parse_bool(string value) -> Option<bool> {
+    string s = Str::Trim(value);
+    if (s == "true") {
+        return Some(true);
+    }
+    if (s == "false") {
+        return Some(false);
+    }
+    return None;
+}
+
+fn parse_u64(string value) -> Option<u64> {
+    string s = Str::Trim(value);
+    u8[] b = Str::Bytes(s);
+    if (b.len() == 0) {
+        return None;
+    }
+    i64 i = 0;
+    if (b[0] == 45) {
+        return None;
+    }
+    if (b[0] == 43) {
+        i = 1;
+    }
+    if (i >= b.len() as i64) {
+        return None;
+    }
+    u64 acc = 0;
+    u64 max = 18446744073709551615;
+    while (i < b.len() as i64) {
+        u8 d = b[i];
+        if (d < 48 || d > 57) {
+            return None;
+        }
+        u64 digit = (d - 48) as u64;
+        if (acc > (max - digit) / 10) {
+            return None;
+        }
+        acc = acc * 10 + digit;
+        i = i + 1;
+    }
+    return Some(acc);
+}
+
+fn parse_i32(string value) -> Option<i32> {
+    Option<i64> parsed = parse_i64(value);
+    match parsed {
+        Some(n) => {
+            if (n < -2147483648 || n > 2147483647) {
+                return None;
+            }
+            return Some(n as i32);
+        }
+        None => { return None; }
+    }
+}
+
+fn parse_f64(string value) -> Option<f64> {
+    string s = Str::Trim(value);
+    u8[] b = Str::Bytes(s);
+    if (b.len() == 0) {
+        return None;
+    }
+    i64 i = 0;
+    bool neg = false;
+    if (b[0] == 45) {
+        neg = true;
+        i = 1;
+    } else if (b[0] == 43) {
+        i = 1;
+    }
+    bool digits = false;
+    f64 intPart = 0.0;
+    while (i < b.len() as i64) {
+        u8 d = b[i];
+        if (d < 48 || d > 57) {
+            break;
+        }
+        digits = true;
+        intPart = intPart * 10.0 + ((d - 48) as f64);
+        i = i + 1;
+    }
+    f64 fraction = 0.0;
+    f64 scale = 1.0;
+    if (i < b.len() as i64) {
+        if (b[i] == 46) {
+            i = i + 1;
+            while (i < b.len() as i64) {
+                u8 d = b[i];
+                if (d < 48 || d > 57) {
+                    break;
+                }
+                digits = true;
+                scale = scale * 10.0;
+                fraction = fraction + ((d - 48) as f64) / scale;
+                i = i + 1;
+            }
+        }
+    }
+    if (!digits) {
+        return None;
+    }
+    i64 exp = 0;
+    bool expNeg = false;
+    if (i < b.len() as i64) {
+        if (b[i] == 101 || b[i] == 69) {
+            i = i + 1;
+            if (i < b.len() as i64) {
+                if (b[i] == 45) {
+                    expNeg = true;
+                    i = i + 1;
+                } else if (b[i] == 43) {
+                    i = i + 1;
+                }
+            }
+            bool expDigits = false;
+            while (i < b.len() as i64) {
+                u8 d = b[i];
+                if (d < 48 || d > 57) {
+                    return None;
+                }
+                expDigits = true;
+                exp = exp * 10 + ((d - 48) as i64);
+                i = i + 1;
+            }
+            if (!expDigits) {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    if (i != b.len() as i64) {
+        return None;
+    }
+    f64 result = intPart + fraction;
+    i64 k = 0;
+    if (expNeg) {
+        while (k < exp) {
+            result = result / 10.0;
+            k = k + 1;
+        }
+    } else {
+        while (k < exp) {
+            result = result * 10.0;
+            k = k + 1;
+        }
+    }
+    if (neg) {
+        result = 0.0 - result;
+    }
+    return Some(result);
+}
+
+fn split_whitespace(string value) -> Vec<string> {
+    Vec<string> out = new Vec<string>();
+    u8[] b = Str::Bytes(value);
+    i64 i = 0;
+    while (i < b.len() as i64) {
+        while (i < b.len() as i64) {
+            u8 c = b[i];
+            if (!(c == 32 || c == 9 || c == 10 || c == 13 || c == 11 || c == 12)) {
+                break;
+            }
+            i = i + 1;
+        }
+        i64 start = i;
+        while (i < b.len() as i64) {
+            u8 c = b[i];
+            if (c == 32 || c == 9 || c == 10 || c == 13 || c == 11 || c == 12) {
+                break;
+            }
+            i = i + 1;
+        }
+        if (i > start) {
+            out.push(Str::Substring(value, start as u64, (i - start) as u64));
+        }
+    }
+    return out;
+}
+
+pub class Text {
+    pub static fn Split(string value, string sep) -> Vec<string> { return split(value, sep); }
+    pub static fn Join(Vec<string> parts, string sep) -> string { return join(parts, sep); }
+    pub static fn Lines(string value) -> Vec<string> { return lines(value); }
+    pub static fn ParseBool(string value) -> Option<bool> { return parse_bool(value); }
+    pub static fn ParseI32(string value) -> Option<i32> { return parse_i32(value); }
+    pub static fn ParseI64(string value) -> Option<i64> { return parse_i64(value); }
+    pub static fn ParseU64(string value) -> Option<u64> { return parse_u64(value); }
+    pub static fn ParseF64(string value) -> Option<f64> { return parse_f64(value); }
+    pub static fn SplitWhitespace(string value) -> Vec<string> { return split_whitespace(value); }
+
+    pub static fn Concat(string left, string right) -> string { return Str::Concat(left, right); }
+    pub static fn Equals(string left, string right) -> bool { return Str::Equals(left, right); }
+    pub static fn Compare(string left, string right) -> i32 { return Str::Compare(left, right); }
+    pub static fn Len(string value) -> u64 { return Str::Len(value); }
+    pub static fn ByteLen(string value) -> u64 { return Str::ByteLen(value); }
+    pub static fn IsEmpty(string value) -> bool { return Str::IsEmpty(value); }
+    pub static fn StartsWith(string value, string prefix) -> bool { return Str::StartsWith(value, prefix); }
+    pub static fn EndsWith(string value, string suffix) -> bool { return Str::EndsWith(value, suffix); }
+    pub static fn Contains(string value, string needle) -> bool { return Str::Contains(value, needle); }
+    pub static fn IndexOf(string value, string needle) -> i64 { return Str::IndexOf(value, needle); }
+    pub static fn Trim(string value) -> string { return Str::Trim(value); }
+    pub static fn Substring(string value, u64 start, u64 length) -> string { return Str::Substring(value, start, length); }
+    pub static fn CharAt(string value, u64 index) -> string { return Str::CharAt(value, index); }
+    pub static fn CharCodeAt(string value, u64 index) -> u32 { return Str::CharCodeAt(value, index); }
+    pub static fn Repeat(string value, u64 count) -> string { return Str::Repeat(value, count); }
+    pub static fn Replace(string value, string from, string to) -> string { return Str::Replace(value, from, to); }
+    pub static fn Bytes(string value) -> u8[] { return Str::Bytes(value); }
+    pub static fn FromBytes(u8[] data) -> string { return Str::FromBytes(data); }
+}

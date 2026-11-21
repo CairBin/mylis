@@ -1,0 +1,13 @@
+pub class Widget {
+    pub i32 v = 1;
+
+    @export("widget_v")
+    pub fn get() -> i32 {
+        return this.v;
+    }
+}
+
+fn main() -> i32 {
+    Widget w = new Widget();
+    return w.get();
+}

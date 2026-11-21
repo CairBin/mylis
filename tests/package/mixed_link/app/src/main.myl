@@ -1,0 +1,9 @@
+import "native_lib";
+import "mir_lib";
+import { println_i32 } from "Io.myl";
+
+fn main() -> i32 {
+    println_i32(native_lib::answer());
+    println_i32(mir_lib::seven());
+    return 0;
+}

@@ -1,0 +1,18 @@
+// std EventLoop 事件后端绑定（Linux epoll，其他 POSIX poll 后备）。
+@header("mylis_event.h")
+pub unsafe fn mylis_event_new() -> i64;
+
+@header("mylis_event.h")
+pub unsafe fn mylis_event_add(i64 handle, i32 fd) -> i64;
+
+@header("mylis_event.h")
+pub unsafe fn mylis_event_modify(i64 handle, i32 fd, i32 write_enabled) -> i64;
+
+@header("mylis_event.h")
+pub unsafe fn mylis_event_remove(i64 handle, i32 fd) -> i64;
+
+@header("mylis_event.h")
+pub unsafe fn mylis_event_wait(i64 handle, i32 timeout_ms, i32[] fds, i32[] revents, i32 max) -> i32;
+
+@header("mylis_event.h")
+pub unsafe fn mylis_event_close(i64 handle) -> i64;

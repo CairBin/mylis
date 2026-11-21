@@ -1,0 +1,7 @@
+[package]
+name = "std"
+version = "0.1.0"
+[lib]
+entry = "src/lib.myl"
+[dependencies]
+core = { path = "../core" }

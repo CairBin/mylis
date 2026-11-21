@@ -1,0 +1,21 @@
+// core 包入口：语言运行时 + 纯计算基础设施。
+// 类 API 与自由函数都从这里统一导出。
+pub import { Fmt, fmt_i8, fmt_i16, fmt_i32, fmt_i64, fmt_u8, fmt_u16, fmt_u32, fmt_u64, fmt_f32, fmt_f64, fmt_f64_prec, fmt_f32_prec, fmt_f64_width, fmt_f64_width_left, fmt_f64_width_zero, fmt_f64_width_plus, fmt_bool, format_i64_spec, format_u64_spec, format_f64_spec, format_bool_spec, format_str_spec, pad_string } from "Fmt.myl";
+pub import { FmtSpec } from "FmtSpec.myl";
+pub import { FmtArg } from "FmtArg.myl";
+pub import { Ordering } from "Ordering.myl";
+pub import { Str, concat, equals, compare, compare_ordering, len, is_empty, starts_with, ends_with, contains, index_of, trim, substring, char_at, char_code_at, repeat, replace, byte_len, bytes, from_bytes } from "Str.myl";
+pub import { I8 } from "I8.myl";
+pub import { I16 } from "I16.myl";
+pub import { I32 } from "I32.myl";
+pub import { I64 } from "I64.myl";
+pub import { U8 } from "U8.myl";
+pub import { U16 } from "U16.myl";
+pub import { U32 } from "U32.myl";
+pub import { U64 } from "U64.myl";
+pub import { ToString } from "ToString.myl";
+pub import { panic, assert } from "Panic.myl";
+pub import { Eq } from "Eq.myl";
+pub import { Ord } from "Ord.myl";
+pub import { Hash } from "Hash.myl";
+pub import { min, max } from "Compare.myl";

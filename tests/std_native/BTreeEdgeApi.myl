@@ -1,0 +1,56 @@
+import { BTreeMap } from "BTreeMap.myl";
+import { BTreeSet } from "BTreeSet.myl";
+import { Vec } from "Vec.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    BTreeMap<string, i64> map = new BTreeMap<string, i64>();
+    println_i64(map.len());
+    Option<string> emptyFirst = map.firstKey();
+    match (emptyFirst) {
+        Some(v1) => { println(v1); }
+        None => { println("none"); }
+    }
+    Option<i64> missing = map.remove("missing");
+    bool removedMissing = false;
+    match (missing) {
+        Some(v0) => { removedMissing = false; }
+        None => { removedMissing = true; }
+    }
+    println_bool(removedMissing);
+    println_bool(map.insert("a", 1));
+    println_bool(map.insert("b", 2));
+    println_bool(map.insert("c", 3));
+    println_bool(map.insert("b", 20));
+    println_i64(map.getOr("b", -1));
+    map.set("d", 4);
+    println_i64(map.len());
+    Option<string> first = map.firstKey();
+    match (first) { Some(v2) => { println(v2); } None => { println("none"); } }
+    Option<string> last = map.lastKey();
+    match (last) { Some(v3) => { println(v3); } None => { println("none"); } }
+    Vec<string> keys = map.keys();
+    i64 i = 0;
+    while (i < keys.len()) { println(keys.get(i)); i = i + 1; }
+    map.clear();
+    println_i64(map.len());
+    println_bool(map.isEmpty());
+
+    BTreeSet<i64> set = new BTreeSet<i64>();
+    println_i64(set.len());
+    println_bool(set.add(7));
+    println_bool(set.add(7));
+    println_bool(set.add(3));
+    println_bool(set.add(9));
+    println_i64(set.len());
+    println_bool(set.contains(7));
+    println_bool(set.remove(7));
+    println_bool(set.remove(7));
+    Option<i64> setFirst = set.first();
+    match (setFirst) { Some(v4) => { println_i64(v4); } None => { println("none"); } }
+    Option<i64> setLast = set.last();
+    match (setLast) { Some(v5) => { println_i64(v5); } None => { println("none"); } }
+    set.clear();
+    println_i64(set.len());
+    return 0;
+}

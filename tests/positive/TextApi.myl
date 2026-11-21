@@ -1,0 +1,65 @@
+import { Vec } from "Vec.myl";
+import { Text } from "Text.myl";
+import { println, println_i64, println_u64, println_bool } from "Io.myl";
+
+fn showI64(Option<i64> value) -> void {
+    match value {
+        Some(v) => { println_i64(v); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn showBool(Option<bool> value) -> void {
+    match value {
+        Some(v) => { println_bool(v); }
+        None => { println("none"); }
+    }
+}
+
+fn showU64(Option<u64> value) -> void {
+    match value {
+        Some(v) => { println_u64(v); }
+        None => { println_u64(0); }
+    }
+}
+
+fn main() -> i32 {
+    Vec<string> parts = Text::Split("a,b,,c", ",");
+    println_i64(parts.len());
+    println(parts.get(0));
+    println(parts.get(1));
+    println(parts.get(2));
+    println(parts.get(3));
+
+    Vec<string> sep = Text::Split("a::b::c", "::");
+    println_i64(sep.len());
+    println(sep.get(0));
+    println(sep.get(1));
+    println(sep.get(2));
+
+    println(Text::Join(parts, "|"));
+
+    Vec<string> lines = Text::Lines("a\r\nb\nc\n");
+    println_i64(lines.len());
+    println(lines.get(0));
+    println(lines.get(1));
+    println(lines.get(2));
+
+    showI64(Text::ParseI64(" -42 "));
+    showI64(Text::ParseI64("+7"));
+    showI64(Text::ParseI64("12x"));
+    showI64(Text::ParseI64("9223372036854775808"));
+    showI64(Text::ParseI64("-9223372036854775808"));
+
+    showU64(Text::ParseU64("42"));
+    showU64(Text::ParseU64("-1"));
+    showU64(Text::ParseU64("4x"));
+    showU64(Text::ParseU64("18446744073709551615"));
+    showU64(Text::ParseU64("18446744073709551616"));
+
+    showBool(Text::ParseBool(" true "));
+    showBool(Text::ParseBool("false"));
+    showBool(Text::ParseBool("yes"));
+    showBool(Text::ParseBool(""));
+    return 0;
+}

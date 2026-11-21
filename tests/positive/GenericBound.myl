@@ -1,0 +1,17 @@
+import { println } from "Io.myl";
+
+interface Show {
+    fn show() -> string;
+}
+
+class Good {
+    pub fn show() -> string { return "good"; }
+}
+
+fn pick<T: Show>(T x) -> T { return x; }
+
+fn main() -> i32 {
+    Good g = new Good();
+    println(pick<Good>(g).show());
+    return 0;
+}

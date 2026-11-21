@@ -1,0 +1,9 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { Math } from "Math.myl";
+
+fn main() -> i32 {
+    println(Fmt::F64(Math::PI));
+    println(Fmt::F64(Math::E));
+    return 0;
+}

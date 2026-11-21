@@ -1,0 +1,24 @@
+// libm 绑定
+@header("math.h")
+pub unsafe fn sqrt(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn pow(f64 base, f64 exponent) -> f64;
+
+@header("math.h")
+pub unsafe fn fabs(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn floor(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn ceil(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn round(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn trunc(f64 value) -> f64;
+
+@header("math.h")
+pub unsafe fn fmod(f64 left, f64 right) -> f64;

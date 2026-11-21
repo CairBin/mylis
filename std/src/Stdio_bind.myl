@@ -1,0 +1,26 @@
+@header("mylis_io.h")
+pub unsafe fn mylis_io_read_line() -> i8*;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_read_all() -> i8*;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_free_string(i8* text) -> void;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_last_status() -> i64;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_arg_count() -> i64;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_arg(i64 index) -> i8*;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_env_exists(i8* key) -> i64;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_env_get(i8* key) -> i8*;
+
+@header("mylis_io.h")
+pub unsafe fn mylis_io_exit(i32 code) -> void;

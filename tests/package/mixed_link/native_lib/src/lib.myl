@@ -1,0 +1,2 @@
+@export("answer")
+pub fn answer() -> i32 { return 0; }

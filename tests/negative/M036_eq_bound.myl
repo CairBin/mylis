@@ -1,0 +1,13 @@
+import { Vec } from "Vec.myl";
+import { contains } from "Algorithms.myl";
+
+class Bad {
+    pub fn other() -> string { return "bad"; }
+}
+
+fn main() -> i32 {
+    Vec<Bad> xs = new Vec<Bad>();
+    xs.push(new Bad());
+    contains<Bad>(xs, new Bad());
+    return 0;
+}

@@ -1,0 +1,22 @@
+import { println, print } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { Str } from "Str.myl";
+
+fn main() -> i32 {
+    println(Fmt::U64(Str::Len("你好")));
+    println(Fmt::U64(Str::ByteLen("你好")));
+    println(Fmt::I64(Str::IndexOf("你好世界", "世界")));
+    println(Str::Substring("你好世界", 1, 2));
+    println(Str::Substring("你好", 1, 9));
+
+    u8[] b = Str::Bytes("你好");
+    println(Fmt::U64(b.len() as u64));
+    print("[");
+    for (i32 i = 0; i < b.len(); i = i + 1) {
+        if (i > 0) { print(","); }
+        print(Fmt::U8(b[i]));
+    }
+    println("]");
+    println(Str::FromBytes(b));
+    return 0;
+}

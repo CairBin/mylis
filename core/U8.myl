@@ -1,0 +1,52 @@
+// core 层：u8 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class U8 {
+    pub static fn CheckedAdd(u8 a, u8 b) -> Option<u8> {
+        if (a > 255 - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(u8 a, u8 b) -> Option<u8> {
+        if (a < b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(u8 a, u8 b) -> Option<u8> {
+        if (b != 0 && a > 255 / b) { return None; }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(u8 a, u8 b) -> Option<u8> {
+        if (b == 0) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(u8 a, u8 b) -> u8 {
+        return a + b;
+    }
+
+    pub static fn WrappingSub(u8 a, u8 b) -> u8 {
+        return a - b;
+    }
+
+    pub static fn WrappingMul(u8 a, u8 b) -> u8 {
+        return a * b;
+    }
+
+    pub static fn SaturatingAdd(u8 a, u8 b) -> u8 {
+        if (a > 255 - b) { return 255; }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(u8 a, u8 b) -> u8 {
+        if (a < b) { return 0; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(u8 a, u8 b) -> u8 {
+        Option<u8> r = U8::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        return 255;
+    }
+}

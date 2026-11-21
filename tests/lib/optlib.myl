@@ -1,0 +1,17 @@
+@export("maybe")
+pub fn maybe(i32 x) -> Option<i32> {
+    if (x < 0) { return None; }
+    return Some(x);
+}
+
+@export("named")
+pub fn named(i32 x) -> Option<string> {
+    if (x < 0) { return None; }
+    return Some("ok");
+}
+
+@export("res")
+pub fn res(i32 x) -> Result<i32, string> {
+    if (x < 0) { return Err("bad"); }
+    return Ok(x);
+}

@@ -1,0 +1,70 @@
+import { Map } from "Map.myl";
+import { Vec } from "Vec.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn showI(Option<i64> value) -> void {
+    match value {
+        Some(x) => { println_i64(x); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn showS(Option<string> value) -> void {
+    match value {
+        Some(x) => { println(x); }
+        None => { println("<none>"); }
+    }
+}
+
+fn main() -> i32 {
+    Map<string, i64> ages = new Map<string, i64>();
+    println_i64(ages.len());
+    println_bool(ages.isEmpty());
+    showI(ages.get("a"));
+
+    ages.set("a", 1);
+    ages.set("b", 2);
+    ages.set("a", 3);
+    println_i64(ages.len());
+    showI(ages.get("a"));
+    showI(ages.get("b"));
+    println_bool(ages.containsKey("a"));
+    println_bool(ages.containsKey("z"));
+
+    println_bool(ages.insert("c", 4));
+    println_bool(ages.insert("a", 9));
+    println_i64(ages.len());
+    showI(ages.get("a"));
+
+    showI(ages.remove("b"));
+    showI(ages.remove("b"));
+    println_i64(ages.len());
+    println_bool(ages.containsKey("b"));
+
+    Map<i64, string> names = new Map<i64, string>();
+    names.set(2, "two");
+    names.set(1, "one");
+    names.set(2, "TWO");
+    showS(names.get(1));
+    showS(names.get(2));
+    showS(names.get(3));
+
+    Map<i64, i64> big = new Map<i64, i64>();
+    i64 i = 0;
+    while (i < 20) {
+        big.set(i, i * 10);
+        i = i + 1;
+    }
+    println_i64(big.len());
+    showI(big.get(7));
+
+    Vec<string> keys = ages.keys();
+    Vec<i64> vals = ages.values();
+    println_i64(keys.len());
+    println(keys.get(0));
+    println(keys.get(1));
+    println_i64(vals.len());
+    println_i64(vals.get(0));
+    println_i64(vals.get(1));
+    return 0;
+}

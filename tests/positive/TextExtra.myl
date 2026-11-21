@@ -1,0 +1,25 @@
+import { Text } from "Text.myl";
+import { println, println_i32, println_i64, println_u32, println_u64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    println(Text::Concat("ab", "cd"));
+    println_bool(Text::Equals("x", "x"));
+    println_i32(Text::Compare("a", "b"));
+    println_u64(Text::Len("你好"));
+    println_u64(Text::ByteLen("你好"));
+    println_bool(Text::IsEmpty(""));
+    println_bool(Text::StartsWith("hello", "he"));
+    println_bool(Text::EndsWith("hello", "lo"));
+    println_bool(Text::Contains("hello", "ell"));
+    println_i64(Text::IndexOf("hello", "ll"));
+    println(Text::Trim("  x \n"));
+    println(Text::Substring("你好世界", 1, 2));
+    println(Text::CharAt("你好", 0));
+    println_u32(Text::CharCodeAt("你好", 0));
+    println(Text::Repeat("ab", 3));
+    println(Text::Replace("a-b-a", "a", "x"));
+    u8[] bytes = Text::Bytes("你");
+    println_i64(bytes.len() as i64);
+    println(Text::FromBytes(bytes));
+    return 0;
+}

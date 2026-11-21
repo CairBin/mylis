@@ -1,0 +1,30 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+class Point {
+    const i32 id;
+    const i32 scale = 2;
+
+    pub fn init(i32 id) {
+        this.id = id;
+    }
+
+    pub fn dump() {
+        println_i32(this.id);
+        println_i32(this.scale);
+    }
+}
+
+fn boost(const i32 v, i32 bonus) -> i32 {
+    // v 只读：写 v 会报 MYL015
+    return v * 10 + bonus;
+}
+
+pub fn main() -> i32 {
+    const i32 base = 7;
+    println_i32(base);
+    println_i32(boost(base, 3));
+
+    Point p = new Point(42);
+    p.dump();
+    return 0;
+}

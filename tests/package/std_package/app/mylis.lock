@@ -1,0 +1,14 @@
+# 由 mylc 生成；路径、Git 与 .mylib 依赖的锁定结果。
+version = 1
+
+[[package]]
+name = "core"
+version = "0.1.0"
+source = "path+../core"
+checksum = "sha256-ec55a8f3bca67c8b3ee06798b29c4129fdbc0b35a4976848aa8f667bb51e4f61"
+
+[[package]]
+name = "std"
+version = "0.1.0"
+source = "path+../../../../std"
+checksum = "sha256-4240fc411f9c377eb7561bd94d3754f2428c172c6c997bb8a2be70dd8e9f4335"

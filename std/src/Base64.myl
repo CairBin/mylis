@@ -1,0 +1,164 @@
+// Base64：RFC 4648 标准字母表，编码固定补 `=`，解码接受标准字母表与 ASCII 空白。
+// Decode/Encode 面向 UTF-8 文本；DecodeBytes/EncodeBytes 面向任意二进制字节。
+// 解码严格检查长度、非法字符、填充位置、填充数量和未使用的尾部位。
+import { Str } from "core/Str";
+import { Vec } from "Vec.myl";
+import { StringBuilder } from "StringBuilder.myl";
+import { fmt_i64 } from "core/Fmt";
+
+pub class Base64 {
+    pub static fn Encode(string text) -> string {
+        return Base64::EncodeBytes(Str::Bytes(text));
+    }
+
+    pub static fn EncodeBytes(u8[] b) -> string {
+        i64 n = b.len() as i64;
+        StringBuilder out = new StringBuilder();
+        i64 i = 0;
+        while (i + 2 < n) {
+            u8 x = b[i];
+            u8 y = b[i + 1];
+            u8 z = b[i + 2];
+            out.append(base64_char(((x >> 2) & 63) as i64));
+            out.append(base64_char((((x & 3) << 4) | (y >> 4)) as i64));
+            out.append(base64_char((((y & 15) << 2) | (z >> 6)) as i64));
+            out.append(base64_char((z & 63) as i64));
+            i = i + 3;
+        }
+        i64 rest = n - i;
+        if (rest == 1) {
+            u8 x = b[i];
+            out.append(base64_char(((x >> 2) & 63) as i64));
+            out.append(base64_char(((x & 3) << 4) as i64));
+            out.append("=");
+            out.append("=");
+        } else if (rest == 2) {
+            u8 x = b[i];
+            u8 y = b[i + 1];
+            out.append(base64_char(((x >> 2) & 63) as i64));
+            out.append(base64_char((((x & 3) << 4) | (y >> 4)) as i64));
+            out.append(base64_char(((y & 15) << 2) as i64));
+            out.append("=");
+        }
+        return out.toString();
+    }
+
+    pub static fn Decode(string text) -> Result<string, string> {
+        Result<u8[], string> bytes = Base64::DecodeBytes(text);
+        match (bytes) {
+            Ok(data) => { return Ok(Str::FromBytes(data)); }
+            Err(message) => { return Err(message); }
+        }
+    }
+
+    pub static fn DecodeBytes(string text) -> Result<u8[], string> {
+        Vec<u8> chars = new Vec<u8>();
+        u8[] input = Str::Bytes(text);
+        i64 i = 0;
+        while (i < input.len() as i64) {
+            u8 c = input[i];
+            if (c != 32 && c != 9 && c != 10 && c != 13) {
+                chars.push(c);
+            }
+            i = i + 1;
+        }
+        i64 m = chars.len();
+        if (m == 0) {
+            return Ok(new u8[0]);
+        }
+        if (m % 4 != 0) {
+            return Err("Base64 长度必须是 4 的倍数（实际 " + fmt_i64(m) + " 字节）");
+        }
+
+        i64 pad = 0;
+        if (chars.get(m - 1) == 61) {
+            pad = 1;
+            if (chars.get(m - 2) == 61) {
+                pad = 2;
+            }
+        }
+        if (pad > 0 && m >= 3 && chars.get(m - 3) == 61) {
+            return Err("Base64 填充超过两个字符");
+        }
+        i64 outLen = (m / 4) * 3 - pad;
+        u8[] out = new u8[outLen];
+        i64 q = 0;
+        i64 o = 0;
+        while (q < m) {
+            i64 v0 = base64_value(chars.get(q));
+            i64 v1 = base64_value(chars.get(q + 1));
+            i64 v2 = base64_value(chars.get(q + 2));
+            i64 v3 = base64_value(chars.get(q + 3));
+            if (v0 < 0 || v1 < 0 || v2 < -1 || v3 < -1) {
+                return Err("Base64 非法字符（四元组 " + fmt_i64(q / 4) + "）");
+            }
+            bool last = q + 4 == m;
+            if (!last && (v2 < 0 || v3 < 0)) {
+                return Err("Base64 填充只允许出现在最后一组（四元组 " + fmt_i64(q / 4) + "）");
+            }
+            if (last) {
+                if (pad == 2) {
+                    if (v2 >= 0 || v3 >= 0 || (v1 & 15) != 0) {
+                        return Err("Base64 填充或尾部位非法");
+                    }
+                } else if (pad == 1) {
+                    if (v3 >= 0 || (v2 & 3) != 0) {
+                        return Err("Base64 填充或尾部位非法");
+                    }
+                } else {
+                    if (v2 < 0 || v3 < 0) {
+                        return Err("Base64 最后一组缺少数据");
+                    }
+                }
+            }
+            u8 byte0 = (((v0 << 2) | (v1 >> 4)) & 255) as u8;
+            out[o] = byte0;
+            o = o + 1;
+            if (v2 >= 0 && o < outLen) {
+                u8 byte1 = (((v1 << 4) | (v2 >> 2)) & 255) as u8;
+                out[o] = byte1;
+                o = o + 1;
+            }
+            if (v3 >= 0 && o < outLen) {
+                u8 byte2 = (((v2 << 6) | v3) & 255) as u8;
+                out[o] = byte2;
+                o = o + 1;
+            }
+            q = q + 4;
+        }
+        if (o != outLen) {
+            return Err("Base64 解码长度不一致");
+        }
+        return Ok(out);
+    }
+}
+
+fn base64_value(u8 c) -> i64 {
+    if (c >= 65 && c <= 90) {
+        return (c - 65) as i64;
+    }
+    if (c >= 97 && c <= 122) {
+        return (c - 97 + 26) as i64;
+    }
+    if (c >= 48 && c <= 57) {
+        return (c - 48 + 52) as i64;
+    }
+    if (c == 43) {
+        return 62;
+    }
+    if (c == 47) {
+        return 63;
+    }
+    if (c == 61) {
+        return -1;
+    }
+    return -2;
+}
+
+fn base64_alphabet() -> string {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+}
+
+fn base64_char(i64 value) -> string {
+    return Str::Substring(base64_alphabet(), value as u64, 1);
+}

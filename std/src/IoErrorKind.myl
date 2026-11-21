@@ -1,0 +1,22 @@
+// std 层统一 I/O 错误类别。
+pub enum IoErrorKind {
+    NotFound,
+    PermissionDenied,
+    AlreadyExists,
+    InvalidInput,
+    WouldBlock,
+    TimedOut,
+    Closed,
+    Other,
+}
+
+pub fn error_kind(i32 code) -> IoErrorKind {
+    if (code == 2) { return IoErrorKind::NotFound; }
+    if (code == 13) { return IoErrorKind::PermissionDenied; }
+    if (code == 17) { return IoErrorKind::AlreadyExists; }
+    if (code == 22) { return IoErrorKind::InvalidInput; }
+    if (code == 11) { return IoErrorKind::WouldBlock; }
+    if (code == 110) { return IoErrorKind::TimedOut; }
+    if (code == 9) { return IoErrorKind::Closed; }
+    return IoErrorKind::Other;
+}

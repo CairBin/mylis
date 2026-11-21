@@ -1,0 +1,14 @@
+// EventLoop 回调接口：所有回调都在 Mylis 主线程执行，不在 Rust 后端线程执行。
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { IoError } from "IoError.myl";
+import { UdpSocket } from "UdpSocket.myl";
+
+pub interface IoHandler {
+    fn onAccept(TcpListener listener) -> void;
+    fn onReadable(TcpStream stream) -> void;
+    fn onWritable(TcpStream stream) -> void;
+    fn onError(TcpStream stream, IoError error) -> void;
+    fn onListenerError(TcpListener listener, IoError error) -> void;
+    fn onUdpReadable(UdpSocket socket) -> void;
+}

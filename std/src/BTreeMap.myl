@@ -1,0 +1,485 @@
+// BTreeMap<K, V>：有序 B 树映射（最小度数 2，单节点 1..3 个 key）。
+// 节点存放在扁平数组中，children 只存节点下标，不生成递归 GC 对象。
+// 查找/插入/删除 O(log n)，采用标准 B 树借位与合并。
+// 键必须满足 Ord；keys()/values() 按 key 升序返回。容器本身不保证并发安全。
+import { Ord } from "core/Ord";
+import { Vec } from "Vec.myl";
+
+pub class BTreeMap<K: Ord, V> {
+    K[] keys;
+    V[] values;
+    i64[] children;
+    bool[] leaf;
+    i64[] nodeCount;
+    i64 nodeCap;
+    i64 nodeTotal;
+    i64 freeHead;
+    i64 root;
+    i64 count;
+
+    pub fn init() -> void {
+        this.keys = new K[0];
+        this.values = new V[0];
+        this.children = new i64[0];
+        this.leaf = new bool[0];
+        this.nodeCount = new i64[0];
+        this.nodeCap = 0;
+        this.nodeTotal = 0;
+        this.freeHead = -1;
+        this.count = 0;
+        this.root = this.newNode(true);
+    }
+
+    fn ensureNodes(i64 need) -> void {
+        if (need <= this.nodeCap) {
+            return;
+        }
+        i64 ncap = this.nodeCap;
+        if (ncap < 4) {
+            ncap = 4;
+        }
+        while (ncap < need) {
+            ncap = ncap * 2;
+        }
+        i64 slots = ncap * 4;
+        K[] nk = new K[slots];
+        V[] nv = new V[slots];
+        i64[] nc = new i64[slots];
+        bool[] nl = new bool[ncap];
+        i64[] nn = new i64[ncap];
+        i64 oldSlots = this.nodeCap * 4;
+        i64 i = 0;
+        while (i < oldSlots) {
+            nk[i] = this.keys[i];
+            nv[i] = this.values[i];
+            nc[i] = this.children[i];
+            i = i + 1;
+        }
+        i = 0;
+        while (i < this.nodeCap) {
+            nl[i] = this.leaf[i];
+            nn[i] = this.nodeCount[i];
+            i = i + 1;
+        }
+        this.keys = nk;
+        this.values = nv;
+        this.children = nc;
+        this.leaf = nl;
+        this.nodeCount = nn;
+        this.nodeCap = ncap;
+    }
+
+    fn newNode(bool isLeaf) -> i64 {
+        i64 id = -1;
+        if (this.freeHead >= 0) {
+            id = this.freeHead;
+            this.freeHead = this.children[id * 4];
+        } else {
+            this.ensureNodes(this.nodeTotal + 1);
+            id = this.nodeTotal;
+            this.nodeTotal = id + 1;
+        }
+        this.leaf[id] = isLeaf;
+        this.nodeCount[id] = 0;
+        i64 i = 0;
+        while (i < 4) {
+            this.children[id * 4 + i] = 0;
+            i = i + 1;
+        }
+        return id;
+    }
+
+    fn lowerBound(i64 node, K key) -> i64 {
+        i64 lo = 0;
+        i64 hi = this.nodeCount[node];
+        while (lo < hi) {
+            i64 mid = lo + (hi - lo) / 2;
+            if (this.keys[node * 4 + mid].compare(key) < 0) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
+    fn findNode(K key) -> i64 {
+        i64 node = this.root;
+        while (true) {
+            i64 at = this.lowerBound(node, key);
+            if (at < this.nodeCount[node] && this.keys[node * 4 + at].compare(key) == 0) {
+                return node;
+            }
+            if (this.leaf[node]) {
+                return -1;
+            }
+            node = this.children[node * 4 + at];
+        }
+        return -1;
+    }
+
+    fn splitChild(i64 parent, i64 index) -> void {
+        i64 child = this.children[parent * 4 + index];
+        i64 right = this.newNode(this.leaf[child]);
+        K medianKey = this.keys[child * 4 + 1];
+        V medianValue = this.values[child * 4 + 1];
+        this.keys[right * 4] = this.keys[child * 4 + 2];
+        this.values[right * 4] = this.values[child * 4 + 2];
+        this.nodeCount[right] = 1;
+        if (!this.leaf[child]) {
+            this.children[right * 4] = this.children[child * 4 + 2];
+            this.children[right * 4 + 1] = this.children[child * 4 + 3];
+        }
+        this.nodeCount[child] = 1;
+
+        i64 i = this.nodeCount[parent];
+        while (i > index) {
+            this.keys[parent * 4 + i] = this.keys[parent * 4 + i - 1];
+            this.values[parent * 4 + i] = this.values[parent * 4 + i - 1];
+            i = i - 1;
+        }
+        this.keys[parent * 4 + index] = medianKey;
+        this.values[parent * 4 + index] = medianValue;
+        i = this.nodeCount[parent] + 1;
+        while (i > index + 1) {
+            this.children[parent * 4 + i] = this.children[parent * 4 + i - 1];
+            i = i - 1;
+        }
+        this.children[parent * 4 + index + 1] = right;
+        this.nodeCount[parent] = this.nodeCount[parent] + 1;
+    }
+
+    fn insertNonFull(i64 node, K key, V value) -> void {
+        i64 at = this.lowerBound(node, key);
+        if (at < this.nodeCount[node] && this.keys[node * 4 + at].compare(key) == 0) {
+            this.values[node * 4 + at] = value;
+            return;
+        }
+        if (this.leaf[node]) {
+            i64 i = this.nodeCount[node];
+            while (i > at) {
+                this.keys[node * 4 + i] = this.keys[node * 4 + i - 1];
+                this.values[node * 4 + i] = this.values[node * 4 + i - 1];
+                i = i - 1;
+            }
+            this.keys[node * 4 + at] = key;
+            this.values[node * 4 + at] = value;
+            this.nodeCount[node] = this.nodeCount[node] + 1;
+            return;
+        }
+        i64 child = this.children[node * 4 + at];
+        if (this.nodeCount[child] == 3) {
+            this.splitChild(node, at);
+            if (this.keys[node * 4 + at].compare(key) < 0) {
+                at = at + 1;
+            }
+        }
+        this.insertNonFull(this.children[node * 4 + at], key, value);
+    }
+
+    fn insertNew(K key, V value) -> void {
+        if (this.nodeCount[this.root] == 3) {
+            i64 oldRoot = this.root;
+            i64 newRoot = this.newNode(false);
+            this.children[newRoot * 4] = oldRoot;
+            this.root = newRoot;
+            this.splitChild(newRoot, 0);
+        }
+        this.insertNonFull(this.root, key, value);
+        this.count = this.count + 1;
+    }
+
+    pub fn set(K key, V value) -> void {
+        i64 node = this.findNode(key);
+        if (node >= 0) {
+            i64 at = this.lowerBound(node, key);
+            this.values[node * 4 + at] = value;
+            return;
+        }
+        this.insertNew(key, value);
+    }
+
+    pub fn insert(K key, V value) -> bool {
+        i64 node = this.findNode(key);
+        if (node >= 0) {
+            i64 at = this.lowerBound(node, key);
+            this.values[node * 4 + at] = value;
+            return false;
+        }
+        this.insertNew(key, value);
+        return true;
+    }
+
+    pub fn get(K key) -> Option<V> {
+        i64 node = this.findNode(key);
+        if (node < 0) {
+            return None;
+        }
+        i64 at = this.lowerBound(node, key);
+        return Some(this.values[node * 4 + at]);
+    }
+
+    pub fn containsKey(K key) -> bool {
+        return this.findNode(key) >= 0;
+    }
+
+    pub fn getOr(K key, V fallback) -> V {
+        Option<V> value = this.get(key);
+        match (value) {
+            Some(found) => { return found; }
+            None => { return fallback; }
+        }
+    }
+
+    fn borrowFromPrev(i64 parent, i64 index) -> void {
+        i64 child = this.children[parent * 4 + index];
+        i64 sibling = this.children[parent * 4 + index - 1];
+        i64 i = this.nodeCount[child];
+        while (i > 0) {
+            this.keys[child * 4 + i] = this.keys[child * 4 + i - 1];
+            this.values[child * 4 + i] = this.values[child * 4 + i - 1];
+            i = i - 1;
+        }
+        if (!this.leaf[child]) {
+            i = this.nodeCount[child] + 1;
+            while (i > 0) {
+                this.children[child * 4 + i] = this.children[child * 4 + i - 1];
+                i = i - 1;
+            }
+        }
+        this.keys[child * 4] = this.keys[parent * 4 + index - 1];
+        this.values[child * 4] = this.values[parent * 4 + index - 1];
+        if (!this.leaf[child]) {
+            this.children[child * 4] = this.children[sibling * 4 + this.nodeCount[sibling]];
+        }
+        this.keys[parent * 4 + index - 1] = this.keys[sibling * 4 + this.nodeCount[sibling] - 1];
+        this.values[parent * 4 + index - 1] = this.values[sibling * 4 + this.nodeCount[sibling] - 1];
+        this.nodeCount[child] = this.nodeCount[child] + 1;
+        this.nodeCount[sibling] = this.nodeCount[sibling] - 1;
+    }
+
+    fn borrowFromNext(i64 parent, i64 index) -> void {
+        i64 child = this.children[parent * 4 + index];
+        i64 sibling = this.children[parent * 4 + index + 1];
+        i64 at = this.nodeCount[child];
+        this.keys[child * 4 + at] = this.keys[parent * 4 + index];
+        this.values[child * 4 + at] = this.values[parent * 4 + index];
+        if (!this.leaf[child]) {
+            this.children[child * 4 + at + 1] = this.children[sibling * 4];
+        }
+        this.keys[parent * 4 + index] = this.keys[sibling * 4];
+        this.values[parent * 4 + index] = this.values[sibling * 4];
+        i64 i = 0;
+        while (i < this.nodeCount[sibling] - 1) {
+            this.keys[sibling * 4 + i] = this.keys[sibling * 4 + i + 1];
+            this.values[sibling * 4 + i] = this.values[sibling * 4 + i + 1];
+            i = i + 1;
+        }
+        if (!this.leaf[child]) {
+            i = 0;
+            while (i < this.nodeCount[sibling]) {
+                this.children[sibling * 4 + i] = this.children[sibling * 4 + i + 1];
+                i = i + 1;
+            }
+        }
+        this.nodeCount[child] = this.nodeCount[child] + 1;
+        this.nodeCount[sibling] = this.nodeCount[sibling] - 1;
+    }
+
+    fn mergeChildren(i64 parent, i64 index) -> void {
+        i64 child = this.children[parent * 4 + index];
+        i64 sibling = this.children[parent * 4 + index + 1];
+        i64 at = this.nodeCount[child];
+        this.keys[child * 4 + at] = this.keys[parent * 4 + index];
+        this.values[child * 4 + at] = this.values[parent * 4 + index];
+        i64 i = 0;
+        while (i < this.nodeCount[sibling]) {
+            this.keys[child * 4 + at + 1 + i] = this.keys[sibling * 4 + i];
+            this.values[child * 4 + at + 1 + i] = this.values[sibling * 4 + i];
+            i = i + 1;
+        }
+        if (!this.leaf[child]) {
+            i = 0;
+            while (i <= this.nodeCount[sibling]) {
+                this.children[child * 4 + at + 1 + i] = this.children[sibling * 4 + i];
+                i = i + 1;
+            }
+        }
+        this.nodeCount[child] = at + 1 + this.nodeCount[sibling];
+        i = index;
+        while (i < this.nodeCount[parent] - 1) {
+            this.keys[parent * 4 + i] = this.keys[parent * 4 + i + 1];
+            this.values[parent * 4 + i] = this.values[parent * 4 + i + 1];
+            i = i + 1;
+        }
+        i = index + 1;
+        while (i < this.nodeCount[parent]) {
+            this.children[parent * 4 + i] = this.children[parent * 4 + i + 1];
+            i = i + 1;
+        }
+        this.nodeCount[parent] = this.nodeCount[parent] - 1;
+        this.children[sibling * 4] = this.freeHead;
+        this.freeHead = sibling;
+    }
+
+    fn fillChild(i64 parent, i64 index) -> void {
+        if (index > 0 && this.nodeCount[this.children[parent * 4 + index - 1]] >= 2) {
+            this.borrowFromPrev(parent, index);
+        } else if (index < this.nodeCount[parent] && this.nodeCount[this.children[parent * 4 + index + 1]] >= 2) {
+            this.borrowFromNext(parent, index);
+        } else if (index < this.nodeCount[parent]) {
+            this.mergeChildren(parent, index);
+        } else {
+            this.mergeChildren(parent, index - 1);
+        }
+    }
+
+    fn predecessorKey(i64 node) -> K {
+        i64 current = node;
+        while (!this.leaf[current]) {
+            current = this.children[current * 4 + this.nodeCount[current]];
+        }
+        return this.keys[current * 4 + this.nodeCount[current] - 1];
+    }
+
+    fn successorKey(i64 node) -> K {
+        i64 current = node;
+        while (!this.leaf[current]) {
+            current = this.children[current * 4];
+        }
+        return this.keys[current * 4];
+    }
+
+    fn removeFromLeaf(i64 node, i64 index) -> void {
+        i64 i = index + 1;
+        while (i < this.nodeCount[node]) {
+            this.keys[node * 4 + i - 1] = this.keys[node * 4 + i];
+            this.values[node * 4 + i - 1] = this.values[node * 4 + i];
+            i = i + 1;
+        }
+        this.nodeCount[node] = this.nodeCount[node] - 1;
+    }
+
+    fn removeFromInternal(i64 node, i64 index) -> void {
+        K key = this.keys[node * 4 + index];
+        i64 left = this.children[node * 4 + index];
+        i64 right = this.children[node * 4 + index + 1];
+        if (this.nodeCount[left] >= 2) {
+            K pred = this.predecessorKey(left);
+            this.keys[node * 4 + index] = pred;
+            this.removeFrom(left, pred);
+        } else if (this.nodeCount[right] >= 2) {
+            K succ = this.successorKey(right);
+            this.keys[node * 4 + index] = succ;
+            this.removeFrom(right, succ);
+        } else {
+            this.mergeChildren(node, index);
+            this.removeFrom(left, key);
+        }
+    }
+
+    fn removeFrom(i64 node, K key) -> void {
+        i64 at = this.lowerBound(node, key);
+        if (at < this.nodeCount[node] && this.keys[node * 4 + at].compare(key) == 0) {
+            if (this.leaf[node]) {
+                this.removeFromLeaf(node, at);
+            } else {
+                this.removeFromInternal(node, at);
+            }
+            return;
+        }
+        if (this.leaf[node]) {
+            return;
+        }
+        bool last = at == this.nodeCount[node];
+        if (this.nodeCount[this.children[node * 4 + at]] < 2) {
+            this.fillChild(node, at);
+        }
+        if (last && at > this.nodeCount[node]) {
+            this.removeFrom(this.children[node * 4 + at - 1], key);
+        } else {
+            this.removeFrom(this.children[node * 4 + at], key);
+        }
+    }
+
+    pub fn remove(K key) -> Option<V> {
+        i64 node = this.findNode(key);
+        if (node < 0) {
+            return None;
+        }
+        i64 at = this.lowerBound(node, key);
+        V old = this.values[node * 4 + at];
+        this.removeFrom(this.root, key);
+        if (this.nodeCount[this.root] == 0 && !this.leaf[this.root]) {
+            this.root = this.children[this.root * 4];
+        }
+        this.count = this.count - 1;
+        return Some(old);
+    }
+
+    pub fn firstKey() -> Option<K> {
+        if (this.count == 0) {
+            return None;
+        }
+        i64 node = this.root;
+        while (!this.leaf[node]) {
+            node = this.children[node * 4];
+        }
+        return Some(this.keys[node * 4]);
+    }
+
+    pub fn lastKey() -> Option<K> {
+        if (this.count == 0) {
+            return None;
+        }
+        i64 node = this.root;
+        while (!this.leaf[node]) {
+            node = this.children[node * 4 + this.nodeCount[node]];
+        }
+        return Some(this.keys[node * 4 + this.nodeCount[node] - 1]);
+    }
+
+    fn collect(i64 node, Vec<K> outKeys, Vec<V> outValues) -> void {
+        i64 i = 0;
+        while (i < this.nodeCount[node]) {
+            if (!this.leaf[node]) {
+                this.collect(this.children[node * 4 + i], outKeys, outValues);
+            }
+            outKeys.push(this.keys[node * 4 + i]);
+            outValues.push(this.values[node * 4 + i]);
+            i = i + 1;
+        }
+        if (!this.leaf[node]) {
+            this.collect(this.children[node * 4 + this.nodeCount[node]], outKeys, outValues);
+        }
+    }
+
+    pub fn keys() -> Vec<K> {
+        Vec<K> outKeys = new Vec<K>();
+        Vec<V> outValues = new Vec<V>();
+        this.collect(this.root, outKeys, outValues);
+        return outKeys;
+    }
+
+    pub fn values() -> Vec<V> {
+        Vec<K> outKeys = new Vec<K>();
+        Vec<V> outValues = new Vec<V>();
+        this.collect(this.root, outKeys, outValues);
+        return outValues;
+    }
+
+    pub fn clear() -> void {
+        this.nodeTotal = 0;
+        this.freeHead = -1;
+        this.root = this.newNode(true);
+        this.count = 0;
+    }
+
+    pub fn len() -> i64 {
+        return this.count;
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.count == 0;
+    }
+}

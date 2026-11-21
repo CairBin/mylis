@@ -1,0 +1,77 @@
+// std TCP 监听器：接受连接，不引入线程或事件循环。
+import { IoError } from "IoError.myl";
+import { TcpStream } from "TcpStream.myl";
+import { myrt_str_ptr } from "core/Mylrt_bind";
+import { mylis_tcp_bind, mylis_tcp_listener_fd, mylis_tcp_listener_port, mylis_tcp_accept, mylis_tcp_listener_close, mylis_tcp_listener_set_nonblocking } from "Net_bind.myl";
+
+pub class TcpListener {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    pub static fn Bind(string address) -> Result<TcpListener, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_tcp_bind(myrt_str_ptr(address));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new TcpListener(h));
+    }
+
+    pub fn localPort() -> i64 {
+        i64 port = 0;
+        unsafe {
+            port = mylis_tcp_listener_port(this.handle);
+        }
+        return port;
+    }
+
+    pub fn accept() -> Result<TcpStream, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_tcp_accept(this.handle);
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new TcpStream(h));
+    }
+
+    pub fn setNonblocking(bool enabled) -> Result<i64, IoError> {
+        i64 rc = 0;
+        i32 flag = 0;
+        if (enabled) {
+            flag = 1;
+        }
+        unsafe {
+            rc = mylis_tcp_listener_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn nativeHandle() -> i64 {
+        return this.handle;
+    }
+
+    pub fn nativeFd() -> i32 {
+        i32 fd = -1;
+        unsafe {
+            fd = mylis_tcp_listener_fd(this.handle);
+        }
+        return fd;
+    }
+
+    pub fn close() -> void {
+        unsafe {
+            mylis_tcp_listener_close(this.handle);
+        }
+        this.handle = -1;
+    }
+}

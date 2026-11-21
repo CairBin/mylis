@@ -1,0 +1,2 @@
+pub const f64 PI = 3.14;
+pub const i32 MAX = 100;

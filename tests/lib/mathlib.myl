@@ -1,0 +1,29 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+class Bank {
+    pub static i32 rate = 3;
+
+    pub static fn scale(i32 v) -> i32 {
+        return v * Bank::rate;
+    }
+}
+
+@export("mylis_add")
+pub fn add(i32 a, i32 b) -> i32 {
+    return a + b;
+}
+
+@export("mylis_scaled")
+pub fn scaled(i32 v) -> i32 {
+    return Bank::scale(v);
+}
+
+@export("mylis_ping")
+pub fn ping() -> void {
+    return;
+}
+
+@export("mylis_greet")
+pub fn greet(string name) -> string {
+    return "hello, {name}!";
+}

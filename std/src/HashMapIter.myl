@@ -1,0 +1,32 @@
+// HashMap<K,V> 的显式迭代器；构造时快照 keys/values，遍历顺序不保证。
+import { Eq } from "core/Eq";
+import { Hash } from "core/Hash";
+import { HashMap } from "HashMap.myl";
+import { MapEntry } from "MapEntry.myl";
+import { Vec } from "Vec.myl";
+
+pub class HashMapIter<K: Hash + Eq, V> {
+    Vec<K> keys;
+    Vec<V> values;
+    i64 index;
+
+    pub fn init(HashMap<K, V> map) -> void {
+        this.keys = map.keys();
+        this.values = map.values();
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<MapEntry<K, V>> {
+        if (this.index >= this.keys.len()) {
+            return None;
+        }
+        K key = this.keys.get(this.index);
+        V value = this.values.get(this.index);
+        this.index = this.index + 1;
+        return Some(new MapEntry<K, V>(key, value));
+    }
+}
+
+pub fn iter_hash_map<K: Hash + Eq, V>(HashMap<K, V> map) -> HashMapIter<K, V> {
+    return new HashMapIter<K, V>(map);
+}

@@ -1,0 +1,171 @@
+// Vec<T>：编译期单态化的动态数组，不做 Any 装箱。
+// 第一版只支持值类型元素；push/pop 均摊 O(1)，get/set 为 O(1)。
+// 索引边界：get/set 沿用底层数组行为；insert 越界为 no-op，remove 越界返回 None。
+
+pub class Vec<T> {
+    pub T[] data;
+    pub i64 len;
+    pub i64 cap;
+
+    pub fn init() -> void {
+        this.data = new T[0];
+        this.len = 0;
+        this.cap = 0;
+    }
+
+    pub fn reserve(i64 n) -> void {
+        if (n <= this.cap) {
+            return;
+        }
+        i64 ncap = this.cap;
+        if (ncap < 4) {
+            ncap = 4;
+        }
+        while (ncap < n) {
+            ncap = ncap * 2;
+        }
+        T[] nd = new T[ncap];
+        i64 i = 0;
+        while (i < this.len) {
+            nd[i] = this.data[i];
+            i = i + 1;
+        }
+        this.data = nd;
+        this.cap = ncap;
+    }
+
+    pub fn push(T v) -> void {
+        this.reserve(this.len + 1);
+        this.data[this.len] = v;
+        this.len = this.len + 1;
+    }
+
+    pub fn pop() -> Option<T> {
+        if (this.len == 0) {
+            return None;
+        }
+        this.len = this.len - 1;
+        return Some(this.data[this.len]);
+    }
+
+    pub fn get(i64 i) -> T {
+        return this.data[i];
+    }
+
+    pub fn set(i64 i, T v) -> void {
+        this.data[i] = v;
+    }
+
+    pub fn first() -> Option<T> {
+        if (this.len == 0) {
+            return None;
+        }
+        return Some(this.data[0]);
+    }
+
+    pub fn last() -> Option<T> {
+        if (this.len == 0) {
+            return None;
+        }
+        return Some(this.data[this.len - 1]);
+    }
+
+    pub fn insert(i64 i, T v) -> void {
+        if (i < 0 || i > this.len) {
+            return;
+        }
+        this.reserve(this.len + 1);
+        i64 j = this.len;
+        while (j > i) {
+            this.data[j] = this.data[j - 1];
+            j = j - 1;
+        }
+        this.data[i] = v;
+        this.len = this.len + 1;
+    }
+
+    pub fn remove(i64 i) -> Option<T> {
+        if (i < 0 || i >= this.len) {
+            return None;
+        }
+        T v = this.data[i];
+        i64 j = i;
+        while (j < this.len - 1) {
+            this.data[j] = this.data[j + 1];
+            j = j + 1;
+        }
+        this.len = this.len - 1;
+        return Some(v);
+    }
+
+    pub fn clear() -> void {
+        this.len = 0;
+    }
+
+    pub fn truncate(i64 n) -> void {
+        if (n < 0) {
+            return;
+        }
+        if (n < this.len) {
+            this.len = n;
+        }
+    }
+
+    pub fn resize(i64 n, T value) -> void {
+        if (n < 0) {
+            return;
+        }
+        if (n < this.len) {
+            this.len = n;
+            return;
+        }
+        this.reserve(n);
+        i64 i = this.len;
+        while (i < n) {
+            this.data[i] = value;
+            i = i + 1;
+        }
+        this.len = n;
+    }
+
+    pub fn swap(i64 a, i64 b) -> void {
+        if (a < 0 || b < 0 || a >= this.len || b >= this.len || a == b) {
+            return;
+        }
+        T tmp = this.data[a];
+        this.data[a] = this.data[b];
+        this.data[b] = tmp;
+    }
+
+    pub fn reverse() -> void {
+        i64 i = 0;
+        i64 j = this.len - 1;
+        while (i < j) {
+            this.swap(i, j);
+            i = i + 1;
+            j = j - 1;
+        }
+    }
+
+    pub fn len() -> i64 {
+        return this.len;
+    }
+
+    pub fn capacity() -> i64 {
+        return this.cap;
+    }
+
+    pub fn extend(Vec<T> other) -> void {
+        this.reserve(this.len + other.len());
+        i64 i = 0;
+        while (i < other.len()) {
+            this.push(other.get(i));
+            i = i + 1;
+        }
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.len == 0;
+    }
+
+}

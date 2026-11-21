@@ -1,0 +1,24 @@
+import { Process } from "Process.myl";
+import { ProcessOutput } from "ProcessOutput.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn printResult(Result<ProcessOutput, IoError> result) -> void {
+    match (result) {
+        Ok(output) => {
+            println_i64(output.exitCode());
+            println_i64(output.signal());
+            println(output.stdout());
+            println(output.stderr());
+            println_bool(output.success());
+        }
+        Err(message) => { println_i64(message.code as i64); }
+    }
+}
+
+fn main() -> i32 {
+    printResult(Process::Run("printf 'hello, process'"));
+    printResult(Process::Run("printf out; printf err >&2; exit 7"));
+    printResult(Process::Run("exit 3"));
+    return 0;
+}

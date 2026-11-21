@@ -1,0 +1,15 @@
+3
+2
+name
+note
+2
+Alice
+hello, world
+2
+Bob
+say "hi"
+---
+a,"b,c","d""e","line1
+line2"
+0
+CSV 引号字段未闭合（字节 7）

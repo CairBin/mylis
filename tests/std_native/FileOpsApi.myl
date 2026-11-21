@@ -1,0 +1,69 @@
+import { File } from "File.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    string oldPath = "build/tests/file_ops_a.txt";
+    string newPath = "build/tests/file_ops_b.txt";
+    if (File::Exists(oldPath)) {
+        Result<i64, IoError> oldRemove = File::Remove(oldPath);
+    }
+    if (File::Exists(newPath)) {
+        Result<i64, IoError> newRemove = File::Remove(newPath);
+    }
+
+    println_bool(File::Exists(oldPath));
+
+    Result<File, IoError> created = File::Create(oldPath);
+    match created {
+        Ok(cf) => {
+            Result<i64, IoError> w = cf.writeAllText("a");
+            cf.close();
+        }
+        Err(e1) => { println_i64(e1.code as i64); }
+    }
+    println_bool(File::Exists(oldPath));
+
+    Result<File, IoError> append = File::Append(oldPath);
+    match append {
+        Ok(af) => {
+            Result<i64, IoError> w = af.writeAllText("b");
+            af.close();
+        }
+        Err(e2) => { println_i64(e2.code as i64); }
+    }
+
+    Result<File, IoError> opened = File::Open(oldPath);
+    match opened {
+        Ok(of) => {
+            Result<i64, IoError> size = of.size();
+            match size {
+                Ok(n) => { println_i64(n); }
+                Err(e3) => { println_i64(e3.code as i64); }
+            }
+            Result<string, IoError> text = of.readAllText();
+            match text {
+                Ok(s) => { println(s); }
+                Err(e4) => { println_i64(e4.code as i64); }
+            }
+            of.close();
+        }
+        Err(e5) => { println_i64(e5.code as i64); }
+    }
+
+    Result<i64, IoError> renamed = File::Rename(oldPath, newPath);
+    match renamed {
+        Ok(_) => { }
+        Err(e6) => { println_i64(e6.code as i64); }
+    }
+    println_bool(File::Exists(oldPath));
+    println_bool(File::Exists(newPath));
+
+    Result<i64, IoError> removed = File::Remove(newPath);
+    match removed {
+        Ok(_) => { }
+        Err(e7) => { println_i64(e7.code as i64); }
+    }
+    println_bool(File::Exists(newPath));
+    return 0;
+}

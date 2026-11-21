@@ -1,0 +1,10 @@
+import "Io.myl";
+import { println_i32 } from "Io.myl";
+
+// import "Io.myl" 只加载模块，必须写 Io::println_i32；
+// import { println_i32 } 才允许裸名。
+fn main() -> i32 {
+    Io::println_i32(11);
+    println_i32(22);
+    return 0;
+}

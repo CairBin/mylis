@@ -1,0 +1,13 @@
+import { WorkerServer } from "WorkerServer.myl";
+import { WorkerHandler } from "WorkerHandler.myl";
+
+class EchoHandler {
+    pub fn handle(string request) -> string {
+        return request;
+    }
+}
+
+fn main() -> i32 {
+    WorkerServer::Run(new EchoHandler());
+    return 0;
+}

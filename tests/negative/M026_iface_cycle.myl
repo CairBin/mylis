@@ -1,0 +1,4 @@
+interface A { B; }
+interface B { A; }
+
+fn main() -> i32 { return 0; }

@@ -1,0 +1,25 @@
+// Queue<T> 的显式迭代器；只读当前队列，不改变 head。
+import { Queue } from "Queue.myl";
+
+pub class QueueIter<T> {
+    Queue<T> queue;
+    i64 index;
+
+    pub fn init(Queue<T> queue) -> void {
+        this.queue = queue;
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<T> {
+        if (this.index >= this.queue.len()) {
+            return None;
+        }
+        T value = this.queue.items.get(this.queue.head + this.index);
+        this.index = this.index + 1;
+        return Some(value);
+    }
+}
+
+pub fn iter_queue<T>(Queue<T> queue) -> QueueIter<T> {
+    return new QueueIter<T>(queue);
+}

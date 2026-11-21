@@ -1,0 +1,35 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+interface Any { }
+
+interface I32 {
+    fn get() -> i32;
+}
+
+class B {
+    i32 v;
+    pub fn init(i32 n) { this.v = n; }
+    pub fn get() -> i32 { return this.v; }
+}
+
+fn f(bool has) -> Option<i32> {
+    Option<i32> o = None;
+    if (has) { o = Some(1); }
+    i32 x = o?;
+    return Some(x);
+}
+
+fn g(bool has) -> Option<I32> {
+    Option<I32> o = None;
+    if (has) { o = Some(new B(4)); }
+    I32 x = o?;
+    return Some(x);
+}
+
+fn main() -> i32 {
+    println_i32(f(true).unwrap());
+    println_bool(f(false).is_none());
+    println_i32(g(true).unwrap().get());
+    println_bool(g(false).is_none());
+    return 0;
+}

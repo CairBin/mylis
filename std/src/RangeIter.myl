@@ -1,0 +1,21 @@
+// 半开区间 [start, end)，step 必须为正；空区间直接返回 None。
+pub class RangeIter {
+    i64 current;
+    i64 end;
+    i64 step;
+
+    pub fn init(i64 start, i64 end, i64 step) -> void {
+        this.current = start;
+        this.end = end;
+        this.step = step;
+    }
+
+    pub fn next() -> Option<i64> {
+        if (this.step <= 0 || this.current >= this.end) {
+            return None;
+        }
+        i64 value = this.current;
+        this.current = this.current + this.step;
+        return Some(value);
+    }
+}

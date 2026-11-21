@@ -1,0 +1,74 @@
+// core 层：i32 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class I32 {
+    pub static fn CheckedAdd(i32 a, i32 b) -> Option<i32> {
+        if (b > 0 && a > 2147483647 - b) { return None; }
+        if (b < 0 && a < (-2147483647 - 1) - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(i32 a, i32 b) -> Option<i32> {
+        if (b > 0 && a < (-2147483647 - 1) + b) { return None; }
+        if (b < 0 && a > 2147483647 + b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(i32 a, i32 b) -> Option<i32> {
+        if (a == 0 || b == 0) { return Some(0); }
+        if (a == -1 && b == (-2147483647 - 1)) { return None; }
+        if (b == -1 && a == (-2147483647 - 1)) { return None; }
+        if (a > 0) {
+            if (b > 0) {
+                if (a > 2147483647 / b) { return None; }
+            } else {
+                if (b < (-2147483647 - 1) / a) { return None; }
+            }
+        } else {
+            if (b > 0) {
+                if (a < (-2147483647 - 1) / b) { return None; }
+            } else {
+                if (b < 2147483647 / a) { return None; }
+            }
+        }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(i32 a, i32 b) -> Option<i32> {
+        if (b == 0) { return None; }
+        if (a == (-2147483647 - 1) && b == -1) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(i32 a, i32 b) -> i32 {
+        return ((a as i64) + (b as i64)) as i32;
+    }
+
+    pub static fn WrappingSub(i32 a, i32 b) -> i32 {
+        return ((a as i64) - (b as i64)) as i32;
+    }
+
+    pub static fn WrappingMul(i32 a, i32 b) -> i32 {
+        return ((a as i64) * (b as i64)) as i32;
+    }
+
+    pub static fn SaturatingAdd(i32 a, i32 b) -> i32 {
+        if (b > 0 && a > 2147483647 - b) { return 2147483647; }
+        if (b < 0 && a < (-2147483647 - 1) - b) { return (-2147483647 - 1); }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(i32 a, i32 b) -> i32 {
+        if (b > 0 && a < (-2147483647 - 1) + b) { return (-2147483647 - 1); }
+        if (b < 0 && a > 2147483647 + b) { return 2147483647; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(i32 a, i32 b) -> i32 {
+        Option<i32> r = I32::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        if ((a > 0 && b > 0) || (a < 0 && b < 0)) { return 2147483647; }
+        return (-2147483647 - 1);
+    }
+}
+

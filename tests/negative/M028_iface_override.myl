@@ -1,0 +1,9 @@
+interface A { fn m(i32 x) -> i32; }
+
+// 外层显式重写不同签名 → 不能用来“消歧”，按同名不同签名报错
+interface C {
+    A;
+    fn m(i32 x, i32 y) -> i32;
+}
+
+fn main() -> i32 { return 0; }

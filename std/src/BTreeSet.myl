@@ -1,0 +1,54 @@
+// BTreeSet<T>：基于 BTreeMap<T, bool> 的有序集合。
+// add/contains/remove 均为 O(log n)（底层 B 树删除使用借位/合并）。
+// toVec() 按元素升序返回；容器本身不保证并发安全。
+import { Ord } from "core/Ord";
+import { Vec } from "Vec.myl";
+import { BTreeMap } from "BTreeMap.myl";
+
+pub class BTreeSet<T: Ord> {
+    BTreeMap<T, bool> map;
+
+    pub fn init() -> void {
+        this.map = new BTreeMap<T, bool>();
+    }
+
+    pub fn add(T value) -> bool {
+        return this.map.insert(value, true);
+    }
+
+    pub fn remove(T value) -> bool {
+        Option<bool> old = this.map.remove(value);
+        match (old) {
+            Some(v) => { return true; }
+            None => { return false; }
+        }
+    }
+
+    pub fn contains(T value) -> bool {
+        return this.map.containsKey(value);
+    }
+
+    pub fn first() -> Option<T> {
+        return this.map.firstKey();
+    }
+
+    pub fn last() -> Option<T> {
+        return this.map.lastKey();
+    }
+
+    pub fn toVec() -> Vec<T> {
+        return this.map.keys();
+    }
+
+    pub fn clear() -> void {
+        this.map.clear();
+    }
+
+    pub fn len() -> i64 {
+        return this.map.len();
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.map.isEmpty();
+    }
+}

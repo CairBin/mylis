@@ -1,0 +1,6 @@
+// core 层：哈希协议。
+// hash() 返回 u64；相等对象必须返回相同哈希（自定义实现需自行保证）。
+// 该接口只用于 bound，不生成运行时 interface 值。
+pub interface Hash {
+    fn hash() -> u64;
+}

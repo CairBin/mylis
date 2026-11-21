@@ -1,0 +1,7 @@
+import "native_lib";
+import { println_i32 } from "Io.myl";
+
+fn main() -> i32 {
+    println_i32(native_lib::answer());
+    return 0;
+}

@@ -1,0 +1,10 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { PI } from "helpers/consts.myl";
+import "helpers/consts.myl";
+
+fn main() -> i32 {
+    println(Fmt::F64(PI));
+    println(Fmt::I32(consts::MAX));
+    return 0;
+}

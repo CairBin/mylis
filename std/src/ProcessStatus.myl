@@ -1,0 +1,23 @@
+// 等待子进程结束后的状态：正常退出时 signal 为 0；被信号终止时 exitCode 为 -1。
+// 这只是父进程里的值对象，不持有 OS 资源。
+pub class ProcessStatus {
+    i64 code;
+    i64 term;
+
+    pub fn init(i64 exitCode, i64 signal) -> void {
+        this.code = exitCode;
+        this.term = signal;
+    }
+
+    pub fn exitCode() -> i64 {
+        return this.code;
+    }
+
+    pub fn signal() -> i64 {
+        return this.term;
+    }
+
+    pub fn success() -> bool {
+        return this.term == 0 && this.code == 0;
+    }
+}

@@ -1,0 +1,5 @@
+import { main } from "M011_cycle_a.myl";
+
+fn helper() -> i32 {
+    return 0;
+}

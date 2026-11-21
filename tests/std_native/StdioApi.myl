@@ -1,0 +1,29 @@
+import { Stdio } from "Stdio.myl";
+import { Vec } from "Vec.myl";
+import { println, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> line = Stdio::ReadLine();
+    match line {
+        Some(lineText) => { println(lineText); }
+        None => { println("EOF"); }
+    }
+
+    Option<string> rest = Stdio::ReadAll();
+    match rest {
+        Some(restText) => { println_i64(restText.len() as i64); }
+        None => { println_i64(-1); }
+    }
+
+    Vec<string> args = Stdio::Args();
+    println_i64(args.len() as i64);
+    println(args.get(1));
+    println(args.get(2));
+
+    Option<string> env = Stdio::Env("MYLIS_STDIO_TEST");
+    match env {
+        Some(envValue) => { println(envValue); }
+        None => { println("missing"); }
+    }
+    return 0;
+}

@@ -1,0 +1,15 @@
+import { println_i64 } from "Io.myl";
+
+enum Maybe<T> {
+    Nothing,
+    Just(T),
+}
+
+fn main() -> i32 {
+    Maybe<i64> m = Maybe<i64>::Just(7);
+    match m {
+        Maybe::Just(x) => { println_i64(x); }
+        Maybe::Nothing => { println_i64(0); }
+    }
+    return 0;
+}

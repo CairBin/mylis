@@ -1,0 +1,52 @@
+// core 层：u32 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class U32 {
+    pub static fn CheckedAdd(u32 a, u32 b) -> Option<u32> {
+        if (a > 4294967295 - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(u32 a, u32 b) -> Option<u32> {
+        if (a < b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(u32 a, u32 b) -> Option<u32> {
+        if (b != 0 && a > 4294967295 / b) { return None; }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(u32 a, u32 b) -> Option<u32> {
+        if (b == 0) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(u32 a, u32 b) -> u32 {
+        return a + b;
+    }
+
+    pub static fn WrappingSub(u32 a, u32 b) -> u32 {
+        return a - b;
+    }
+
+    pub static fn WrappingMul(u32 a, u32 b) -> u32 {
+        return a * b;
+    }
+
+    pub static fn SaturatingAdd(u32 a, u32 b) -> u32 {
+        if (a > 4294967295 - b) { return 4294967295; }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(u32 a, u32 b) -> u32 {
+        if (a < b) { return 0; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(u32 a, u32 b) -> u32 {
+        Option<u32> r = U32::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        return 4294967295;
+    }
+}

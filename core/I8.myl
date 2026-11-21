@@ -1,0 +1,73 @@
+// core 层：i8 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class I8 {
+    pub static fn CheckedAdd(i8 a, i8 b) -> Option<i8> {
+        if (b > 0 && a > 127 - b) { return None; }
+        if (b < 0 && a < (-127 - 1) - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(i8 a, i8 b) -> Option<i8> {
+        if (b > 0 && a < (-127 - 1) + b) { return None; }
+        if (b < 0 && a > 127 + b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(i8 a, i8 b) -> Option<i8> {
+        if (a == 0 || b == 0) { return Some(0); }
+        if (a == -1 && b == (-127 - 1)) { return None; }
+        if (b == -1 && a == (-127 - 1)) { return None; }
+        if (a > 0) {
+            if (b > 0) {
+                if (a > 127 / b) { return None; }
+            } else {
+                if (b < (-127 - 1) / a) { return None; }
+            }
+        } else {
+            if (b > 0) {
+                if (a < (-127 - 1) / b) { return None; }
+            } else {
+                if (b < 127 / a) { return None; }
+            }
+        }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(i8 a, i8 b) -> Option<i8> {
+        if (b == 0) { return None; }
+        if (a == (-127 - 1) && b == -1) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(i8 a, i8 b) -> i8 {
+        return ((a as i32) + (b as i32)) as i8;
+    }
+
+    pub static fn WrappingSub(i8 a, i8 b) -> i8 {
+        return ((a as i32) - (b as i32)) as i8;
+    }
+
+    pub static fn WrappingMul(i8 a, i8 b) -> i8 {
+        return ((a as i32) * (b as i32)) as i8;
+    }
+
+    pub static fn SaturatingAdd(i8 a, i8 b) -> i8 {
+        if (b > 0 && a > 127 - b) { return 127; }
+        if (b < 0 && a < (-127 - 1) - b) { return (-127 - 1); }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(i8 a, i8 b) -> i8 {
+        if (b > 0 && a < (-127 - 1) + b) { return (-127 - 1); }
+        if (b < 0 && a > 127 + b) { return 127; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(i8 a, i8 b) -> i8 {
+        Option<i8> r = I8::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        if ((a > 0 && b > 0) || (a < 0 && b < 0)) { return 127; }
+        return (-127 - 1);
+    }
+}

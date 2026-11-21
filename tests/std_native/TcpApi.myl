@@ -1,0 +1,84 @@
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { IoError } from "IoError.myl";
+import { IoErrorKind } from "IoErrorKind.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+fn main() -> i32 {
+    Result<TcpListener, IoError> bound = TcpListener::Bind("127.0.0.1:0");
+    match bound {
+        Ok(listener) => {
+            i64 port = listener.localPort();
+            println_bool(port > 0);
+            if (port <= 0) {
+                return 1;
+            }
+            string addr = Str::Concat("127.0.0.1:", fmt_i64(port));
+            Result<TcpStream, IoError> client = TcpStream::Connect(addr);
+            match client {
+                Ok(c) => {
+                    Result<i64, IoError> cw = c.writeAllText("ping");
+                    match cw {
+                        Ok(n) => { println_i64(n); }
+                        Err(cwe) => { println_i64(cwe.code as i64); }
+                    }
+
+                    Result<TcpStream, IoError> acc = listener.accept();
+                    match acc {
+                        Ok(s) => {
+                            Result<u8[], IoError> sr = s.read(4);
+                            match sr {
+                                Ok(data) => {
+                                    println_i64(data.len() as i64);
+                                    println_i64(data[0] as i64);
+                                }
+                                Err(sre) => { println_i64(sre.code as i64); }
+                            }
+                            Result<i64, IoError> sw = s.writeAllText("pong");
+                            match sw {
+                                Ok(n) => { println_i64(n); }
+                                Err(swe) => { println_i64(swe.code as i64); }
+                            }
+                            s.close();
+                        }
+                        Err(ae) => { println_i64(ae.code as i64); }
+                    }
+
+                    Result<u8[], IoError> cr = c.read(4);
+                    match cr {
+                        Ok(data) => {
+                            println_i64(data.len() as i64);
+                            println_i64(data[0] as i64);
+                        }
+                        Err(cre) => { println_i64(cre.code as i64); }
+                    }
+                    c.close();
+                }
+                Err(ce) => { println_i64(ce.code as i64); }
+            }
+
+            Result<i64, IoError> nb = listener.setNonblocking(true);
+            match nb {
+                Ok(_) => {
+                    Result<TcpStream, IoError> would = listener.accept();
+                    match would {
+                        Ok(extra) => { println_i64(1); extra.close(); }
+                        Err(we) => {
+                            println_i64(we.code as i64);
+                            match we.kind {
+                                IoErrorKind::WouldBlock => { println_bool(true); }
+                                _ => { println_bool(false); }
+                            }
+                        }
+                    }
+                }
+                Err(nbe) => { println_i64(nbe.code as i64); }
+            }
+            listener.close();
+        }
+        Err(be) => { println_i64(be.code as i64); }
+    }
+    return 0;
+}

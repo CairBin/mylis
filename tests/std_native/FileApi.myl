@@ -1,0 +1,87 @@
+import { File } from "File.myl";
+import { IoError } from "IoError.myl";
+import { IoErrorKind } from "IoErrorKind.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    string path = "build/tests/file_api.txt";
+
+    Result<File, IoError> created = File::Create(path);
+    match created {
+        Ok(cf) => {
+            Result<i64, IoError> wrote = cf.writeAllText("hello");
+            match wrote {
+                Ok(n) => { println_i64(n); }
+                Err(we) => { println_i64(we.code as i64); }
+            }
+            cf.close();
+        }
+        Err(ce) => { println_i64(ce.code as i64); }
+    }
+
+    Result<File, IoError> opened = File::Open(path);
+    match opened {
+        Ok(of) => {
+            Result<string, IoError> text = of.readAllText();
+            match text {
+                Ok(s) => { println(s); }
+                Err(te) => { println_i64(te.code as i64); }
+            }
+            Result<u8[], IoError> bytes = of.readAllBytes();
+            match bytes {
+                Ok(data) => {
+                    println_i64(data.len() as i64);
+                    println_i64(data[0] as i64);
+                }
+                Err(be) => { println_i64(be.code as i64); }
+            }
+            of.close();
+        }
+        Err(oe) => { println_i64(oe.code as i64); }
+    }
+
+    Result<File, IoError> bin = File::Create(path);
+    match bin {
+        Ok(bf) => {
+            u8[] raw = [1, 2, 3];
+            Result<i64, IoError> wrote = bf.writeAllBytes(raw);
+            match wrote {
+                Ok(n) => { println_i64(n); }
+                Err(bwe) => { println_i64(bwe.code as i64); }
+            }
+            bf.close();
+        }
+        Err(be) => { println_i64(be.code as i64); }
+    }
+
+    Result<File, IoError> reopened = File::Open(path);
+    match reopened {
+        Ok(rf) => {
+            Result<u8[], IoError> bytes = rf.readAllBytes();
+            match bytes {
+                Ok(data) => {
+                    println_i64(data.len() as i64);
+                    println_i64(data[0] as i64);
+                    println_i64(data[1] as i64);
+                    println_i64(data[2] as i64);
+                }
+                Err(re) => { println_i64(re.code as i64); }
+            }
+            rf.close();
+        }
+        Err(roe) => { println_i64(roe.code as i64); }
+    }
+
+    Result<File, IoError> missing = File::Open("build/tests/no_such_file_xyz");
+    match missing {
+        Ok(mf) => { println_bool(true); mf.close(); }
+        Err(me) => {
+            println_i64(me.code as i64);
+            match me.kind {
+                IoErrorKind::NotFound => { println_bool(true); }
+                _ => { println_bool(false); }
+            }
+        }
+    }
+    return 0;
+}

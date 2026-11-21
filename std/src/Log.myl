@@ -1,0 +1,22 @@
+// std 轻量日志：输出到标准输出，格式为 `[级别] 消息`。
+import { Str } from "core/Str";
+import { Time } from "Time.myl";
+import { println } from "Io.myl";
+
+pub class Log {
+    pub static fn Debug(string message) -> void {
+        println(Str::Concat("[debug] ", message));
+    }
+
+    pub static fn Info(string message) -> void {
+        println(Str::Concat("[info] ", message));
+    }
+
+    pub static fn Warn(string message) -> void {
+        println(Str::Concat("[warn] ", message));
+    }
+
+    pub static fn Error(string message) -> void {
+        println(Str::Concat("[error] ", message));
+    }
+}

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Mylis",
+  "scopeName": "source.mylis",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#annotations"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#functions"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.mylis",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.mylis",
+          "begin": "/*",
+          "end": "*/"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "storage.type.annotation.mylis",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.mylis",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mylis",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.interpolation.mylis",
+              "begin": "\\{",
+              "end": "\\}"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.mylis",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.mylis",
+          "match": "\\b0x[0-9a-fA-F]+\\b|\\b\\d+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.mylis",
+          "match": "\\b(if|else|while|for|return|break|continue|match|unsafe|new|as)\\b"
+        },
+        {
+          "name": "keyword.declaration.mylis",
+          "match": "\\b(fn|class|interface|enum|import|pub|static|const|type)\\b"
+        },
+        {
+          "name": "constant.language.mylis",
+          "match": "\\b(true|false|null|this)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.mylis",
+          "match": "\\b(void|bool|string|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|Result|Option)\\b"
+        },
+        {
+          "name": "support.type.annotation.mylis",
+          "match": "@(export|header|deprecated|inline)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "entity.name.type.mylis",
+          "match": "(?<=\\b(class|interface|enum)\\s+)[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "entity.name.type.alias.mylis",
+          "match": "(?<=\\btype\\s+)[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "entity.name.function.mylis",
+          "match": "(?<=\\bfn\\s+)[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "variable.other.field.mylis",
+          "match": "(?<=\\bthis\\.)[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.call.mylis",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    }
+  }
+}

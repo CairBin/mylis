@@ -1,0 +1,33 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { I8 } from "I8.myl";
+import { I16 } from "I16.myl";
+import { U8 } from "U8.myl";
+import { U16 } from "U16.myl";
+import { U32 } from "U32.myl";
+import { U64 } from "U64.myl";
+
+fn main() -> i32 {
+    if (I8::CheckedAdd(127, 1).is_none()) { println("i8 overflow"); }
+    println(Fmt::I8(I8::WrappingAdd(127, 1)));
+    println(Fmt::I8(I8::SaturatingAdd(127, 1)));
+
+    if (I16::CheckedSub((-32767 - 1), 1).is_none()) { println("i16 overflow"); }
+    println(Fmt::I16(I16::WrappingSub((-32767 - 1), 1)));
+
+    if (U8::CheckedAdd(255, 1).is_none()) { println("u8 overflow"); }
+    println(Fmt::U8(U8::WrappingAdd(255, 1)));
+    println(Fmt::U8(U8::SaturatingAdd(255, 1)));
+
+    if (U16::CheckedMul(65535, 2).is_none()) { println("u16 overflow"); }
+    println(Fmt::U16(U16::SaturatingMul(65535, 2)));
+
+    if (U32::CheckedAdd(4294967295, 1).is_none()) { println("u32 overflow"); }
+    println(Fmt::U32(U32::SaturatingAdd(4294967295, 1)));
+
+    u64 umax = 18446744073709551615;
+    if (U64::CheckedAdd(umax, 1).is_none()) { println("u64 overflow"); }
+    println(Fmt::U64(U64::SaturatingAdd(umax, 1)));
+    println(Fmt::U64(U64::WrappingAdd(umax, 1)));
+    return 0;
+}

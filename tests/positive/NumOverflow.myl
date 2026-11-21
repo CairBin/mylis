@@ -1,0 +1,16 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { I32 } from "I32.myl";
+import { I64 } from "I64.myl";
+
+fn main() -> i32 {
+    if (I32::CheckedAdd(2147483647, 1).is_none()) { println("i32 add overflow"); }
+    if (I32::CheckedSub((-2147483647 - 1), 1).is_none()) { println("i32 sub overflow"); }
+    println(Fmt::I32(I32::WrappingAdd(2147483647, 1)));
+    println(Fmt::I32(I32::SaturatingAdd(2147483647, 1)));
+    println(Fmt::I32(I32::SaturatingSub((-2147483647 - 1), 1)));
+
+    if (I64::CheckedMul(9223372036854775807, 2).is_none()) { println("i64 mul overflow"); }
+    println(Fmt::I64(I64::WrappingMul(9223372036854775807, 2)));
+    return 0;
+}

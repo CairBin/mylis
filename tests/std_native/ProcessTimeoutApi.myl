@@ -1,0 +1,50 @@
+import { Process } from "Process.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<ProcessPipe, IoError> opened = Process::Popen("sleep 1", "r");
+    match (opened) {
+        Ok(pipe1) => {
+            Result<Option<string>, IoError> line = pipe1.readLineTimeout(50);
+            match (line) {
+                Ok(value) => { match (value) { Some(text) => { println(text); } None => { println("eof"); } } }
+                Err(e1) => { println_i64(e1.code as i64); }
+            }
+            Result<ProcessStatus, IoError> close1 = pipe1.close();
+            match (close1) { Ok(s1) => { println_i64(s1.exitCode()); } Err(e2) => { println_i64(e2.code as i64); } }
+        }
+        Err(e3) => { println_i64(e3.code as i64); }
+    }
+    Result<ProcessPipe, IoError> data = Process::Popen("printf 'late\\n'; sleep 0.3", "r");
+    match (data) {
+        Ok(pipe2) => {
+            Result<Option<string>, IoError> line2 = pipe2.readLineTimeout(1000);
+            match (line2) { Ok(value2) => { match (value2) { Some(text2) => { println(text2); } None => { println("eof"); } } } Err(e4) => { println_i64(e4.code as i64); } }
+            Result<ProcessStatus, IoError> close2 = pipe2.close();
+            match (close2) { Ok(s2) => { println_i64(s2.exitCode()); } Err(e5) => { println_i64(e5.code as i64); } }
+        }
+        Err(e6) => { println_i64(e6.code as i64); }
+    }
+    Result<ProcessPipe, IoError> partial = Process::Popen("printf 'part'; sleep 1", "r");
+    match (partial) {
+        Ok(pipe3) => {
+            Result<Option<string>, IoError> line3 = pipe3.readLineTimeout(50);
+            match (line3) {
+                Ok(value3) => { match (value3) { Some(text3) => { println(text3); } None => { println("eof"); } } }
+                Err(e7) => { println_i64(e7.code as i64); }
+            }
+            Result<Option<string>, IoError> line4 = pipe3.readLineTimeout(2000);
+            match (line4) {
+                Ok(value4) => { match (value4) { Some(text4) => { println(text4); } None => { println("eof"); } } }
+                Err(e8) => { println_i64(e8.code as i64); }
+            }
+            Result<ProcessStatus, IoError> close3 = pipe3.close();
+            match (close3) { Ok(s3) => { println_i64(s3.exitCode()); } Err(e9) => { println_i64(e9.code as i64); } }
+        }
+        Err(e10) => { println_i64(e10.code as i64); }
+    }
+    return 0;
+}

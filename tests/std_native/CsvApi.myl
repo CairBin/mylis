@@ -1,0 +1,41 @@
+import { Csv } from "Csv.myl";
+import { Vec } from "Vec.myl";
+import { println, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    string text = "name,note\r\nAlice,\"hello, world\"\r\nBob,\"say \"\"hi\"\"\"\r\n";
+    Result<Vec<Vec<string>>, string> parsed = Csv::Parse(text);
+    match (parsed) {
+        Ok(rows) => {
+            println_i64(rows.len());
+            i64 r = 0;
+            while (r < rows.len()) {
+                Vec<string> row = rows.get(r);
+                println_i64(row.len());
+                i64 c = 0;
+                while (c < row.len()) {
+                    println(row.get(c));
+                    c = c + 1;
+                }
+                r = r + 1;
+            }
+        }
+        Err(message) => { println(message); }
+    }
+
+    Vec<Vec<string>> out = new Vec<Vec<string>>();
+    Vec<string> row = new Vec<string>();
+    row.push("a");
+    row.push("b,c");
+    row.push("d\"e");
+    row.push("line1\nline2");
+    out.push(row);
+    println("---");
+    println(Csv::Stringify(out));
+
+    Result<Vec<Vec<string>>, string> empty = Csv::Parse("");
+    match (empty) { Ok(z) => { println_i64(z.len()); } Err(em) => { println(em); } }
+    Result<Vec<Vec<string>>, string> bad = Csv::Parse("\"broken");
+    match (bad) { Ok(b) => { println_i64(b.len()); } Err(bm) => { println(bm); } }
+    return 0;
+}

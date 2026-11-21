@@ -1,0 +1,12 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+
+fn main() -> i32 {
+    println("[" + Fmt::F64Width(12.345, 2, 8) + "]");
+    println("[" + Fmt::F64WidthLeft(12.345, 2, 8) + "]");
+    println("[" + Fmt::F64WidthZero(12.345, 2, 8) + "]");
+    println("[" + Fmt::F64WidthPlus(12.345, 2, 8) + "]");
+    println("[" + Fmt::F64WidthPlus(-12.345, 2, 8) + "]");
+    println("[" + Fmt::F32Width(1.5 as f32, 2, 6) + "]");
+    return 0;
+}

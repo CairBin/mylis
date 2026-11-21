@@ -1,0 +1,19 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    u8 a = 200;
+    u16 b = 65535;
+    u32 c = 4000000000;
+    i8 d = -100;
+    i16 e = -30000;
+    f32 f = 1.25;
+    println("interp: {a} {b} {c} {d} {e} {f}");
+    println_u8(a);
+    println_u16(b);
+    println_u32(c);
+    println_i8(d);
+    println_i16(e);
+    println_f32(f);
+    println_bool(c > 1000000000);
+    return 0;
+}

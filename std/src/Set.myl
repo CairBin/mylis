@@ -1,0 +1,187 @@
+// Set<T>：基于数组的线性集合，只要求 T: Eq。
+// add/remove/contains 均为 O(n)，第一版不依赖 hash。
+import { Eq } from "core/Eq";
+import { Vec } from "Vec.myl";
+
+pub class Set<T: Eq> {
+    pub T[] data;
+    pub i64 count;
+    pub i64 cap;
+
+    pub fn init() -> void {
+        this.data = new T[0];
+        this.count = 0;
+        this.cap = 0;
+    }
+
+    fn grow(i64 need) -> void {
+        if (need <= this.cap) {
+            return;
+        }
+        i64 ncap = this.cap;
+        if (ncap < 4) {
+            ncap = 4;
+        }
+        while (ncap < need) {
+            ncap = ncap * 2;
+        }
+        T[] nd = new T[ncap];
+        i64 i = 0;
+        while (i < this.count) {
+            nd[i] = this.data[i];
+            i = i + 1;
+        }
+        this.data = nd;
+        this.cap = ncap;
+    }
+
+    fn indexOf(T value) -> i64 {
+        i64 i = 0;
+        while (i < this.count) {
+            if (this.data[i].equals(value)) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    pub fn add(T value) -> bool {
+        if (this.contains(value)) {
+            return false;
+        }
+        this.grow(this.count + 1);
+        this.data[this.count] = value;
+        this.count = this.count + 1;
+        return true;
+    }
+
+    pub fn remove(T value) -> bool {
+        i64 at = this.indexOf(value);
+        if (at < 0) {
+            return false;
+        }
+        i64 i = at;
+        while (i < this.count - 1) {
+            this.data[i] = this.data[i + 1];
+            i = i + 1;
+        }
+        this.count = this.count - 1;
+        return true;
+    }
+
+    pub fn contains(T value) -> bool {
+        return this.indexOf(value) >= 0;
+    }
+
+    pub fn get(i64 i) -> Option<T> {
+        if (i < 0 || i >= this.count) {
+            return None;
+        }
+        return Some(this.data[i]);
+    }
+
+    pub fn len() -> i64 {
+        return this.count;
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.count == 0;
+    }
+
+    pub fn toVec() -> Vec<T> {
+        Vec<T> out = new Vec<T>();
+        i64 i = 0;
+        while (i < this.count) {
+            out.push(this.data[i]);
+            i = i + 1;
+        }
+        return out;
+    }
+
+    pub fn clear() -> void {
+        this.count = 0;
+    }
+
+    pub fn addAll(Set<T> other) -> void {
+        Vec<T> values = other.toVec();
+        i64 i = 0;
+        while (i < values.len()) {
+            this.add(values.get(i));
+            i = i + 1;
+        }
+    }
+
+    pub fn containsAll(Set<T> other) -> bool {
+        Vec<T> values = other.toVec();
+        i64 i = 0;
+        while (i < values.len()) {
+            if (!this.contains(values.get(i))) {
+                return false;
+            }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    pub fn removeAll(Set<T> other) -> void {
+        Vec<T> values = other.toVec();
+        i64 i = 0;
+        while (i < values.len()) {
+            this.remove(values.get(i));
+            i = i + 1;
+        }
+    }
+
+    pub fn retainAll(Set<T> other) -> void {
+        Vec<T> values = this.toVec();
+        i64 i = 0;
+        while (i < values.len()) {
+            T value = values.get(i);
+            if (!other.contains(value)) {
+                this.remove(value);
+            }
+            i = i + 1;
+        }
+    }
+
+    // 返回新集合的代数运算：不修改自身或 other。
+    pub fn union(Set<T> other) -> Set<T> {
+        Set<T> out = new Set<T>();
+        i64 i = 0;
+        while (i < this.count) {
+            out.add(this.data[i]);
+            i = i + 1;
+        }
+        i = 0;
+        while (i < other.count) {
+            out.add(other.data[i]);
+            i = i + 1;
+        }
+        return out;
+    }
+
+    pub fn intersection(Set<T> other) -> Set<T> {
+        Set<T> out = new Set<T>();
+        i64 i = 0;
+        while (i < this.count) {
+            if (other.contains(this.data[i])) {
+                out.add(this.data[i]);
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    pub fn difference(Set<T> other) -> Set<T> {
+        Set<T> out = new Set<T>();
+        i64 i = 0;
+        while (i < this.count) {
+            if (!other.contains(this.data[i])) {
+                out.add(this.data[i]);
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+}

@@ -1,0 +1,73 @@
+// core 层：i16 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class I16 {
+    pub static fn CheckedAdd(i16 a, i16 b) -> Option<i16> {
+        if (b > 0 && a > 32767 - b) { return None; }
+        if (b < 0 && a < (-32767 - 1) - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(i16 a, i16 b) -> Option<i16> {
+        if (b > 0 && a < (-32767 - 1) + b) { return None; }
+        if (b < 0 && a > 32767 + b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(i16 a, i16 b) -> Option<i16> {
+        if (a == 0 || b == 0) { return Some(0); }
+        if (a == -1 && b == (-32767 - 1)) { return None; }
+        if (b == -1 && a == (-32767 - 1)) { return None; }
+        if (a > 0) {
+            if (b > 0) {
+                if (a > 32767 / b) { return None; }
+            } else {
+                if (b < (-32767 - 1) / a) { return None; }
+            }
+        } else {
+            if (b > 0) {
+                if (a < (-32767 - 1) / b) { return None; }
+            } else {
+                if (b < 32767 / a) { return None; }
+            }
+        }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(i16 a, i16 b) -> Option<i16> {
+        if (b == 0) { return None; }
+        if (a == (-32767 - 1) && b == -1) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(i16 a, i16 b) -> i16 {
+        return ((a as i32) + (b as i32)) as i16;
+    }
+
+    pub static fn WrappingSub(i16 a, i16 b) -> i16 {
+        return ((a as i32) - (b as i32)) as i16;
+    }
+
+    pub static fn WrappingMul(i16 a, i16 b) -> i16 {
+        return ((a as i32) * (b as i32)) as i16;
+    }
+
+    pub static fn SaturatingAdd(i16 a, i16 b) -> i16 {
+        if (b > 0 && a > 32767 - b) { return 32767; }
+        if (b < 0 && a < (-32767 - 1) - b) { return (-32767 - 1); }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(i16 a, i16 b) -> i16 {
+        if (b > 0 && a < (-32767 - 1) + b) { return (-32767 - 1); }
+        if (b < 0 && a > 32767 + b) { return 32767; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(i16 a, i16 b) -> i16 {
+        Option<i16> r = I16::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        if ((a > 0 && b > 0) || (a < 0 && b < 0)) { return 32767; }
+        return (-32767 - 1);
+    }
+}

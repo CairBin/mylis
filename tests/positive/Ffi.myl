@@ -1,0 +1,14 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool , myrt_str_ptr } from "Io.myl";
+import { strlen } from "Ffi_bind.myl";
+
+pub class Ffi {
+}
+
+fn main() -> i32 {
+    u64 n = 0;
+    unsafe {
+        n = strlen(myrt_str_ptr("mylis"));
+    }
+    println_u64(n);
+    return 0;
+}

@@ -1,0 +1,40 @@
+import { Process } from "Process.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<ProcessPipe, IoError> reader = Process::Popen("printf 'a\\nb\\nc\\n'", "r");
+    match (reader) {
+        Ok(pipe1) => {
+            Result<Option<string>, IoError> first = pipe1.readLine();
+            match (first) {
+                Ok(one) => { match (one) { Some(text1) => { println(text1); } None => { println("eof"); } } }
+                Err(e1) => { println_i64(e1.code as i64); }
+            }
+            Result<Option<string>, IoError> second = pipe1.readLine();
+            match (second) {
+                Ok(two) => { match (two) { Some(text2) => { println(text2); } None => { println("eof"); } } }
+                Err(e2) => { println_i64(e2.code as i64); }
+            }
+            Result<u8[], IoError> rest = pipe1.readAll();
+            match (rest) {
+                Ok(bytes) => {
+                    println_i64(bytes.len() as i64);
+                    if (bytes.len() > 0) { println_i64(bytes[0] as i64); }
+                }
+                Err(e3) => { println_i64(e3.code as i64); }
+            }
+            Result<Option<string>, IoError> eof = pipe1.readLine();
+            match (eof) {
+                Ok(end) => { match (end) { Some(text3) => { println(text3); } None => { println("eof"); } } }
+                Err(e4) => { println_i64(e4.code as i64); }
+            }
+            Result<ProcessStatus, IoError> close1 = pipe1.close();
+            match (close1) { Ok(s1) => { println_i64(s1.exitCode()); } Err(e5) => { println_i64(e5.code as i64); } }
+        }
+        Err(e6) => { println_i64(e6.code as i64); }
+    }
+    return 0;
+}

@@ -1,0 +1,17 @@
+interface Show {
+    fn show() -> string;
+}
+
+class Bad {
+    pub fn other() -> string { return "bad"; }
+}
+
+fn pick<T: Show>(T x) -> T {
+    return x;
+}
+
+fn main() -> i32 {
+    Bad b = new Bad();
+    pick<Bad>(b);
+    return 0;
+}

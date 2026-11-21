@@ -1,0 +1,18 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { FmtSpec } from "Fmt.myl";
+
+class Holder {
+    pub static const f32 X = 123;
+}
+
+fn main() -> i32 {
+    f64 big = 18446744073709551615;
+    f64 regular = 123;
+    f32 small = 42;
+    println(Fmt::FormatF64(big, new FmtSpec(8, 2, 0)));
+    println(Fmt::FormatF64(regular, new FmtSpec(8, 2, 0)));
+    println(Fmt::FormatF32(small, new FmtSpec(8, 1, FmtSpec::ZERO)));
+    println(Fmt::FormatF32(Holder::X, new FmtSpec(8, 1, FmtSpec::ZERO)));
+    return 0;
+}

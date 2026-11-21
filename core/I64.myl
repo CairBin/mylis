@@ -1,0 +1,73 @@
+// core 层：i64 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class I64 {
+    pub static fn CheckedAdd(i64 a, i64 b) -> Option<i64> {
+        if (b > 0 && a > 9223372036854775807 - b) { return None; }
+        if (b < 0 && a < (-9223372036854775807 - 1) - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(i64 a, i64 b) -> Option<i64> {
+        if (b > 0 && a < (-9223372036854775807 - 1) + b) { return None; }
+        if (b < 0 && a > 9223372036854775807 + b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(i64 a, i64 b) -> Option<i64> {
+        if (a == 0 || b == 0) { return Some(0); }
+        if (a == -1 && b == (-9223372036854775807 - 1)) { return None; }
+        if (b == -1 && a == (-9223372036854775807 - 1)) { return None; }
+        if (a > 0) {
+            if (b > 0) {
+                if (a > 9223372036854775807 / b) { return None; }
+            } else {
+                if (b < (-9223372036854775807 - 1) / a) { return None; }
+            }
+        } else {
+            if (b > 0) {
+                if (a < (-9223372036854775807 - 1) / b) { return None; }
+            } else {
+                if (b < 9223372036854775807 / a) { return None; }
+            }
+        }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(i64 a, i64 b) -> Option<i64> {
+        if (b == 0) { return None; }
+        if (a == (-9223372036854775807 - 1) && b == -1) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(i64 a, i64 b) -> i64 {
+        return a + b;
+    }
+
+    pub static fn WrappingSub(i64 a, i64 b) -> i64 {
+        return a - b;
+    }
+
+    pub static fn WrappingMul(i64 a, i64 b) -> i64 {
+        return a * b;
+    }
+
+    pub static fn SaturatingAdd(i64 a, i64 b) -> i64 {
+        if (b > 0 && a > 9223372036854775807 - b) { return 9223372036854775807; }
+        if (b < 0 && a < (-9223372036854775807 - 1) - b) { return (-9223372036854775807 - 1); }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(i64 a, i64 b) -> i64 {
+        if (b > 0 && a < (-9223372036854775807 - 1) + b) { return (-9223372036854775807 - 1); }
+        if (b < 0 && a > 9223372036854775807 + b) { return 9223372036854775807; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(i64 a, i64 b) -> i64 {
+        Option<i64> r = I64::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        if ((a > 0 && b > 0) || (a < 0 && b < 0)) { return 9223372036854775807; }
+        return (-9223372036854775807 - 1);
+    }
+}

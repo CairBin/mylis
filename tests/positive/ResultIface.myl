@@ -1,0 +1,55 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+interface Any { }
+
+interface I32 {
+    fn get() -> i32;
+}
+
+class B {
+    i32 v;
+    pub fn init(i32 n) { this.v = n; }
+    pub fn get() -> i32 { return this.v; }
+}
+
+fn pass(bool yes) -> Result<I32, string> {
+    Result<I32, string> r = Ok(new B(5));
+    I32 x = r?;
+    if (yes) { return Ok(x); }
+    return Err("no");
+}
+
+fn bad() -> Result<string, I32> {
+    Result<string, I32> r = Err(new B(7));
+    string s = r?;
+    return Ok(s);
+}
+
+fn main() -> i32 {
+    Result<I32, string> r = Ok(new B(3));
+    println_i32(r.unwrap().get());
+    println_bool(r.is_ok());
+
+    Result<I32, string> e = Err("x");
+    println_bool(e.is_err());
+
+    Result<string, I32> re = Err(new B(4));
+    println_i32(re.unwrap_err().get());
+
+    Result<I32, I32> both = Ok(new B(6));
+    println_i32(both.unwrap().get());
+
+    match (both) {
+        Ok(v) => { println_i32(v.get()); }
+        Err(w) => { println_i32(w.get()); }
+    }
+
+    println_i32(pass(true).unwrap().get());
+    println_bool(pass(false).is_err());
+
+    Result<I32, string> miss = Err("x");
+    Result<I32, string> ok12 = Ok(new B(12));
+    println_i32(miss.unwrap_or(ok12.unwrap()).get());
+    println_bool(bad().is_err());
+    return 0;
+}

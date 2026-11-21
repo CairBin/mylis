@@ -1,0 +1,14 @@
+// core 层：不可恢复错误与断言。安全函数，std 可直接复用。
+import { myrt_panic } from "Mylrt_bind.myl";
+
+pub fn panic(string msg) -> void {
+    unsafe {
+        myrt_panic(msg);
+    }
+}
+
+pub fn assert(bool condition, string msg) -> void {
+    if (!condition) {
+        panic(msg);
+    }
+}

@@ -1,0 +1,40 @@
+import { Worker } from "Worker.myl";
+import { IoError } from "IoError.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { Stdio } from "Stdio.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("WORKER_CMD");
+    match (command) {
+        None => { println("missing-worker"); return 1; }
+        Some(path) => {
+            Result<Worker, IoError> spawned = Worker::Spawn(path);
+            match (spawned) {
+                Err(e1) => { println_i64(e1.code as i64); }
+                Ok(worker) => {
+                    println_bool(worker.pid() > 0);
+                    Result<string, IoError> first = worker.callTimeout("hello", 1000);
+                    match (first) { Ok(text1) => { println(text1); } Err(e2) => { println_i64(e2.code as i64); } }
+                    Result<i64, IoError> sent = worker.send("world");
+                    match (sent) { Ok(n1) => { println_i64(n1); } Err(e3) => { println_i64(e3.code as i64); } }
+                    Result<Option<string>, IoError> got = worker.recv();
+                    match (got) {
+                        Ok(value) => {
+                            match (value) {
+                                Some(text2) => { println(text2); }
+                                None => { println("eof"); }
+                            }
+                        }
+                        Err(e4) => { println_i64(e4.code as i64); }
+                    }
+                    Result<string, IoError> json = worker.call("{{\"x\":1}}");
+                    match (json) { Ok(text3) => { println(text3); } Err(e5) => { println_i64(e5.code as i64); } }
+                    Result<ProcessStatus, IoError> done = worker.shutdown();
+                    match (done) { Ok(s1) => { println_i64(s1.exitCode()); } Err(e6) => { println_i64(e6.code as i64); } }
+                }
+            }
+        }
+    }
+    return 0;
+}

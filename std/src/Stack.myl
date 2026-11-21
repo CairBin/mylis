@@ -1,0 +1,35 @@
+// Stack<T>：基于 Vec<T> 的后进先出容器。
+// push/pop/peek 均摊 O(1)；不做 Any 装箱。
+import { Vec } from "Vec.myl";
+
+pub class Stack<T> {
+    pub Vec<T> items;
+
+    pub fn init() -> void {
+        this.items = new Vec<T>();
+    }
+
+    pub fn push(T value) -> void {
+        this.items.push(value);
+    }
+
+    pub fn pop() -> Option<T> {
+        return this.items.pop();
+    }
+
+    pub fn peek() -> Option<T> {
+        return this.items.last();
+    }
+
+    pub fn len() -> i64 {
+        return this.items.len();
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.items.isEmpty();
+    }
+
+    pub fn clear() -> void {
+        this.items.clear();
+    }
+}

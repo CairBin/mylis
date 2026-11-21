@@ -1,0 +1,32 @@
+import { println, println_i64 } from "Io.myl";
+import { Vec } from "Vec.myl";
+
+class Good {
+    pub i64 x;
+    pub fn init(i64 v) -> void { this.x = v; }
+}
+
+class Box<T> {
+    pub T v;
+    pub fn init(T x) -> void { this.v = x; }
+    pub fn get() -> T { return this.v; }
+}
+
+fn identity<T>(T x) -> T { return x; }
+fn pair<T>(T a, T b) -> i64 { return 0; }
+
+fn main() -> i32 {
+    i64 a = identity(42);
+    string s = identity("hi");
+    Box<i64> b = new Box(7);
+    Vec<i64> v = new Vec();
+    v.push(10);
+    Good g = new Good(3);
+    i64 n = pair(g, g);
+    println_i64(a);
+    println(s);
+    println_i64(b.get());
+    println_i64(v.get(0));
+    println_i64(n);
+    return 0;
+}

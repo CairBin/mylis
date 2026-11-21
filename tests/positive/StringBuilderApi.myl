@@ -1,0 +1,18 @@
+import { StringBuilder } from "StringBuilder.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    StringBuilder b = new StringBuilder();
+    println_i64(b.len());
+    println_bool(b.isEmpty());
+    b.append("ab");
+    b.append("你");
+    b.appendLine("cd");
+    println_i64(b.len());
+    println(b.toString());
+    println_bool(b.isEmpty());
+    b.clear();
+    println_i64(b.len());
+    println_bool(b.isEmpty());
+    return 0;
+}

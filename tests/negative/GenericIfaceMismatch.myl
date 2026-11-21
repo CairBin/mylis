@@ -1,0 +1,16 @@
+class Pair<A, B> {
+    pub A left;
+    pub B right;
+    pub fn init(A a, B b) -> void { this.left = a; this.right = b; }
+    pub fn first() -> A { return this.left; }
+    pub fn second() -> B { return this.right; }
+}
+interface PairView<A, B> {
+    fn first() -> A;
+    fn second() -> B;
+}
+fn main() -> i32 {
+    Pair<string, i64> p = new Pair<string, i64>("x", 7);
+    PairView<i64, string> v = p;
+    return 0;
+}

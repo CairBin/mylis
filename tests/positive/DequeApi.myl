@@ -1,0 +1,50 @@
+import { Deque } from "Deque.myl";
+import { Vec } from "Vec.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn show(Option<i64> value) -> void {
+    match value {
+        Some(v) => { println_i64(v); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn main() -> i32 {
+    Deque<i64> d = new Deque<i64>();
+    println_i64(d.len());
+    println_bool(d.isEmpty());
+    d.pushBack(2);
+    d.pushBack(3);
+    d.pushFront(1);
+    println_i64(d.len());
+    show(d.peekFront());
+    show(d.peekBack());
+    Vec<i64> all = d.toVec();
+    println_i64(all.len());
+    println_i64(all.get(0));
+    println_i64(all.get(1));
+    println_i64(all.get(2));
+    show(d.popFront());
+    show(d.popFront());
+    show(d.popFront());
+    show(d.popFront());
+    println_bool(d.isEmpty());
+
+    d.pushBack(10);
+    d.pushBack(20);
+    show(d.popFront());
+    d.pushFront(5);
+    d.pushBack(30);
+    show(d.peekFront());
+    show(d.peekBack());
+    show(d.popBack());
+    show(d.popFront());
+    show(d.popBack());
+    show(d.popBack());
+    println_bool(d.isEmpty());
+    d.pushBack(7);
+    d.clear();
+    println_i64(d.len());
+    println_bool(d.isEmpty());
+    return 0;
+}

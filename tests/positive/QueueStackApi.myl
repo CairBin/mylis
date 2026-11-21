@@ -1,0 +1,65 @@
+import { Queue } from "Queue.myl";
+import { Stack } from "Stack.myl";
+import { Vec } from "Vec.myl";
+import { Map } from "Map.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn showI64(Option<i64> value) -> void {
+    match value {
+        Some(v) => { println_i64(v); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn main() -> i32 {
+    Queue<i64> q = new Queue<i64>();
+    println_i64(q.len());
+    println_bool(q.isEmpty());
+    q.enqueue(1);
+    q.enqueue(2);
+    q.enqueue(3);
+    println_i64(q.len());
+    showI64(q.peek());
+    showI64(q.dequeue());
+    showI64(q.peek());
+    println_i64(q.len());
+    showI64(q.dequeue());
+    showI64(q.dequeue());
+    showI64(q.dequeue());
+    println_bool(q.isEmpty());
+    q.enqueue(4);
+    println_i64(q.len());
+    q.clear();
+    println_i64(q.len());
+    println_bool(q.isEmpty());
+
+    Stack<i64> s = new Stack<i64>();
+    s.push(10);
+    s.push(20);
+    println_i64(s.len());
+    showI64(s.peek());
+    showI64(s.pop());
+    showI64(s.pop());
+    showI64(s.pop());
+    println_bool(s.isEmpty());
+
+    Vec<i64> a = new Vec<i64>();
+    a.push(1);
+    Vec<i64> b = new Vec<i64>();
+    b.push(2);
+    b.push(3);
+    a.extend(b);
+    println_i64(a.len());
+    println_i64(a.get(0));
+    println_i64(a.get(1));
+    println_i64(a.get(2));
+    println_bool(a.capacity() >= a.len());
+
+    Map<string, i64> m = new Map<string, i64>();
+    m.set("a", 7);
+    println_i64(m.getOr("a", 9));
+    println_i64(m.getOr("b", 9));
+    println_bool(m.containsKey("a"));
+    println_bool(m.containsKey("b"));
+    return 0;
+}

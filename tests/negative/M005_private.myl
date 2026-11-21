@@ -1,0 +1,6 @@
+import { Hidden, init } from "M005_private_helper.myl";
+
+fn main() -> i32 {
+    Hidden h = new Hidden(1);
+    return 0;
+}

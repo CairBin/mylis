@@ -1,0 +1,4 @@
+// 语言插值使用的 ToString 协议。方法名遵循类内方法小驼峰。
+pub interface ToString {
+    fn toString() -> string;
+}

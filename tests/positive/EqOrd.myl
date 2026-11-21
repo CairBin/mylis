@@ -1,0 +1,44 @@
+import { Eq, Ord, min, max } from "core/lib";
+import { Vec } from "Vec.myl";
+import { contains, index_of } from "Algorithms.myl";
+import { println, println_bool, println_i64, println_f64 } from "Io.myl";
+
+class Good {
+    pub i64 v;
+
+    pub fn init(i64 x) -> void { this.v = x; }
+
+    pub fn equals(Good other) -> bool {
+        return this.v == other.v;
+    }
+
+    pub fn compare(Good other) -> i32 {
+        if (this.v < other.v) { return -1; }
+        if (this.v > other.v) { return 1; }
+        return 0;
+    }
+}
+
+fn main() -> i32 {
+    Vec<i64> xs = new Vec<i64>();
+    xs.push(1);
+    xs.push(2);
+    println_bool(contains<i64>(xs, 2));
+    println_i64(index_of<i64>(xs, 3));
+    println_i64(min<i64>(4, 2));
+
+    Vec<string> ss = new Vec<string>();
+    ss.push("x");
+    ss.push("y");
+    println(max<string>("a", "b"));
+    println_bool(contains<string>(ss, "y"));
+
+    Vec<Good> gs = new Vec<Good>();
+    gs.push(new Good(7));
+    println_bool(contains<Good>(gs, new Good(7)));
+    println_i64(min<Good>(new Good(3), new Good(5)).v);
+    println_i64(max<Good>(new Good(3), new Good(5)).v);
+    println_bool(min<bool>(true, false));
+    println_f64(min<f64>(2.5, 1.5));
+    return 0;
+}

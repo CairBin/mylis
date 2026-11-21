@@ -1,0 +1,15 @@
+i8 overflow
+-128
+127
+i16 overflow
+32767
+u8 overflow
+0
+255
+u16 overflow
+65535
+u32 overflow
+4294967295
+u64 overflow
+18446744073709551615
+0

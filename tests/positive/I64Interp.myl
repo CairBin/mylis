@@ -1,0 +1,6 @@
+import { println } from "Io.myl";
+fn main() -> i32 {
+    i64 v = -42;
+    println("{v}");
+    return 0;
+}

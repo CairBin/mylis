@@ -1,0 +1,5 @@
+unsafe fn external_symbol();
+
+fn main() -> i32 {
+    return 0;
+}

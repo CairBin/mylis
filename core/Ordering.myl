@@ -1,0 +1,6 @@
+// core：比较结果，语义对齐 Rust core::cmp::Ordering。
+pub enum Ordering {
+    Less,
+    Equal,
+    Greater,
+}

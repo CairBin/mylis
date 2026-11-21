@@ -1,0 +1,14 @@
+import { println } from "Io.myl";
+fn main() -> i32 {
+    u64 m = 18446744073709551615;
+    u64 z = 0;
+    match m {
+        18446744073709551615 => { println("max"); }
+        _ => { println("other"); }
+    }
+    match z {
+        18446744073709551615 => { println("bad"); }
+        _ => { println("zero"); }
+    }
+    return 0;
+}

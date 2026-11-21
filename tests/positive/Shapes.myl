@@ -1,0 +1,52 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool , fmt_f64 } from "Io.myl";
+
+interface Shape {
+    fn area() -> f64;
+    fn label() -> string;
+}
+
+class Square {
+    pub f64 side;
+
+    pub fn init(f64 side) -> void {
+        this.side = side;
+    }
+
+    pub fn area() -> f64 {
+        return this.side * this.side;
+    }
+
+    pub fn label() -> string {
+        return "square";
+    }
+}
+
+class Tri {
+    pub f64 base;
+    pub f64 height;
+
+    pub fn init(f64 b, f64 h) -> void {
+        this.base = b;
+        this.height = h;
+    }
+
+    pub fn area() -> f64 {
+        return this.base * this.height / 2.0;
+    }
+
+    pub fn label() -> string {
+        return "tri";
+    }
+}
+
+fn report(Shape s) -> void {
+    println(s.label() + " = " + fmt_f64(s.area()));
+}
+
+fn main() -> i32 {
+    Shape a = new Square(3.0);
+    Shape b = new Tri(4.0, 5.0);
+    report(a);
+    report(b);
+    return 0;
+}

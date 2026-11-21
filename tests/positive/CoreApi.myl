@@ -1,0 +1,27 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { Str } from "Str.myl";
+import { Math } from "Math.myl";
+import { assert } from "Panic.myl";
+
+fn main() -> i32 {
+    assert(true, "core api");
+    assert(Str::Compare("a", "b") < 0, "str compare");
+    println(Fmt::I8(-3));
+    println(Fmt::I16(12));
+    println(Fmt::I32(345));
+    println(Fmt::U8(255));
+    println(Fmt::F32(1.5));
+    println(Str::Concat("a", "b"));
+    println(Fmt::F64(Math::Sqrt64(9.0)));
+    println(Fmt::F64(Math::Min64(3.0, 2.0)));
+    println(Fmt::F64(Math::Max64(3.0, 2.0)));
+    println(Fmt::F64(Math::Clamp64(5.0, 1.0, 4.0)));
+    println(Fmt::F64(Math::Floor64(1.9)));
+    println(Fmt::F64(Math::Ceil64(1.1)));
+    println(Fmt::F64(Math::Round64(2.5)));
+    println(Fmt::F64(Math::Trunc64(2.9)));
+    println(Fmt::F64(Math::Fmod64(5.5, 2.0)));
+    println(Fmt::F64(Math::Sign64(-3.0)));
+    return 0;
+}

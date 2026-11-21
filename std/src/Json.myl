@@ -1,0 +1,660 @@
+// std JSON：第一版提供严格的对象/数组/字符串/数字/布尔/null 解析与紧凑序列化。
+// 不依赖 OS，不引入 Any 装箱；对象使用 std 的线性 Map，键顺序按插入顺序。
+import { Str } from "core/Str";
+import { Vec } from "Vec.myl";
+import { Map } from "Map.myl";
+import { StringBuilder } from "StringBuilder.myl";
+import { Text } from "Text.myl";
+import { fmt_i64, fmt_f64 } from "core/Fmt";
+
+pub class Json {
+    pub static const i32 NULL = 0;
+    pub static const i32 BOOL = 1;
+    pub static const i32 INT = 2;
+    pub static const i32 FLOAT = 3;
+    pub static const i32 STRING = 4;
+    pub static const i32 ARRAY = 5;
+    pub static const i32 OBJECT = 6;
+
+    pub i32 kind;
+    pub bool boolValue;
+    pub i64 intValue;
+    pub f64 floatValue;
+    pub string stringValue;
+    pub Vec<Json> arrayValue;
+    pub Map<string, Json> objectValue;
+
+    pub fn init() -> void {
+        this.kind = 0;
+        this.boolValue = false;
+        this.intValue = 0;
+        this.floatValue = 0.0;
+        this.stringValue = "";
+        this.arrayValue = new Vec<Json>();
+        this.objectValue = new Map<string, Json>();
+    }
+
+    pub static fn Null() -> Json {
+        Json value = new Json();
+        value.kind = 0;
+        return value;
+    }
+
+    pub static fn Bool(bool b) -> Json {
+        Json value = new Json();
+        value.kind = 1;
+        value.boolValue = b;
+        return value;
+    }
+
+    pub static fn Int(i64 n) -> Json {
+        Json value = new Json();
+        value.kind = 2;
+        value.intValue = n;
+        return value;
+    }
+
+    pub static fn Float(f64 n) -> Json {
+        Json value = new Json();
+        value.kind = 3;
+        value.floatValue = n;
+        return value;
+    }
+
+    pub static fn Str(string s) -> Json {
+        Json value = new Json();
+        value.kind = 4;
+        value.stringValue = s;
+        return value;
+    }
+
+    pub static fn Array(Vec<Json> values) -> Json {
+        Json value = new Json();
+        value.kind = 5;
+        value.arrayValue = values;
+        return value;
+    }
+
+    pub static fn Object(Map<string, Json> values) -> Json {
+        Json value = new Json();
+        value.kind = 6;
+        value.objectValue = values;
+        return value;
+    }
+
+    pub fn isNull() -> bool {
+        return this.kind == 0;
+    }
+
+    pub fn asBool() -> Option<bool> {
+        if (this.kind != 1) {
+            return None;
+        }
+        return Some(this.boolValue);
+    }
+
+    pub fn asInt() -> Option<i64> {
+        if (this.kind != 2) {
+            return None;
+        }
+        return Some(this.intValue);
+    }
+
+    pub fn asFloat() -> Option<f64> {
+        if (this.kind == 2) {
+            return Some(this.intValue as f64);
+        }
+        if (this.kind != 3) {
+            return None;
+        }
+        return Some(this.floatValue);
+    }
+
+    pub fn asString() -> Option<string> {
+        if (this.kind != 4) {
+            return None;
+        }
+        return Some(this.stringValue);
+    }
+
+    pub fn asArray() -> Option<Vec<Json>> {
+        if (this.kind != 5) {
+            return None;
+        }
+        return Some(this.arrayValue);
+    }
+
+    pub fn asObject() -> Option<Map<string, Json>> {
+        if (this.kind != 6) {
+            return None;
+        }
+        return Some(this.objectValue);
+    }
+
+    pub fn at(i64 index) -> Option<Json> {
+        if (this.kind != 5) {
+            return None;
+        }
+        if (index < 0 || index >= this.arrayValue.len()) {
+            return None;
+        }
+        return Some(this.arrayValue.get(index));
+    }
+
+    pub fn get(string key) -> Option<Json> {
+        if (this.kind != 6) {
+            return None;
+        }
+        return this.objectValue.get(key);
+    }
+
+    pub fn len() -> i64 {
+        if (this.kind == 5) {
+            return this.arrayValue.len();
+        }
+        if (this.kind == 6) {
+            return this.objectValue.len();
+        }
+        return 0;
+    }
+
+    pub static fn Parse(string text) -> Result<Json, string> {
+        JsonParser parser = new JsonParser(text);
+        Result<Json, string> parsed = parser.parseValue();
+        match parsed {
+            Ok(value) => {
+                parser.skipWhitespace();
+                if (parser.pos != parser.len) {
+                    return Err(parser.error("尾部存在多余字符"));
+                }
+                return Ok(value);
+            }
+            Err(message) => { return Err(message); }
+        }
+    }
+
+    pub static fn Stringify(Json value) -> string {
+        StringBuilder out = new StringBuilder();
+        stringify_value(value, out);
+        return out.toString();
+    }
+}
+
+fn hex_digit(u8 c) -> i32 {
+    if (c >= 48 && c <= 57) {
+        return (c - 48) as i32;
+    }
+    if (c >= 97 && c <= 102) {
+        return (c - 97) as i32 + 10;
+    }
+    if (c >= 65 && c <= 70) {
+        return (c - 65) as i32 + 10;
+    }
+    return -1;
+}
+
+fn utf8_string(i64 code) -> string {
+    u8[] bytes = new u8[0];
+    if (code <= 127) {
+        bytes = new u8[1];
+        bytes[0] = code as u8;
+    } else if (code <= 2047) {
+        bytes = new u8[2];
+        bytes[0] = ((192 as i64) + (code / 64)) as u8;
+        bytes[1] = ((128 as i64) + (code % 64)) as u8;
+    } else if (code <= 65535) {
+        bytes = new u8[3];
+        bytes[0] = ((224 as i64) + (code / 4096)) as u8;
+        bytes[1] = ((128 as i64) + ((code / 64) % 64)) as u8;
+        bytes[2] = ((128 as i64) + (code % 64)) as u8;
+    } else {
+        bytes = new u8[4];
+        bytes[0] = ((240 as i64) + (code / 262144)) as u8;
+        bytes[1] = ((128 as i64) + ((code / 4096) % 64)) as u8;
+        bytes[2] = ((128 as i64) + ((code / 64) % 64)) as u8;
+        bytes[3] = ((128 as i64) + (code % 64)) as u8;
+    }
+    return Str::FromBytes(bytes);
+}
+
+fn ascii_string(u8 code) -> string {
+    u8[] bytes = new u8[1];
+    bytes[0] = code;
+    return Str::FromBytes(bytes);
+}
+
+fn escape_json_string(string value, StringBuilder out) -> void {
+    out.append("\"");
+    u8[] bytes = Str::Bytes(value);
+    i64 i = 0;
+    while (i < bytes.len() as i64) {
+        u8 c = bytes[i];
+        if (c == 34) {
+            out.append("\\\"");
+        } else if (c == 92) {
+            out.append("\\\\");
+        } else if (c == 8) {
+            out.append("\\b");
+        } else if (c == 12) {
+            out.append("\\f");
+        } else if (c == 10) {
+            out.append("\\n");
+        } else if (c == 13) {
+            out.append("\\r");
+        } else if (c == 9) {
+            out.append("\\t");
+        } else if (c < 32) {
+            out.append("\\u00");
+            out.append(hex2(c));
+        } else {
+            i64 start = i;
+            while (i < bytes.len() as i64) {
+                u8 x = bytes[i];
+                if (x == 34 || x == 92 || x < 32) {
+                    break;
+                }
+                i = i + 1;
+            }
+            out.append(Str::Substring(value, start as u64, (i - start) as u64));
+            continue;
+        }
+        i = i + 1;
+    }
+    out.append("\"");
+}
+
+fn hex2(u8 value) -> string {
+    i32 high = (value as i32) / 16;
+    i32 low = (value as i32) % 16;
+    u8[] bytes = new u8[2];
+    if (high < 10) {
+        bytes[0] = (48 + high) as u8;
+    } else {
+        bytes[0] = (97 + high - 10) as u8;
+    }
+    if (low < 10) {
+        bytes[1] = (48 + low) as u8;
+    } else {
+        bytes[1] = (97 + low - 10) as u8;
+    }
+    return Str::FromBytes(bytes);
+}
+
+fn stringify_value(Json value, StringBuilder out) -> void {
+    if (value.kind == 0) {
+        out.append("null");
+        return;
+    }
+    if (value.kind == 1) {
+        if (value.boolValue) {
+            out.append("true");
+        } else {
+            out.append("false");
+        }
+        return;
+    }
+    if (value.kind == 2) {
+        out.append(fmt_i64(value.intValue));
+        return;
+    }
+    if (value.kind == 3) {
+        out.append(fmt_f64(value.floatValue));
+        return;
+    }
+    if (value.kind == 4) {
+        escape_json_string(value.stringValue, out);
+        return;
+    }
+    if (value.kind == 5) {
+        out.append("[");
+        i64 i = 0;
+        while (i < value.arrayValue.len()) {
+            if (i > 0) {
+                out.append(",");
+            }
+            stringify_value(value.arrayValue.get(i), out);
+            i = i + 1;
+        }
+        out.append("]");
+        return;
+    }
+    if (value.kind == 6) {
+        out.append(ascii_string(123));
+        Vec<string> keys = value.objectValue.keys();
+        i64 i = 0;
+        while (i < keys.len()) {
+            if (i > 0) {
+                out.append(",");
+            }
+            escape_json_string(keys.get(i), out);
+            out.append(":");
+            Option<Json> child = value.objectValue.get(keys.get(i));
+            Json childValue = Json::Null();
+            match child {
+                Some(item) => { childValue = item; }
+                None => { }
+            }
+            stringify_value(childValue, out);
+            i = i + 1;
+        }
+        out.append(ascii_string(125));
+        return;
+    }
+}
+
+class JsonParser {
+    string text;
+    u8[] bytes;
+    i64 pos;
+    i64 len;
+
+    pub fn init(string text) -> void {
+        this.text = text;
+        this.bytes = Str::Bytes(text);
+        this.pos = 0;
+        this.len = this.bytes.len() as i64;
+    }
+
+    pub fn error(string message) -> string {
+        return Str::Concat(message, Str::Concat(" at byte ", fmt_i64(this.pos)));
+    }
+
+    pub fn skipWhitespace() -> void {
+        while (this.pos < this.len) {
+            u8 c = this.bytes[this.pos];
+            if (!(c == 32 || c == 9 || c == 10 || c == 13)) {
+                return;
+            }
+            this.pos = this.pos + 1;
+        }
+    }
+
+    pub fn parseValue() -> Result<Json, string> {
+        this.skipWhitespace();
+        if (this.pos >= this.len) {
+            return Err(this.error("意外的输入结尾"));
+        }
+        u8 c = this.bytes[this.pos];
+        if (c == 123) {
+            return this.parseObject();
+        }
+        if (c == 91) {
+            return this.parseArray();
+        }
+        if (c == 34) {
+            return this.parseStringValue();
+        }
+        if (c == 116) {
+            if (this.matchWord("true")) { return Ok(Json::Bool(true)); }
+            return Err(this.error("无效的字面量"));
+        }
+        if (c == 102) {
+            if (this.matchWord("false")) { return Ok(Json::Bool(false)); }
+            return Err(this.error("无效的字面量"));
+        }
+        if (c == 110) {
+            if (this.matchWord("null")) { return Ok(Json::Null()); }
+            return Err(this.error("无效的字面量"));
+        }
+        return this.parseNumber();
+    }
+
+    fn matchWord(string word) -> bool {
+        i64 n = word.len() as i64;
+        if (this.pos + n > this.len) {
+            return false;
+        }
+        u8[] wordBytes = Str::Bytes(word);
+        i64 i = 0;
+        while (i < n) {
+            if (this.bytes[this.pos + i] != wordBytes[i]) {
+                return false;
+            }
+            i = i + 1;
+        }
+        this.pos = this.pos + n;
+        return true;
+    }
+
+    fn parseStringValue() -> Result<Json, string> {
+        Result<string, string> parsed = this.parseString();
+        match parsed {
+            Ok(value) => { return Ok(Json::Str(value)); }
+            Err(message) => { return Err(message); }
+        }
+    }
+
+    fn parseString() -> Result<string, string> {
+        if (this.pos >= this.len || this.bytes[this.pos] != 34) {
+            return Err(this.error("期望字符串"));
+        }
+        this.pos = this.pos + 1;
+        StringBuilder out = new StringBuilder();
+        while (this.pos < this.len) {
+            u8 c = this.bytes[this.pos];
+            if (c == 34) {
+                this.pos = this.pos + 1;
+                return Ok(out.toString());
+            }
+            if (c == 92) {
+                this.pos = this.pos + 1;
+                if (this.pos >= this.len) {
+                    return Err(this.error("转义序列不完整"));
+                }
+                u8 esc = this.bytes[this.pos];
+                this.pos = this.pos + 1;
+                if (esc == 34 || esc == 92 || esc == 47) {
+                    out.append(ascii_string(esc));
+                } else if (esc == 98) {
+                    out.append(ascii_string(8));
+                } else if (esc == 102) {
+                    out.append(ascii_string(12));
+                } else if (esc == 110) {
+                    out.append(ascii_string(10));
+                } else if (esc == 114) {
+                    out.append(ascii_string(13));
+                } else if (esc == 116) {
+                    out.append(ascii_string(9));
+                } else if (esc == 117) {
+                    Result<u32, string> cp = this.parseHex4();
+                    match cp {
+                        Ok(code) => {
+                            u32 mixed = code;
+                            if (code >= 55296 && code <= 56319) {
+                                if (this.pos + 6 <= this.len) {
+                                    if (this.bytes[this.pos] == 92 && this.bytes[this.pos + 1] == 117) {
+                                        this.pos = this.pos + 2;
+                                        Result<u32, string> low = this.parseHex4();
+                                        match low {
+                                            Ok(lowCode) => {
+                                                if (lowCode >= 56320 && lowCode <= 57343) {
+                                                    mixed = 65536 + ((code - 55296) * 1024) + (lowCode - 56320);
+                                                }
+                                            }
+                                            Err(message) => { return Err(message); }
+                                        }
+                                    }
+                                }
+                            }
+                            out.append(utf8_string(mixed as i64));
+                        }
+                        Err(message) => { return Err(message); }
+                    }
+                } else {
+                    return Err(this.error("未知转义字符"));
+                }
+            } else if (c < 32) {
+                return Err(this.error("字符串中不能出现控制字符"));
+            } else {
+                i64 start = this.pos;
+                while (this.pos < this.len) {
+                    u8 x = this.bytes[this.pos];
+                    if (x == 34 || x == 92 || x < 32) {
+                        break;
+                    }
+                    this.pos = this.pos + 1;
+                }
+                if (this.pos > start) {
+                    out.append(Str::Substring(this.text, start as u64, (this.pos - start) as u64));
+                }
+            }
+        }
+        return Err(this.error("字符串没有闭合"));
+    }
+
+    fn parseHex4() -> Result<u32, string> {
+        if (this.pos + 4 > this.len) {
+            return Err(this.error("\\u 后需要四个十六进制位"));
+        }
+        u32 value = 0;
+        i64 i = 0;
+        while (i < 4) {
+            i32 digit = hex_digit(this.bytes[this.pos + i]);
+            if (digit < 0) {
+                return Err(this.error("\\u 后需要四个十六进制位"));
+            }
+            value = value * 16 + (digit as u32);
+            i = i + 1;
+        }
+        this.pos = this.pos + 4;
+        return Ok(value);
+    }
+
+    fn parseNumber() -> Result<Json, string> {
+        i64 start = this.pos;
+        bool isFloat = false;
+        if (this.pos < this.len && this.bytes[this.pos] == 45) {
+            this.pos = this.pos + 1;
+        }
+        if (this.pos >= this.len || this.bytes[this.pos] < 48 || this.bytes[this.pos] > 57) {
+            return Err(this.error("无效数字"));
+        }
+        while (this.pos < this.len) {
+            u8 c = this.bytes[this.pos];
+            if (c >= 48 && c <= 57) {
+                this.pos = this.pos + 1;
+            } else {
+                break;
+            }
+        }
+        if (this.pos < this.len && this.bytes[this.pos] == 46) {
+            isFloat = true;
+            this.pos = this.pos + 1;
+            if (this.pos >= this.len || this.bytes[this.pos] < 48 || this.bytes[this.pos] > 57) {
+                return Err(this.error("小数点后需要数字"));
+            }
+            while (this.pos < this.len && this.bytes[this.pos] >= 48 && this.bytes[this.pos] <= 57) {
+                this.pos = this.pos + 1;
+            }
+        }
+        if (this.pos < this.len && (this.bytes[this.pos] == 101 || this.bytes[this.pos] == 69)) {
+            isFloat = true;
+            this.pos = this.pos + 1;
+            if (this.pos < this.len && (this.bytes[this.pos] == 43 || this.bytes[this.pos] == 45)) {
+                this.pos = this.pos + 1;
+            }
+            if (this.pos >= this.len || this.bytes[this.pos] < 48 || this.bytes[this.pos] > 57) {
+                return Err(this.error("指数需要数字"));
+            }
+            while (this.pos < this.len && this.bytes[this.pos] >= 48 && this.bytes[this.pos] <= 57) {
+                this.pos = this.pos + 1;
+            }
+        }
+        string raw = Str::Substring(this.text, start as u64, (this.pos - start) as u64);
+        if (isFloat) {
+            Option<f64> f = Text::ParseF64(raw);
+            match f {
+                Some(value) => { return Ok(Json::Float(value)); }
+                None => { return Err(this.error("无效数字")); }
+            }
+        }
+        Option<i64> n = Text::ParseI64(raw);
+        match n {
+            Some(intValue) => { return Ok(Json::Int(intValue)); }
+            None => {
+                Option<f64> big = Text::ParseF64(raw);
+                match big {
+                    Some(floatValue) => { return Ok(Json::Float(floatValue)); }
+                    None => { return Err(this.error("整数溢出")); }
+                }
+            }
+        }
+    }
+
+    fn parseArray() -> Result<Json, string> {
+        this.pos = this.pos + 1;
+        Vec<Json> values = new Vec<Json>();
+        this.skipWhitespace();
+        if (this.pos < this.len && this.bytes[this.pos] == 93) {
+            this.pos = this.pos + 1;
+            return Ok(Json::Array(values));
+        }
+        while (true) {
+            Result<Json, string> parsed = this.parseValue();
+            match (parsed) {
+                Ok(value) => { values.push(value); }
+                Err(message) => { return Err(message); }
+            }
+            this.skipWhitespace();
+            if (this.pos >= this.len) {
+                return Err(this.error("数组没有闭合"));
+            }
+            u8 c = this.bytes[this.pos];
+            if (c == 44) {
+                this.pos = this.pos + 1;
+                this.skipWhitespace();
+                continue;
+            }
+            if (c == 93) {
+                this.pos = this.pos + 1;
+                return Ok(Json::Array(values));
+            }
+            return Err(this.error("数组元素之间需要逗号"));
+        }
+        return Err(this.error("数组没有闭合"));
+    }
+
+    fn parseObject() -> Result<Json, string> {
+        this.pos = this.pos + 1;
+        Map<string, Json> values = new Map<string, Json>();
+        this.skipWhitespace();
+        if (this.pos < this.len && this.bytes[this.pos] == 125) {
+            this.pos = this.pos + 1;
+            return Ok(Json::Object(values));
+        }
+        while (true) {
+            this.skipWhitespace();
+            Result<string, string> keyResult = this.parseString();
+            string key = "";
+            match keyResult {
+                Ok(keyText) => { key = keyText; }
+                Err(keyError) => { return Err(keyError); }
+            }
+            this.skipWhitespace();
+            if (this.pos >= this.len || this.bytes[this.pos] != 58) {
+                return Err(this.error("对象键后需要冒号"));
+            }
+            this.pos = this.pos + 1;
+            Result<Json, string> member = this.parseValue();
+            match (member) {
+                Ok(memberValue) => { values.set(key, memberValue); }
+                Err(memberError) => { return Err(memberError); }
+            }
+            this.skipWhitespace();
+            if (this.pos >= this.len) {
+                return Err(this.error("对象没有闭合"));
+            }
+            u8 c = this.bytes[this.pos];
+            if (c == 44) {
+                this.pos = this.pos + 1;
+                continue;
+            }
+            if (c == 125) {
+                this.pos = this.pos + 1;
+                return Ok(Json::Object(values));
+            }
+            return Err(this.error("对象成员之间需要逗号"));
+        }
+        return Err(this.error("对象没有闭合"));
+    }
+}

@@ -1,0 +1,31 @@
+import { Base64 } from "Base64.myl";
+import { println, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    println(Base64::Encode(""));
+    println(Base64::Encode("f"));
+    println(Base64::Encode("fo"));
+    println(Base64::Encode("foo"));
+    println(Base64::Encode("hello, 世界"));
+    Result<string, string> decoded = Base64::Decode("aGVsbG8sIOS4lueVjA==");
+    match (decoded) {
+        Ok(text) => { println(text); }
+        Err(message) => { println(message); }
+    }
+    Result<string, string> spaced = Base64::Decode(" Zm9v\n");
+    match (spaced) {
+        Ok(text2) => { println(text2); }
+        Err(message2) => { println(message2); }
+    }
+    Result<string, string> bad = Base64::Decode("A===");
+    match (bad) {
+        Ok(text3) => { println(text3); }
+        Err(message3) => { println(message3); }
+    }
+    Result<string, string> badLen = Base64::Decode("abc");
+    match (badLen) {
+        Ok(text4) => { println(text4); }
+        Err(message4) => { println(message4); }
+    }
+    return 0;
+}

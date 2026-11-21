@@ -1,0 +1,24 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+pub fn main() -> i32 {
+    i32 a = 2147483647;
+    a = a + 1;
+    println_i32(a);
+
+    i32 b = 0 - 2147483647;
+    b = b - 2;
+    println_i32(b);
+
+    i32 c = 65536;
+    c = c * 32768;
+    println_i32(c);
+
+    i64 d = 9223372036854775807;
+    d = d + 1;
+    println_i64(d);
+
+    u32 e = 4294967295;
+    e = e + 1;
+    println_u32(e);
+    return 0;
+}

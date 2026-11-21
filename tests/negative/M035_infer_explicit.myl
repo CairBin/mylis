@@ -1,0 +1,10 @@
+import { Vec } from "Vec.myl";
+
+fn empty<T>() -> Vec<T> {
+    return new Vec<T>();
+}
+
+fn main() -> i32 {
+    empty();
+    return 0;
+}

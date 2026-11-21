@@ -1,0 +1,15 @@
+enum E {
+    A(i32),
+    B,
+}
+
+fn take(E e) -> i32 {
+    match e {
+        E::A(v) => { return v; }
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    return take(E::B);
+}

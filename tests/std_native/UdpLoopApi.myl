@@ -1,0 +1,81 @@
+import { EventLoop } from "EventLoop.myl";
+import { IoHandler } from "IoHandler.myl";
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { UdpPacket } from "UdpPacket.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+class UdpHandler {
+    EventLoop loop;
+
+    pub fn init(EventLoop l) -> void {
+        this.loop = l;
+    }
+
+    pub fn onAccept(TcpListener listener) -> void {
+    }
+
+    pub fn onReadable(TcpStream stream) -> void {
+    }
+
+    pub fn onWritable(TcpStream stream) -> void {
+    }
+
+    pub fn onError(TcpStream stream, IoError error) -> void {
+        this.loop.stop();
+    }
+
+    pub fn onListenerError(TcpListener listener, IoError error) -> void {
+        this.loop.stop();
+    }
+
+    pub fn onUdpReadable(UdpSocket socket) -> void {
+        Result<UdpPacket, IoError> got = socket.recvFrom(4);
+        match got {
+            Ok(packet) => {
+                println_i64(packet.data.len() as i64);
+                println_i64(packet.data[0] as i64);
+                println_bool(Str::Contains(packet.from, "127.0.0.1"));
+            }
+            Err(e) => { println_i64(e.code as i64); }
+        }
+        this.loop.stop();
+    }
+}
+
+fn main() -> i32 {
+    Result<UdpSocket, IoError> boundA = UdpSocket::Bind("127.0.0.1:0");
+    Result<UdpSocket, IoError> boundB = UdpSocket::Bind("127.0.0.1:0");
+    match boundA {
+        Ok(a) => {
+            match boundB {
+                Ok(b) => {
+                    i64 portA = a.localPort();
+                    i64 portB = b.localPort();
+                    println_bool(portA > 0);
+                    println_bool(portB > 0);
+                    string addrA = Str::Concat("127.0.0.1:", fmt_i64(portA));
+                    b.sendText(addrA, "ping");
+
+                    EventLoop loop = new EventLoop();
+                    UdpHandler handler = new UdpHandler(loop);
+                    IoHandler ih = handler;
+                    loop.addUdp(a, ih);
+                    loop.run();
+                    loop.removeUdp(a);
+                    loop.close();
+                    b.close();
+                }
+                Err(e) => { println_i64(e.code as i64); }
+            }
+            a.close();
+        }
+        Err(e) => { println_i64(e.code as i64); }
+    }
+    println_bool(true);
+    return 0;
+}

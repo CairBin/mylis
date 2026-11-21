@@ -1,0 +1,153 @@
+// core 层：字符串工具。
+import { Ordering } from "Ordering.myl";
+import {
+    mylrt_str_cmp,
+    mylrt_str_starts_with,
+    mylrt_str_ends_with,
+    mylrt_str_index_of,
+    mylrt_str_contains,
+    mylrt_str_substring,
+    mylrt_str_trim,
+    mylrt_str_repeat,
+    mylrt_str_replace,
+    mylrt_str_char_len,
+    mylrt_str_char_index_of,
+    mylrt_str_char_substring,
+    mylrt_str_char_at,
+    mylrt_str_char_code_at,
+    mylrt_str_to_bytes,
+    mylrt_str_from_bytes
+} from "Mylrt_bind.myl";
+
+pub class Str {
+    pub static fn Concat(string left, string right) -> string { return concat(left, right); }
+    pub static fn Equals(string left, string right) -> bool { return equals(left, right); }
+    pub static fn Compare(string left, string right) -> i32 { return compare(left, right); }
+    pub static fn CompareOrdering(string left, string right) -> Ordering { return compare_ordering(left, right); }
+    pub static fn Len(string value) -> u64 { return len(value); }
+    pub static fn ByteLen(string value) -> u64 { return byte_len(value); }
+    pub static fn Bytes(string value) -> u8[] { return bytes(value); }
+    pub static fn FromBytes(u8[] data) -> string { return from_bytes(data); }
+    pub static fn IsEmpty(string value) -> bool { return is_empty(value); }
+    pub static fn StartsWith(string value, string prefix) -> bool { return starts_with(value, prefix); }
+    pub static fn EndsWith(string value, string suffix) -> bool { return ends_with(value, suffix); }
+    pub static fn Contains(string value, string needle) -> bool { return contains(value, needle); }
+    pub static fn IndexOf(string value, string needle) -> i64 { return index_of(value, needle); }
+    pub static fn Trim(string value) -> string { return trim(value); }
+    pub static fn Substring(string value, u64 start, u64 length) -> string { return substring(value, start, length); }
+    pub static fn CharAt(string value, u64 index) -> string { return char_at(value, index); }
+    pub static fn CharCodeAt(string value, u64 index) -> u32 { return char_code_at(value, index); }
+    pub static fn Repeat(string value, u64 count) -> string { return repeat(value, count); }
+    pub static fn Replace(string value, string from, string to) -> string { return replace(value, from, to); }
+}
+
+pub fn concat(string left, string right) -> string {
+    return left + right;
+}
+
+pub fn equals(string left, string right) -> bool {
+    return left == right;
+}
+
+pub fn compare(string left, string right) -> i32 {
+    unsafe {
+        return mylrt_str_cmp(left, right);
+    }
+}
+
+pub fn compare_ordering(string left, string right) -> Ordering {
+    i32 c = compare(left, right);
+    if (c < 0) {
+        return Ordering::Less;
+    }
+    if (c > 0) {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+pub fn starts_with(string value, string prefix) -> bool {
+    unsafe {
+        return mylrt_str_starts_with(value, prefix);
+    }
+}
+
+pub fn ends_with(string value, string suffix) -> bool {
+    unsafe {
+        return mylrt_str_ends_with(value, suffix);
+    }
+}
+
+pub fn contains(string value, string needle) -> bool {
+    unsafe {
+        return mylrt_str_contains(value, needle);
+    }
+}
+
+pub fn index_of(string value, string needle) -> i64 {
+    unsafe {
+        return mylrt_str_char_index_of(value, needle);
+    }
+}
+
+pub fn trim(string value) -> string {
+    unsafe {
+        return mylrt_str_trim(value);
+    }
+}
+
+pub fn substring(string value, u64 start, u64 length) -> string {
+    unsafe {
+        return mylrt_str_char_substring(value, start, length);
+    }
+}
+
+pub fn char_at(string value, u64 index) -> string {
+    unsafe {
+        return mylrt_str_char_at(value, index);
+    }
+}
+
+pub fn char_code_at(string value, u64 index) -> u32 {
+    unsafe {
+        return mylrt_str_char_code_at(value, index);
+    }
+}
+
+pub fn repeat(string value, u64 count) -> string {
+    unsafe {
+        return mylrt_str_repeat(value, count);
+    }
+}
+
+pub fn replace(string value, string from, string to) -> string {
+    unsafe {
+        return mylrt_str_replace(value, from, to);
+    }
+}
+
+pub fn len(string value) -> u64 {
+    unsafe {
+        return mylrt_str_char_len(value);
+    }
+}
+
+pub fn byte_len(string value) -> u64 {
+    return value.len();
+}
+
+pub fn bytes(string value) -> u8[] {
+    unsafe {
+        return mylrt_str_to_bytes(value);
+    }
+}
+
+pub fn from_bytes(u8[] data) -> string {
+    unsafe {
+        return mylrt_str_from_bytes(data);
+    }
+}
+
+pub fn is_empty(string value) -> bool {
+    return value.len() == 0;
+}

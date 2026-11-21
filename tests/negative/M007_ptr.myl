@@ -1,0 +1,7 @@
+fn take(i32* p) -> void {
+}
+
+fn main() -> i32 {
+    i32* raw = null;
+    return 0;
+}

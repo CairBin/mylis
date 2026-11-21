@@ -1,0 +1,52 @@
+// core 层：u64 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class U64 {
+    pub static fn CheckedAdd(u64 a, u64 b) -> Option<u64> {
+        if (a > 18446744073709551615 - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(u64 a, u64 b) -> Option<u64> {
+        if (a < b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(u64 a, u64 b) -> Option<u64> {
+        if (b != 0 && a > 18446744073709551615 / b) { return None; }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(u64 a, u64 b) -> Option<u64> {
+        if (b == 0) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(u64 a, u64 b) -> u64 {
+        return a + b;
+    }
+
+    pub static fn WrappingSub(u64 a, u64 b) -> u64 {
+        return a - b;
+    }
+
+    pub static fn WrappingMul(u64 a, u64 b) -> u64 {
+        return a * b;
+    }
+
+    pub static fn SaturatingAdd(u64 a, u64 b) -> u64 {
+        if (a > 18446744073709551615 - b) { return 18446744073709551615; }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(u64 a, u64 b) -> u64 {
+        if (a < b) { return 0; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(u64 a, u64 b) -> u64 {
+        Option<u64> r = U64::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        return 18446744073709551615;
+    }
+}

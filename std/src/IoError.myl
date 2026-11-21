@@ -1,0 +1,16 @@
+// std 层统一 I/O 错误。错误码使用 POSIX errno 的正值；native 侧返回负 errno。
+import { IoErrorKind, error_kind } from "IoErrorKind.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+pub class IoError {
+    pub IoErrorKind kind;
+    pub i32 code;
+    pub string message;
+
+    pub fn init(i32 err) -> void {
+        this.kind = error_kind(err);
+        this.code = err;
+        this.message = Str::Concat("file error ", fmt_i64(err as i64));
+    }
+}

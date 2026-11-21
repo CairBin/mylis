@@ -1,0 +1,13 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+
+pub const f64 PI = 3.14159;
+pub const i32 NEG = -2;
+pub const string TAG = "core";
+
+fn main() -> i32 {
+    println(Fmt::F64(PI));
+    println(Fmt::I32(NEG));
+    println(TAG);
+    return 0;
+}

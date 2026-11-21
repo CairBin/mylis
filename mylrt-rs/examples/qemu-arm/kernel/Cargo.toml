@@ -1,0 +1,12 @@
+[package]
+name = "mylis-qemu-arm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cortex-m-rt = "0.7"
+mylrt = { package = "mylrt-rs", path = "../../..", default-features = false, features = ["small-roots", "no-backend-gc"] }
+
+[profile.release]
+panic = "abort"
+lto = true

@@ -1,0 +1,69 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+fn describe(Result<i32, string> r) -> string {
+    match (r) {
+        Ok(v) => { return "ok {v}"; }
+        Err(e) => { return "err {e}"; }
+    }
+}
+
+fn opt_kind(Option<i32> o) -> string {
+    match (o) {
+        Some(v) => { return "some {v}"; }
+        None => { return "none"; }
+    }
+}
+
+fn grade(i32 score) -> string {
+    match (score) {
+        100 => { return "perfect"; }
+        _ => {
+            if (score >= 60) {
+                return "pass";
+            }
+            return "fail";
+        }
+    }
+}
+
+fn bool_word(bool b) -> string {
+    match (b) {
+        true => { return "yes"; }
+        false => { return "no"; }
+    }
+}
+
+fn str_word(string s) -> string {
+    match (s) {
+        "a" => { return "letter a"; }
+        "b" => { return "letter b"; }
+        _ => { return "other"; }
+    }
+}
+
+fn main() -> i32 {
+    println(describe(Ok(7)));
+    println(describe(Err("bad")));
+    println(opt_kind(Some(3)));
+    Option<i32> nothing = None;
+    println(opt_kind(nothing));
+    println(grade(100));
+    println(grade(75));
+    println(grade(30));
+    println(bool_word(true));
+    println(bool_word(false));
+    println(str_word("a"));
+    println(str_word("zzz"));
+    i32 n = 0;
+    Result<i32, string> r = Ok(1);
+    match (r) {
+        Ok(v) => {
+            n = v + 1;
+        }
+        Err(_) => {
+            n = -1;
+        }
+    }
+    println("n = {n}");
+    return 0;
+}

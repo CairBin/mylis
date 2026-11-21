@@ -1,0 +1,28 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+class Shop {
+    pub string name;
+    pub i32 stock;
+
+    fn Shop(string n, i32 s) {
+        this.name = n;
+        this.stock = s;
+    }
+
+    fn stock_up(i32 n) -> void { this.stock = this.stock + n; }
+
+    pub fn to_string() -> string { return "{this.name}/{this.stock}"; }
+
+    pub static fn sample() -> Shop {
+        Shop s = new Shop("demo", 1);
+        s.stock_up(9);
+        return s;
+    }
+}
+
+fn main() -> i32 {
+    Shop a = new Shop("tea", 3);
+    Shop b = Shop::sample();
+    println("{a} | {b}");
+    return 0;
+}

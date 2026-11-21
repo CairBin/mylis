@@ -1,0 +1,131 @@
+// std 进程接口：Run 对齐 Lua 的 os.execute（同步、捕获输出），
+// Spawn 返回轻量句柄，提供 pid/wait/kill/close；Popen/Popen2 提供单向/双向管道和原始字节。
+// 不做异步回调。
+// 子进程有独立地址空间，不共享 Mylis 堆；stdout/stderr 和退出码复制回父进程。
+// 进程/容器均不保证并发安全，由调用方自行串行化。
+import { IoError } from "IoError.myl";
+import { ProcessOutput } from "ProcessOutput.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { myrt_str_ptr, myrt_str_cstr } from "core/Mylrt_bind";
+import { mylis_process_run, mylis_process_spawn, mylis_process_popen, mylis_process_popen2, mylis_process_pid, mylis_process_wait, mylis_process_last_wait_exit_code, mylis_process_last_wait_signal, mylis_process_kill, mylis_process_close, mylis_process_last_exit_code, mylis_process_last_signal, mylis_process_last_stdout, mylis_process_last_stderr, mylis_process_free_string } from "Process_bind.myl";
+
+pub class Process {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    // 启动子进程后立即返回；子进程继承父进程的 stdin/stdout/stderr。
+    // 必须调用 wait() 回收，或 kill() 后再 wait()，否则可能留下僵尸进程。
+    pub static fn Spawn(string command) -> Result<Process, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_process_spawn(myrt_str_ptr(command));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new Process(h));
+    }
+
+    pub fn pid() -> i64 {
+        i64 value = 0;
+        unsafe {
+            value = mylis_process_pid(this.handle);
+        }
+        return value;
+    }
+
+    pub fn wait() -> Result<ProcessStatus, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_process_wait(this.handle);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        i64 code = 0;
+        i64 signal = 0;
+        unsafe {
+            code = mylis_process_last_wait_exit_code();
+            signal = mylis_process_last_wait_signal();
+        }
+        return Ok(new ProcessStatus(code, signal));
+    }
+
+    pub fn kill() -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_process_kill(this.handle);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    // 只释放已 wait 过的句柄；子进程仍在运行时返回 EBUSY（16）。
+    pub fn close() -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_process_close(this.handle);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    // 启动单向管道；mode 为 "r"（读 stdout）或 "w"（写 stdin）。
+    // 子进程 stderr 继承父进程；必须 close() 回收。
+    pub static fn Popen(string command, string mode) -> Result<ProcessPipe, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_process_popen(myrt_str_ptr(command), myrt_str_ptr(mode));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new ProcessPipe(h));
+    }
+
+    // 双向管道：同时提供子进程 stdin/stdout；stderr 继承父进程。
+    // 写入后先 closeInput() 再 readAll()，否则读会等到子进程 EOF。
+    pub static fn Popen2(string command) -> Result<ProcessPipe, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_process_popen2(myrt_str_ptr(command));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new ProcessPipe(h));
+    }
+
+    pub static fn Run(string command) -> Result<ProcessOutput, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_process_run(myrt_str_ptr(command));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        i64 code = 0;
+        i64 signal = 0;
+        string stdoutText = "";
+        string stderrText = "";
+        unsafe {
+            code = mylis_process_last_exit_code();
+            signal = mylis_process_last_signal();
+            i8* rawOut = mylis_process_last_stdout();
+            i8* rawErr = mylis_process_last_stderr();
+            stdoutText = myrt_str_cstr(rawOut);
+            stderrText = myrt_str_cstr(rawErr);
+            mylis_process_free_string(rawOut);
+            mylis_process_free_string(rawErr);
+        }
+        return Ok(new ProcessOutput(code, signal, stdoutText, stderrText));
+    }
+}

@@ -1,0 +1,31 @@
+// BTreeMap<K,V> 的显式迭代器；按 key 升序返回键值对。
+import { Ord } from "core/Ord";
+import { BTreeMap } from "BTreeMap.myl";
+import { MapEntry } from "MapEntry.myl";
+import { Vec } from "Vec.myl";
+
+pub class BTreeMapIter<K: Ord, V> {
+    Vec<K> keys;
+    Vec<V> values;
+    i64 index;
+
+    pub fn init(BTreeMap<K, V> map) -> void {
+        this.keys = map.keys();
+        this.values = map.values();
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<MapEntry<K, V>> {
+        if (this.index >= this.keys.len()) {
+            return None;
+        }
+        K key = this.keys.get(this.index);
+        V value = this.values.get(this.index);
+        this.index = this.index + 1;
+        return Some(new MapEntry<K, V>(key, value));
+    }
+}
+
+pub fn iter_btree_map<K: Ord, V>(BTreeMap<K, V> map) -> BTreeMapIter<K, V> {
+    return new BTreeMapIter<K, V>(map);
+}

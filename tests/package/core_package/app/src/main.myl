@@ -1,0 +1,12 @@
+import { Fmt, assert, fmt_i64, compare } from "core";
+import { Math } from "std/Math";
+import { println } from "std/Io";
+
+fn main() -> i32 {
+    assert(true, "core package");
+    assert(compare("a", "b") < 0, "core compare");
+    assert(Math::Floor64(1.9) == 1.0, "std floor");
+    println(Fmt::I64(42));
+    println(fmt_i64(7));
+    return 0;
+}

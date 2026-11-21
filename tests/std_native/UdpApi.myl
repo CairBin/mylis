@@ -1,0 +1,60 @@
+import { UdpSocket } from "UdpSocket.myl";
+import { UdpPacket } from "UdpPacket.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+fn main() -> i32 {
+    Result<UdpSocket, IoError> boundA = UdpSocket::Bind("127.0.0.1:0");
+    Result<UdpSocket, IoError> boundB = UdpSocket::Bind("127.0.0.1:0");
+    match boundA {
+        Ok(a) => {
+            match boundB {
+                Ok(b) => {
+                    i64 portA = a.localPort();
+                    i64 portB = b.localPort();
+                    println_bool(portA > 0);
+                    println_bool(portB > 0);
+                    string addrA = Str::Concat("127.0.0.1:", fmt_i64(portA));
+                    string addrB = Str::Concat("127.0.0.1:", fmt_i64(portB));
+
+                    Result<i64, IoError> sent = a.sendText(addrB, "ping");
+                    match sent {
+                        Ok(_) => { }
+                        Err(e1) => { println_i64(e1.code as i64); }
+                    }
+                    Result<UdpPacket, IoError> got = b.recvFrom(4);
+                    match got {
+                        Ok(packet) => {
+                            println_i64(packet.data.len() as i64);
+                            println_i64(packet.data[0] as i64);
+                            println_bool(Str::Contains(packet.from, "127.0.0.1"));
+                        }
+                        Err(e2) => { println_i64(e2.code as i64); }
+                    }
+
+                    Result<i64, IoError> sentBack = b.sendText(addrA, "pong");
+                    match sentBack {
+                        Ok(_) => { }
+                        Err(e3) => { println_i64(e3.code as i64); }
+                    }
+                    Result<u8[], IoError> gotBack = a.recv(4);
+                    match gotBack {
+                        Ok(data2) => {
+                            println_i64(data2.len() as i64);
+                            println_i64(data2[0] as i64);
+                        }
+                        Err(e4) => { println_i64(e4.code as i64); }
+                    }
+                    b.close();
+                }
+                Err(e5) => { println_i64(e5.code as i64); }
+            }
+            a.close();
+        }
+        Err(e6) => { println_i64(e6.code as i64); }
+    }
+    println_bool(true);
+    return 0;
+}

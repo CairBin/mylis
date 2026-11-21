@@ -1,0 +1,50 @@
+import { Process } from "Process.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+import { Str } from "core/Str";
+
+fn main() -> i32 {
+    Result<ProcessPipe, IoError> opened = Process::Popen2("cat");
+    match (opened) {
+        Ok(chan) => {
+            println_bool(chan.pid() > 0);
+            u8[] payload = new u8[3];
+            payload[0] = 65;
+            payload[1] = 0;
+            payload[2] = 66;
+            Result<i64, IoError> wrote = chan.write(payload);
+            match (wrote) { Ok(n1) => { println_i64(n1); } Err(e1) => { println_i64(e1.code as i64); } }
+            Result<i64, IoError> closedIn = chan.closeInput();
+            match (closedIn) { Ok(v1) => { println_i64(v1); } Err(e2) => { println_i64(e2.code as i64); } }
+            Result<u8[], IoError> read = chan.readAll();
+            match (read) {
+                Ok(data) => {
+                    println_i64(data.len() as i64);
+                    println_i64((data[0] as i32) as i64);
+                    println_i64((data[1] as i32) as i64);
+                    println_i64((data[2] as i32) as i64);
+                }
+                Err(e3) => { println_i64(e3.code as i64); }
+            }
+            Result<ProcessStatus, IoError> done = chan.close();
+            match (done) { Ok(s1) => { println_i64(s1.exitCode()); } Err(e4) => { println_i64(e4.code as i64); } }
+        }
+        Err(e5) => { println_i64(e5.code as i64); }
+    }
+
+    Result<ProcessPipe, IoError> trans = Process::Popen2("tr a-z A-Z");
+    match (trans) {
+        Ok(chan2) => {
+            chan2.write(Str::Bytes("abc"));
+            chan2.closeInput();
+            Result<u8[], IoError> data2 = chan2.readAll();
+            match (data2) { Ok(d2) => { println_i64(d2.len() as i64); println(Str::FromBytes(d2)); } Err(e6) => { println_i64(e6.code as i64); } }
+            chan2.close();
+        }
+        Err(e7) => { println_i64(e7.code as i64); }
+    }
+    return 0;
+}
+

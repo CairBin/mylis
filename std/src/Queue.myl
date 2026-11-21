@@ -1,0 +1,66 @@
+// Queue<T>：基于 Vec<T> 的先进先出队列，用一个 head 下标避免每次出队搬移。
+// 均摊 O(1)；head 过大时压缩一次，避免已出队元素长期占住数组。
+import { Vec } from "Vec.myl";
+
+pub class Queue<T> {
+    pub Vec<T> items;
+    pub i64 head;
+
+    pub fn init() -> void {
+        this.items = new Vec<T>();
+        this.head = 0;
+    }
+
+    fn compact() -> void {
+        if (this.head == 0) {
+            return;
+        }
+        Vec<T> next = new Vec<T>();
+        i64 i = this.head;
+        while (i < this.items.len()) {
+            next.push(this.items.get(i));
+            i = i + 1;
+        }
+        this.items = next;
+        this.head = 0;
+    }
+
+    pub fn enqueue(T value) -> void {
+        this.items.push(value);
+    }
+
+    pub fn dequeue() -> Option<T> {
+        if (this.isEmpty()) {
+            return None;
+        }
+        T value = this.items.get(this.head);
+        this.head = this.head + 1;
+        if (this.head >= this.items.len()) {
+            this.items.clear();
+            this.head = 0;
+        } else if (this.head >= 16 && this.head * 2 >= this.items.len()) {
+            this.compact();
+        }
+        return Some(value);
+    }
+
+    pub fn peek() -> Option<T> {
+        if (this.isEmpty()) {
+            return None;
+        }
+        return Some(this.items.get(this.head));
+    }
+
+    pub fn len() -> i64 {
+        return this.items.len() - this.head;
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.items.len() <= this.head;
+    }
+
+    pub fn clear() -> void {
+        this.items.clear();
+        this.head = 0;
+    }
+}

@@ -1,0 +1,10 @@
+interface A { fn m(i32 x) -> i32; }
+interface B { fn m(i32 x, i32 y) -> i32; }
+
+// 同名不同签名：不允许通过组合“合并”，也不允许外层重写消歧
+interface C {
+    A;
+    B;
+}
+
+fn main() -> i32 { return 0; }

@@ -1,0 +1,1 @@
+pub fn A(i32 x) -> i32 { return x + 7; }

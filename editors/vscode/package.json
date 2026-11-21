@@ -1,0 +1,61 @@
+{
+  "name": "mylis-vscode",
+  "displayName": "Mylis",
+  "description": "Mylis 语言支持：语法高亮 + 诊断 + 悬停 + 跳转定义 + 补全 + 大纲（基于 myls 语言服务器）",
+  "version": "0.1.0",
+  "publisher": "mylis",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:mylis"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mylis",
+        "aliases": [
+          "Mylis",
+          "myl"
+        ],
+        "extensions": [
+          ".myl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mylis",
+        "scopeName": "source.mylis",
+        "path": "./syntaxes/mylis.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Mylis",
+      "properties": {
+        "mylis.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "myls 路径。留空则依次查找：MYLIS_SERVER 环境变量 → 工作区 ./bin → 工作区上级 ./bin → 扩展同级 → PATH"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "mylis.restartServer",
+        "title": "Mylis: 重启语言服务器"
+      },
+      {
+        "command": "mylis.showOutput",
+        "title": "Mylis: 查看语言服务器日志"
+      }
+    ]
+  }
+}

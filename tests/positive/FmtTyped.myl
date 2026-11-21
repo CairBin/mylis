@@ -1,0 +1,19 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { FmtSpec } from "Fmt.myl";
+fn main() -> i32 {
+    FmtSpec s = new FmtSpec(6, -1, FmtSpec::ZERO);
+    println(Fmt::FormatI8((-127 - 1), s));
+    println(Fmt::FormatI16((-32767 - 1), s));
+    println(Fmt::FormatI32(-2147483647 - 1, s));
+    println(Fmt::FormatI64(-9223372036854775807 - 1, s));
+    println(Fmt::FormatU8(255, s));
+    println(Fmt::FormatU16(65535, s));
+    println(Fmt::FormatU32(4294967295, s));
+    println(Fmt::FormatU64(18446744073709551615, s));
+    println(Fmt::FormatF32(3.25, s));
+    println(Fmt::FormatF64(3.25, s));
+    println(Fmt::FormatBool(true, s));
+    println(Fmt::FormatStr("ok", new FmtSpec(6, -1, FmtSpec::LEFT)));
+    return 0;
+}

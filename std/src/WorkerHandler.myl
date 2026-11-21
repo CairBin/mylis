@@ -1,0 +1,4 @@
+// Worker 侧请求处理接口；WorkerServer 每收到一行调用一次。
+pub interface WorkerHandler {
+    fn handle(string request) -> string;
+}

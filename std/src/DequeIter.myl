@@ -1,0 +1,26 @@
+// Deque<T> 的显式迭代器；构造时做一次快照，迭代期间不受后续修改影响。
+import { Deque } from "Deque.myl";
+import { Vec } from "Vec.myl";
+
+pub class DequeIter<T> {
+    Vec<T> values;
+    i64 index;
+
+    pub fn init(Deque<T> deque) -> void {
+        this.values = deque.toVec();
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<T> {
+        if (this.index >= this.values.len()) {
+            return None;
+        }
+        T value = this.values.get(this.index);
+        this.index = this.index + 1;
+        return Some(value);
+    }
+}
+
+pub fn iter_deque<T>(Deque<T> deque) -> DequeIter<T> {
+    return new DequeIter<T>(deque);
+}

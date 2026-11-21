@@ -1,0 +1,208 @@
+// 单线程 EventLoop：事件后端等待就绪 -> Mylis 主线程分发 handler。
+// Linux 使用 epoll，其他 POSIX 使用 poll 后备；Rust 后端不执行 Mylis 回调。
+import { IoHandler } from "IoHandler.myl";
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { IoError } from "IoError.myl";
+import { mylis_event_new, mylis_event_add, mylis_event_modify, mylis_event_remove, mylis_event_wait, mylis_event_close } from "Event_bind.myl";
+
+class EventEntry {
+    i64 handle;
+    i32 kind;
+    i32 fd;
+    IoHandler handler;
+
+    pub fn init(i64 h, i32 k, i32 d, IoHandler hd) -> void {
+        this.handle = h;
+        this.kind = k;
+        this.fd = d;
+        this.handler = hd;
+    }
+}
+
+pub class EventLoop {
+    EventEntry[] entries;
+    i64 eventHandle;
+    i32 count;
+    i32 capacity;
+    bool stopped;
+
+    pub fn init() -> void {
+        this.capacity = 8;
+        this.entries = new EventEntry[this.capacity];
+        this.count = 0;
+        this.stopped = false;
+        unsafe {
+            this.eventHandle = mylis_event_new();
+        }
+    }
+
+    fn grow() -> void {
+        this.capacity = this.capacity * 2;
+        EventEntry[] ne = new EventEntry[this.capacity];
+        i32 i = 0;
+        while (i < this.count) {
+            ne[i] = this.entries[i];
+            i = i + 1;
+        }
+        this.entries = ne;
+    }
+
+    fn findHandle(i64 handle) -> i32 {
+        i32 i = 0;
+        while (i < this.count) {
+            if (this.entries[i].handle == handle) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn findFd(i32 fd) -> i32 {
+        i32 i = 0;
+        while (i < this.count) {
+            if (this.entries[i].fd == fd) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn addEntry(i64 handle, i32 kind, i32 fd, IoHandler handler) -> void {
+        if (this.count >= this.capacity) {
+            this.grow();
+        }
+        i32 i = this.count;
+        this.entries[i] = new EventEntry(handle, kind, fd, handler);
+        this.count = this.count + 1;
+        unsafe {
+            mylis_event_add(this.eventHandle, fd);
+        }
+    }
+
+    fn removeHandle(i64 handle) -> void {
+        i32 idx = this.findHandle(handle);
+        if (idx < 0) {
+            return;
+        }
+        i32 fd = this.entries[idx].fd;
+        unsafe {
+            mylis_event_remove(this.eventHandle, fd);
+        }
+        i32 j = idx;
+        while (j + 1 < this.count) {
+            this.entries[j] = this.entries[j + 1];
+            j = j + 1;
+        }
+        this.count = this.count - 1;
+    }
+
+    pub fn add(TcpStream stream, IoHandler handler) -> void {
+        stream.setNonblocking(true);
+        this.addEntry(stream.nativeHandle(), 1, stream.nativeFd(), handler);
+    }
+
+    pub fn addListener(TcpListener listener, IoHandler handler) -> void {
+        listener.setNonblocking(true);
+        this.addEntry(listener.nativeHandle(), 2, listener.nativeFd(), handler);
+    }
+
+    pub fn addUdp(UdpSocket socket, IoHandler handler) -> void {
+        socket.setNonblocking(true);
+        this.addEntry(socket.nativeHandle(), 3, socket.nativeFd(), handler);
+    }
+
+    pub fn setWriteInterest(TcpStream stream, bool enabled) -> void {
+        i32 idx = this.findHandle(stream.nativeHandle());
+        if (idx < 0) {
+            return;
+        }
+        i32 flag = 0;
+        if (enabled) {
+            flag = 1;
+        }
+        unsafe {
+            mylis_event_modify(this.eventHandle, this.entries[idx].fd, flag);
+        }
+    }
+
+    pub fn remove(TcpStream stream) -> void {
+        this.removeHandle(stream.nativeHandle());
+    }
+
+    pub fn removeListener(TcpListener listener) -> void {
+        this.removeHandle(listener.nativeHandle());
+    }
+
+    pub fn removeUdp(UdpSocket socket) -> void {
+        this.removeHandle(socket.nativeHandle());
+    }
+
+    pub fn run() -> void {
+        if (this.eventHandle < 0) {
+            this.stopped = true;
+            return;
+        }
+        this.stopped = false;
+        while (!this.stopped && this.count > 0) {
+            i32 n = this.count;
+            i32[] fds = new i32[n];
+            i32[] revents = new i32[n];
+            i32 rc = 0;
+            unsafe {
+                rc = mylis_event_wait(this.eventHandle, 100, fds, revents, n);
+            }
+            if (rc < 0) {
+                this.stopped = true;
+                break;
+            }
+            i32 i = 0;
+            while (i < rc) {
+                i32 idx = this.findFd(fds[i]);
+                if (idx >= 0) {
+                    i32 mask = revents[i];
+                    if ((mask & 1) != 0) {
+                        if (this.entries[idx].kind == 1) {
+                            this.entries[idx].handler.onReadable(new TcpStream(this.entries[idx].handle));
+                        } else if (this.entries[idx].kind == 3) {
+                            this.entries[idx].handler.onUdpReadable(new UdpSocket(this.entries[idx].handle));
+                        } else {
+                            this.entries[idx].handler.onAccept(new TcpListener(this.entries[idx].handle));
+                        }
+                    }
+                    if ((mask & 4) != 0) {
+                        if (this.entries[idx].kind == 1) {
+                            this.entries[idx].handler.onWritable(new TcpStream(this.entries[idx].handle));
+                        }
+                    }
+                    if ((mask & 24) != 0 || (mask & 32) != 0) {
+                        if (this.entries[idx].kind == 1) {
+                            this.entries[idx].handler.onError(new TcpStream(this.entries[idx].handle), new IoError(5));
+                        } else {
+                            this.entries[idx].handler.onListenerError(new TcpListener(this.entries[idx].handle), new IoError(5));
+                        }
+                    }
+                }
+                i = i + 1;
+            }
+        }
+    }
+
+    pub fn stop() -> void {
+        this.stopped = true;
+    }
+
+    pub fn close() -> void {
+        this.stopped = true;
+        if (this.eventHandle > 0) {
+            unsafe {
+                mylis_event_close(this.eventHandle);
+            }
+        }
+        this.eventHandle = -1;
+        this.count = 0;
+    }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "mylgc"
+version = "0.1.0"
+edition = "2021"
+description = "Mylis 自研 GC（保守 mark-sweep，C ABI）"
+license = "MIT"
+
+[lib]
+name = "mylgc"
+crate-type = ["staticlib"]
+
+[profile.release]
+opt-level = "z"
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = "debuginfo"

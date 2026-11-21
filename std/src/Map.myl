@@ -1,0 +1,147 @@
+// Map<K, V>：基于线性查找的泛型键值表。
+// 第一版不依赖 hash，只要求 K: Eq；适合小到中等规模数据。
+// 查找/插入/删除均为 O(n)，grow 时按 2 倍扩容。
+import { Eq } from "core/Eq";
+import { Vec } from "Vec.myl";
+
+pub class Map<K: Eq, V> {
+    pub K[] keys;
+    pub V[] values;
+    pub i64 count;
+    pub i64 cap;
+
+    pub fn init() -> void {
+        this.keys = new K[0];
+        this.values = new V[0];
+        this.count = 0;
+        this.cap = 0;
+    }
+
+    fn find(K key) -> i64 {
+        i64 i = 0;
+        while (i < this.count) {
+            if (this.keys[i].equals(key)) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn grow(i64 need) -> void {
+        if (need <= this.cap) {
+            return;
+        }
+        i64 ncap = this.cap;
+        if (ncap < 4) {
+            ncap = 4;
+        }
+        while (ncap < need) {
+            ncap = ncap * 2;
+        }
+        K[] nk = new K[ncap];
+        V[] nv = new V[ncap];
+        i64 i = 0;
+        while (i < this.count) {
+            nk[i] = this.keys[i];
+            nv[i] = this.values[i];
+            i = i + 1;
+        }
+        this.keys = nk;
+        this.values = nv;
+        this.cap = ncap;
+    }
+
+    pub fn set(K key, V value) -> void {
+        i64 at = this.find(key);
+        if (at >= 0) {
+            this.values[at] = value;
+            return;
+        }
+        this.grow(this.count + 1);
+        this.keys[this.count] = key;
+        this.values[this.count] = value;
+        this.count = this.count + 1;
+    }
+
+    pub fn insert(K key, V value) -> bool {
+        i64 at = this.find(key);
+        if (at >= 0) {
+            this.values[at] = value;
+            return false;
+        }
+        this.grow(this.count + 1);
+        this.keys[this.count] = key;
+        this.values[this.count] = value;
+        this.count = this.count + 1;
+        return true;
+    }
+
+    pub fn get(K key) -> Option<V> {
+        i64 at = this.find(key);
+        if (at < 0) {
+            return None;
+        }
+        return Some(this.values[at]);
+    }
+
+    pub fn containsKey(K key) -> bool {
+        return this.find(key) >= 0;
+    }
+
+    pub fn getOr(K key, V fallback) -> V {
+        i64 at = this.find(key);
+        if (at < 0) {
+            return fallback;
+        }
+        return this.values[at];
+    }
+
+    pub fn remove(K key) -> Option<V> {
+        i64 at = this.find(key);
+        if (at < 0) {
+            return None;
+        }
+        V value = this.values[at];
+        i64 i = at;
+        while (i < this.count - 1) {
+            this.keys[i] = this.keys[i + 1];
+            this.values[i] = this.values[i + 1];
+            i = i + 1;
+        }
+        this.count = this.count - 1;
+        return Some(value);
+    }
+
+    pub fn keys() -> Vec<K> {
+        Vec<K> out = new Vec<K>();
+        i64 i = 0;
+        while (i < this.count) {
+            out.push(this.keys[i]);
+            i = i + 1;
+        }
+        return out;
+    }
+
+    pub fn values() -> Vec<V> {
+        Vec<V> out = new Vec<V>();
+        i64 i = 0;
+        while (i < this.count) {
+            out.push(this.values[i]);
+            i = i + 1;
+        }
+        return out;
+    }
+
+    pub fn clear() -> void {
+        this.count = 0;
+    }
+
+    pub fn len() -> i64 {
+        return this.count;
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.count == 0;
+    }
+}

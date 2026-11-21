@@ -1,0 +1,5 @@
+point = (2, 5)
+via interface = #mylis
+arr = [10, 20, 30]
+literal braces: {ok} and 2 + 5 = 7
+mixed (2, 5) {} 3 1.25 false str

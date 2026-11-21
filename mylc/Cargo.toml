@@ -1,0 +1,23 @@
+[package]
+name = "mylc"
+version = "0.1.0"
+edition = "2021"
+description = "Mylis 语言编译器（Rust 实现，C 后端 + Boehm GC）"
+license = "MIT"
+
+[lib]
+name = "mylc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mylc"
+path = "src/main.rs"
+
+[[bin]]
+name = "myls"
+path = "src/lsp.rs"
+
+[profile.release]
+opt-level = 2
+lto = true
+panic = "abort"

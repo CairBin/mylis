@@ -1,0 +1,45 @@
+// std 时间：wall clock、单调时钟与 sleep；实际实现由 hosted native 后端提供。
+import { mylis_time_now_millis, mylis_time_now_nanos, mylis_time_monotonic_millis, mylis_time_now_seconds, mylis_time_sleep_millis } from "Time_bind.myl";
+
+pub class Time {
+    // Unix 纪元以来的毫秒数。
+    pub static fn NowMillis() -> i64 {
+        i64 value = 0;
+        unsafe {
+            value = mylis_time_now_millis();
+        }
+        return value;
+    }
+
+    // Unix 纪元以来的纳秒数（当前平台 i64 足够到 2262 年）。
+    pub static fn NowNanos() -> i64 {
+        i64 value = 0;
+        unsafe {
+            value = mylis_time_now_nanos();
+        }
+        return value;
+    }
+
+    // 进程启动/首次调用以来的单调毫秒数，用于测量耗时。
+    pub static fn MonotonicMillis() -> i64 {
+        i64 value = 0;
+        unsafe {
+            value = mylis_time_monotonic_millis();
+        }
+        return value;
+    }
+
+    pub static fn NowSeconds() -> f64 {
+        f64 value = 0.0;
+        unsafe {
+            value = mylis_time_now_seconds();
+        }
+        return value;
+    }
+
+    pub static fn SleepMillis(i64 milliseconds) -> void {
+        unsafe {
+            mylis_time_sleep_millis(milliseconds);
+        }
+    }
+}

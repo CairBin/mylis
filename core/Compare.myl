@@ -1,0 +1,16 @@
+// core 层：基于 Ord 的通用比较工具，不依赖 std / Vec。
+import { Ord } from "Ord.myl";
+
+pub fn min<T: Ord>(T a, T b) -> T {
+    if (a.compare(b) < 0) {
+        return a;
+    }
+    return b;
+}
+
+pub fn max<T: Ord>(T a, T b) -> T {
+    if (a.compare(b) > 0) {
+        return a;
+    }
+    return b;
+}

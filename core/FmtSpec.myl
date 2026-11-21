@@ -1,0 +1,26 @@
+// core 层：统一格式参数。
+// 统一格式参数：宽度 / 小数位 / 对齐与符号标志。
+// flags 位：1=左对齐，2=正号，4=零填充，8=正数前空格。
+pub class FmtSpec {
+    pub i32 width;
+    pub i32 precision;
+    pub i32 flags;
+
+    pub fn init(i32 width, i32 precision, i32 flags) {
+        this.width = width;
+        this.precision = precision;
+        this.flags = flags;
+    }
+
+    pub static const i32 LEFT = 1;
+    pub static const i32 PLUS = 2;
+    pub static const i32 ZERO = 4;
+    pub static const i32 SPACE = 8;
+
+    pub static fn Default() -> FmtSpec { return new FmtSpec(0, -1, 0); }
+    pub static fn Width(i32 width) -> FmtSpec { return new FmtSpec(width, -1, 0); }
+    pub static fn Left(i32 width) -> FmtSpec { return new FmtSpec(width, -1, FmtSpec::LEFT); }
+    pub static fn Zero(i32 width) -> FmtSpec { return new FmtSpec(width, -1, FmtSpec::ZERO); }
+    pub static fn Plus(i32 width) -> FmtSpec { return new FmtSpec(width, -1, FmtSpec::PLUS); }
+}
+

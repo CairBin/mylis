@@ -1,0 +1,93 @@
+// std 层：数学工具（安全封装）。
+// 依赖 libm；core 不再直接绑定 C 标准库。
+import { sqrt, pow, fabs, floor, ceil, round, trunc, fmod } from "Math_bind.myl";
+
+pub class Math {
+    pub static const f64 PI = 3.141592653589793;
+    pub static const f64 E = 2.718281828459045;
+    pub static fn Sqrt64(f64 value) -> f64 { return sqrt64(value); }
+    pub static fn Pow64(f64 base, f64 exponent) -> f64 { return pow64(base, exponent); }
+    pub static fn Abs64(f64 value) -> f64 { return abs64(value); }
+    pub static fn Min64(f64 left, f64 right) -> f64 { return min64(left, right); }
+    pub static fn Max64(f64 left, f64 right) -> f64 { return max64(left, right); }
+    pub static fn Clamp64(f64 value, f64 low, f64 high) -> f64 { return clamp64(value, low, high); }
+    pub static fn Floor64(f64 value) -> f64 { return floor64(value); }
+    pub static fn Ceil64(f64 value) -> f64 { return ceil64(value); }
+    pub static fn Round64(f64 value) -> f64 { return round64(value); }
+    pub static fn Trunc64(f64 value) -> f64 { return trunc64(value); }
+    pub static fn Fmod64(f64 left, f64 right) -> f64 { return fmod64(left, right); }
+    pub static fn Sign64(f64 value) -> f64 { return sign64(value); }
+}
+
+pub fn sqrt64(f64 value) -> f64 {
+    unsafe {
+        return sqrt(value);
+    }
+}
+
+pub fn pow64(f64 base, f64 exponent) -> f64 {
+    unsafe {
+        return pow(base, exponent);
+    }
+}
+
+pub fn abs64(f64 value) -> f64 {
+    unsafe {
+        return fabs(value);
+    }
+}
+
+pub fn min64(f64 left, f64 right) -> f64 {
+    if (left < right) {
+        return left;
+    }
+    return right;
+}
+
+pub fn max64(f64 left, f64 right) -> f64 {
+    if (left > right) {
+        return left;
+    }
+    return right;
+}
+
+pub fn clamp64(f64 value, f64 low, f64 high) -> f64 {
+    if (value < low) {
+        return low;
+    }
+    if (value > high) {
+        return high;
+    }
+    return value;
+}
+
+
+pub fn floor64(f64 value) -> f64 {
+    unsafe { return floor(value); }
+}
+
+pub fn ceil64(f64 value) -> f64 {
+    unsafe { return ceil(value); }
+}
+
+pub fn round64(f64 value) -> f64 {
+    unsafe { return round(value); }
+}
+
+pub fn trunc64(f64 value) -> f64 {
+    unsafe { return trunc(value); }
+}
+
+pub fn fmod64(f64 left, f64 right) -> f64 {
+    unsafe { return fmod(left, right); }
+}
+
+pub fn sign64(f64 value) -> f64 {
+    if (value < 0.0) {
+        return -1.0;
+    }
+    if (value > 0.0) {
+        return 1.0;
+    }
+    return 0.0;
+}

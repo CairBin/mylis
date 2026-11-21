@@ -1,0 +1,75 @@
+// std 标准输入/进程接口：阻塞 stdin、命令行参数、环境变量和进程退出。
+// 本模块单独放在 Stdio 中，避免所有使用 Io 输出 API 的程序都被迫链接 io 原生库。
+import { Vec } from "Vec.myl";
+import { myrt_str_ptr, myrt_str_cstr } from "core/Mylrt_bind";
+import { mylis_io_read_line, mylis_io_read_all, mylis_io_free_string, mylis_io_last_status, mylis_io_arg_count, mylis_io_arg, mylis_io_env_exists, mylis_io_env_get, mylis_io_exit } from "Stdio_bind.myl";
+
+pub class Stdio {
+    // 读取一行；EOF 或读错误返回 None。行尾的 \n / \r\n 会被去掉。
+    pub static fn ReadLine() -> Option<string> {
+        unsafe {
+            i8* raw = mylis_io_read_line();
+            i64 status = mylis_io_last_status();
+            string text = myrt_str_cstr(raw);
+            mylis_io_free_string(raw);
+            if (status <= 0) {
+                return None;
+            }
+            return Some(text);
+        }
+    }
+
+    // 读取 stdin 剩余内容；EOF 返回空串，读错误返回 None。
+    pub static fn ReadAll() -> Option<string> {
+        unsafe {
+            i8* raw = mylis_io_read_all();
+            i64 status = mylis_io_last_status();
+            string text = myrt_str_cstr(raw);
+            mylis_io_free_string(raw);
+            if (status < 0) {
+                return None;
+            }
+            return Some(text);
+        }
+    }
+
+    // 命令行参数，包含 argv[0]（程序名）。
+    pub static fn Args() -> Vec<string> {
+        Vec<string> out = new Vec<string>();
+        i64 count = 0;
+        unsafe {
+            count = mylis_io_arg_count();
+        }
+        i64 i = 0;
+        while (i < count) {
+            unsafe {
+                i8* raw = mylis_io_arg(i);
+                string text = myrt_str_cstr(raw);
+                mylis_io_free_string(raw);
+                out.push(text);
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    // 环境变量；不存在返回 None（空值仍返回 Some("")）。
+    pub static fn Env(string key) -> Option<string> {
+        unsafe {
+            i64 exists = mylis_io_env_exists(myrt_str_ptr(key));
+            if (exists != 1) {
+                return None;
+            }
+            i8* raw = mylis_io_env_get(myrt_str_ptr(key));
+            string text = myrt_str_cstr(raw);
+            mylis_io_free_string(raw);
+            return Some(text);
+        }
+    }
+
+    pub static fn Exit(i32 code) -> void {
+        unsafe {
+            mylis_io_exit(code);
+        }
+    }
+}

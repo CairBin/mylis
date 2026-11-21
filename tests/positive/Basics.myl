@@ -1,0 +1,62 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+pub class Basics {
+}
+
+fn fib(i32 n) -> i32 {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn gcd(i32 a, i32 b) -> i32 {
+    while (b != 0) {
+        i32 t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+pub fn main() -> i32 {
+    i32 sum = 0;
+    for (i32 i = 1; i <= 10; i = i + 1) {
+        if (i % 2 == 0) {
+            sum = sum + i;
+        } else {
+            sum = sum + i * 2;
+        }
+    }
+    println_i32(sum);
+
+    i64 big = 9000000000;
+    println_i64(big);
+
+    f64 x = 3.5;
+    println_f64(x * 2.0);
+
+    bool flag = true && !false;
+    println_bool(flag);
+
+    string s = "abc" + "def";
+    println(s);
+    println_u64(s.len());
+
+    println_i32(fib(10));
+    println_i32(gcd(48, 18));
+
+    i32 n = 5;
+    i32 f = 1;
+    while (n > 1) {
+        f = f * n;
+        n = n - 1;
+    }
+    println_i32(f);
+
+    u8 b = 200;
+    println_u64(b as u64);
+
+    println_bool(s == "abcdef");
+    return 0;
+}

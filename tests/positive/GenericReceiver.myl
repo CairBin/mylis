@@ -1,0 +1,27 @@
+import { println_i64 } from "Io.myl";
+import { Vec } from "Vec.myl";
+
+class Box<T> {
+    pub T v;
+    pub fn init(T x) -> void { this.v = x; }
+    pub fn get() -> T { return this.v; }
+}
+
+fn unbox<T>(Box<T> b) -> T {
+    return b.get();
+}
+
+fn first<T>(Vec<T> v) -> T {
+    return v.get(0);
+}
+
+fn main() -> i32 {
+    Box<i64> b = new Box(42);
+    Vec<i64> v = new Vec();
+    v.push(5);
+    i64 x = unbox(b);
+    i64 y = first(v);
+    println_i64(x);
+    println_i64(y);
+    return 0;
+}

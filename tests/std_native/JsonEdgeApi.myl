@@ -1,0 +1,48 @@
+import { Json } from "Json.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    string text = "{{\"u\":\"\\u4f60\\u597d\",\"nested\":[{{\"x\":2}},null]}}";
+    Result<Json, string> parsed = Json::Parse(text);
+    match parsed {
+        Ok(root) => {
+            Option<Json> uNode = root.get("u");
+            match uNode {
+                Some(uValue) => {
+                    Option<string> uText = uValue.asString();
+                    match uText { Some(s) => { println(s); } None => { println("no-u"); } }
+                }
+                None => { println("no-u"); }
+            }
+            Option<Json> nested = root.get("nested");
+            match nested {
+                Some(arr) => {
+                    Option<Json> first = arr.at(0);
+                    match first {
+                        Some(firstObj) => {
+                            Option<Json> x = firstObj.get("x");
+                            match x {
+                                Some(xValue) => {
+                                    Option<i64> n = xValue.asInt();
+                                    match n { Some(v) => { println_i64(v); } None => { println_i64(-1); } }
+                                }
+                                None => { println_i64(-1); }
+                            }
+                        }
+                        None => { println_i64(-1); }
+                    }
+                    Option<Json> second = arr.at(1);
+                    match second {
+                        Some(secondValue) => { println_bool(secondValue.isNull()); }
+                        None => { println_bool(false); }
+                    }
+                }
+                None => { println("no-nested"); }
+            }
+            string encoded = Json::Stringify(root);
+            println(encoded);
+        }
+        Err(message) => { println(message); }
+    }
+    return 0;
+}

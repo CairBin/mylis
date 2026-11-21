@@ -1,0 +1,30 @@
+import { Io, Fmt, Str } from "std/Io";
+import { Math } from "std/Math";
+import { Map } from "std/Map";
+import { Set } from "std/Set";
+
+fn main() -> i32 {
+    Io::PrintlnI32(7);
+    Io::Println(Fmt::I64(42));
+    Io::Println(Str::Concat("a", "b"));
+    Io::Println(Fmt::F64(Math::Sqrt64(9.0)));
+
+    Map<string, i64> map = new Map<string, i64>();
+    map.set("k", 5);
+    Io::PrintlnI64(map.len());
+    Set<i64> set = new Set<i64>();
+    set.add(7);
+    Io::PrintlnI64(set.len());
+
+    Set<i64> other = new Set<i64>();
+    other.add(7);
+    other.add(8);
+    Set<i64> uni = set.union(other);
+    Io::PrintlnI64(uni.len());
+    Io::PrintlnBool(uni.contains(8));
+    Set<i64> inter = set.intersection(other);
+    Io::PrintlnI64(inter.len());
+    Set<i64> diff = set.difference(other);
+    Io::PrintlnI64(diff.len());
+    return 0;
+}

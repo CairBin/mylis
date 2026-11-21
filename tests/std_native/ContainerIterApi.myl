@@ -1,0 +1,58 @@
+import { Map } from "Map.myl";
+import { Set } from "Set.myl";
+import { Queue } from "Queue.myl";
+import { Deque } from "Deque.myl";
+import { MapEntry } from "MapEntry.myl";
+import { MapIter, iter_map } from "MapIter.myl";
+import { SetIter, iter_set } from "SetIter.myl";
+import { QueueIter, iter_queue } from "QueueIter.myl";
+import { DequeIter, iter_deque } from "DequeIter.myl";
+import { Iterator } from "Iterator.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Map<string, i64> map = new Map<string, i64>();
+    map.set("a", 1);
+    map.set("b", 2);
+    MapIter<string, i64> mapIt = iter_map(map);
+    while (true) {
+        match (mapIt.next()) {
+            Some(entry) => { println_i64(entry.getValue()); }
+            None => { break; }
+        }
+    }
+
+    Set<i64> set = new Set<i64>();
+    set.add(7);
+    set.add(8);
+    SetIter<i64> setIt = iter_set(set);
+    while (true) {
+        match (setIt.next()) {
+            Some(value) => { println_i64(value); }
+            None => { break; }
+        }
+    }
+
+    Queue<i64> queue = new Queue<i64>();
+    queue.enqueue(4);
+    queue.enqueue(5);
+    QueueIter<i64> queueIt = iter_queue(queue);
+    while (true) {
+        match (queueIt.next()) {
+            Some(value) => { println_i64(value); }
+            None => { break; }
+        }
+    }
+
+    Deque<i64> deque = new Deque<i64>();
+    deque.pushBack(6);
+    deque.pushFront(3);
+    DequeIter<i64> dequeIt = iter_deque(deque);
+    while (true) {
+        match (dequeIt.next()) {
+            Some(value) => { println_i64(value); }
+            None => { break; }
+        }
+    }
+    return 0;
+}

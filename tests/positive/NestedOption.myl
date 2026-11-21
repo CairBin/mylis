@@ -1,0 +1,15 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+// 嵌套 Option/Result：类型名必须区分层级，内层结构先声明。
+fn main() -> i32 {
+    Option<Option<i32>> a = Some(Some(1));
+    println_bool(a.is_some());
+    println_i32(a.unwrap().unwrap());
+
+    Result<Option<i32>, string> r = Ok(Some(3));
+    println_i32(r.unwrap().unwrap());
+
+    Option<Result<i32, string>> o = Some(Ok(5));
+    println_i32(o.unwrap().unwrap());
+    return 0;
+}

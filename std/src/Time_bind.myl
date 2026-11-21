@@ -1,0 +1,14 @@
+@header("mylis_time.h")
+pub unsafe fn mylis_time_now_millis() -> i64;
+
+@header("mylis_time.h")
+pub unsafe fn mylis_time_now_nanos() -> i64;
+
+@header("mylis_time.h")
+pub unsafe fn mylis_time_monotonic_millis() -> i64;
+
+@header("mylis_time.h")
+pub unsafe fn mylis_time_now_seconds() -> f64;
+
+@header("mylis_time.h")
+pub unsafe fn mylis_time_sleep_millis(i64 milliseconds) -> void;

@@ -1,0 +1,45 @@
+import { Vec } from "Vec.myl";
+import { sort, extend } from "Algorithms.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Vec<i64> values = new Vec<i64>();
+    values.push(3);
+    values.push(1);
+    values.push(2);
+
+    values.reverse();
+    println_i64(values.get(0));
+    println_i64(values.get(1));
+    println_i64(values.get(2));
+
+    values.swap(0, 2);
+    println_i64(values.get(0));
+    println_i64(values.get(1));
+    println_i64(values.get(2));
+
+    sort<i64>(values);
+    println_i64(values.get(0));
+    println_i64(values.get(1));
+    println_i64(values.get(2));
+
+    values.resize(5, 7);
+    println_i64(values.len());
+    println_i64(values.get(3));
+    println_i64(values.get(4));
+
+    values.truncate(2);
+    println_i64(values.len());
+    println_i64(values.get(1));
+
+    Vec<i64> tail = new Vec<i64>();
+    tail.push(4);
+    tail.push(5);
+    extend<i64>(values, tail);
+    println_i64(values.len());
+    println_i64(values.get(0));
+    println_i64(values.get(1));
+    println_i64(values.get(2));
+    println_i64(values.get(3));
+    return 0;
+}

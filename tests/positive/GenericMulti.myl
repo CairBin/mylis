@@ -1,0 +1,73 @@
+import { println, println_i64, println_bool } from "Io.myl";
+
+class Pair<A, B> {
+    pub A left;
+    pub B right;
+
+    pub fn init(A a, B b) -> void {
+        this.left = a;
+        this.right = b;
+    }
+
+    pub fn first() -> A {
+        return this.left;
+    }
+
+    pub fn second() -> B {
+        return this.right;
+    }
+
+    pub fn swap() -> Pair<B, A> {
+        return new Pair<B, A>(this.right, this.left);
+    }
+}
+
+interface PairView<A, B> {
+    fn first() -> A;
+    fn second() -> B;
+}
+
+enum Either<A, B> {
+    Left(A),
+    Right(B),
+}
+
+fn mkPair<A, B>(A a, B b) -> Pair<A, B> {
+    return new Pair<A, B>(a, b);
+}
+
+fn main() -> i32 {
+    Pair<i64, string> p = mkPair<i64, string>(7, "x");
+    println_i64(p.left);
+    println(p.right);
+    println_i64(p.first());
+    println(p.second());
+
+    Pair<string, i64> q = p.swap();
+    println(q.first());
+    println_i64(q.second());
+
+    Pair<Pair<i64, string>, bool> nested = new Pair<Pair<i64, string>, bool>(p, true);
+    println_i64(nested.first().first());
+    println_bool(nested.second());
+
+    Pair<bool, Pair<i64, string>> swapped = nested.swap();
+    println_bool(swapped.first());
+    println_i64(swapped.second().first());
+
+    PairView<i64, string> view = p;
+    println_i64(view.first());
+    println(view.second());
+
+    Either<i64, string> left = Either<i64, string>::Left(9);
+    match (left) {
+        Either::Left(x1) => { println_i64(x1); }
+        Either::Right(y1) => { println(y1); }
+    }
+    Either<i64, string> right = Either<i64, string>::Right("r");
+    match (right) {
+        Either::Left(x2) => { println_i64(x2); }
+        Either::Right(y2) => { println(y2); }
+    }
+    return 0;
+}

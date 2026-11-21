@@ -1,0 +1,141 @@
+// std UDP socket：第一版阻塞收发，不做 async/await。
+import { IoError } from "IoError.myl";
+import { UdpPacket } from "UdpPacket.myl";
+import { Str } from "core/Str";
+import { myrt_str_ptr } from "core/Mylrt_bind";
+import { mylis_udp_bind, mylis_udp_port, mylis_udp_send, mylis_udp_recv, mylis_udp_recv_from, mylis_udp_set_nonblocking, mylis_udp_fd, mylis_udp_close } from "Udp_bind.myl";
+
+pub class UdpSocket {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    pub static fn Bind(string address) -> Result<UdpSocket, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_udp_bind(myrt_str_ptr(address));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new UdpSocket(h));
+    }
+
+    pub fn localPort() -> i64 {
+        i64 port = 0;
+        unsafe {
+            port = mylis_udp_port(this.handle);
+        }
+        return port;
+    }
+
+    pub fn sendTo(string address, u8[] data) -> Result<i64, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_udp_send(this.handle, myrt_str_ptr(address), data, 0, data.len() as i64);
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n);
+    }
+
+    pub fn sendText(string address, string text) -> Result<i64, IoError> {
+        u8[] data = Str::Bytes(text);
+        return this.sendTo(address, data);
+    }
+
+    pub fn recv(i64 maxBytes) -> Result<u8[], IoError> {
+        if (maxBytes <= 0) {
+            return Err(new IoError(22));
+        }
+        u8[] data = new u8[maxBytes];
+        i64 got = 0;
+        unsafe {
+            got = mylis_udp_recv(this.handle, data, 0, maxBytes);
+        }
+        if (got < 0) {
+            return Err(new IoError((-got) as i32));
+        }
+        if (got == 0) {
+            return Ok(new u8[0]);
+        }
+        if (got < maxBytes) {
+            u8[] trimmed = new u8[got];
+            i64 i = 0;
+            while (i < got) {
+                trimmed[i] = data[i];
+                i = i + 1;
+            }
+            return Ok(trimmed);
+        }
+        return Ok(data);
+    }
+
+    pub fn setNonblocking(bool enabled) -> Result<i64, IoError> {
+        i64 rc = 0;
+        i32 flag = 0;
+        if (enabled) {
+            flag = 1;
+        }
+        unsafe {
+            rc = mylis_udp_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn nativeHandle() -> i64 {
+        return this.handle;
+    }
+
+    pub fn nativeFd() -> i32 {
+        i32 fd = -1;
+        unsafe {
+            fd = mylis_udp_fd(this.handle);
+        }
+        return fd;
+    }
+
+    pub fn recvFrom(i64 maxBytes) -> Result<UdpPacket, IoError> {
+        if (maxBytes <= 0) {
+            return Err(new IoError(22));
+        }
+        u8[] data = new u8[maxBytes];
+        u8[] fromBytes = new u8[64];
+        i64[] fromMeta = new i64[1];
+        fromMeta[0] = 0;
+        i64 got = 0;
+        unsafe {
+            got = mylis_udp_recv_from(this.handle, data, 0, maxBytes, fromBytes, fromMeta);
+        }
+        if (got < 0) {
+            return Err(new IoError((-got) as i32));
+        }
+        i64 fromLen = fromMeta[0];
+        u8[] trimmedFrom = new u8[fromLen];
+        i64 i = 0;
+        while (i < fromLen) {
+            trimmedFrom[i] = fromBytes[i];
+            i = i + 1;
+        }
+        u8[] payload = new u8[got];
+        i = 0;
+        while (i < got) {
+            payload[i] = data[i];
+            i = i + 1;
+        }
+        return Ok(new UdpPacket(payload, Str::FromBytes(trimmedFrom)));
+    }
+
+    pub fn close() -> void {
+        unsafe {
+            mylis_udp_close(this.handle);
+        }
+        this.handle = -1;
+    }
+}

@@ -1,0 +1,48 @@
+import { Process } from "Process.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Process, IoError> spawned = Process::Spawn("exit 4");
+    match (spawned) {
+        Ok(proc1) => {
+            println_bool(proc1.pid() > 0);
+            Result<ProcessStatus, IoError> status1 = proc1.wait();
+            match (status1) {
+                Ok(s1) => { println_i64(s1.exitCode()); println_i64(s1.signal()); println_bool(s1.success()); }
+                Err(e1) => { println_i64(e1.code as i64); }
+            }
+            Result<i64, IoError> closed1 = proc1.close();
+            match (closed1) { Ok(v1) => { println_i64(v1); } Err(e2) => { println_i64(e2.code as i64); } }
+            Result<ProcessStatus, IoError> again = proc1.wait();
+            match (again) { Ok(s2) => { println_i64(s2.exitCode()); } Err(e3) => { println_i64(e3.code as i64); } }
+        }
+        Err(e4) => { println_i64(e4.code as i64); }
+    }
+
+    Result<Process, IoError> spawned2 = Process::Spawn("sleep 5");
+    match (spawned2) {
+        Ok(proc2) => {
+            Result<i64, IoError> killed = proc2.kill();
+            match (killed) { Ok(v2) => { println_i64(v2); } Err(e5) => { println_i64(e5.code as i64); } }
+            Result<ProcessStatus, IoError> status2 = proc2.wait();
+            match (status2) { Ok(s3) => { println_i64(s3.exitCode()); println_i64(s3.signal()); } Err(e6) => { println_i64(e6.code as i64); } }
+            proc2.close();
+        }
+        Err(e7) => { println_i64(e7.code as i64); }
+    }
+
+    Result<Process, IoError> spawned3 = Process::Spawn("sleep 5");
+    match (spawned3) {
+        Ok(proc3) => {
+            Result<i64, IoError> closeRunning = proc3.close();
+            match (closeRunning) { Ok(v3) => { println_i64(v3); } Err(e8) => { println_i64(e8.code as i64); } }
+            proc3.kill();
+            proc3.wait();
+            proc3.close();
+        }
+        Err(e9) => { println_i64(e9.code as i64); }
+    }
+    return 0;
+}

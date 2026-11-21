@@ -1,0 +1,6 @@
+// 标准输出的 C 绑定（std 层：允许依赖 printf，core 层不包含 I/O）
+@header("mylrt.h")
+pub unsafe fn myrt_print(string text) -> void;
+
+@header("mylrt.h")
+pub unsafe fn myrt_println(string text) -> void;

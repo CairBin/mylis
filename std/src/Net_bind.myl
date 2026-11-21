@@ -1,0 +1,40 @@
+// std TCP native 后端绑定（Rust staticlib，C ABI）。
+// 句柄是不透明 i64；u8[] 与 File 后端使用同一数组布局。
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_bind(i8* address) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_listener_port(i64 handle) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_accept(i64 handle) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_connect(i8* address) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_listener_close(i64 handle) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_close(i64 handle) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_fd(i64 handle) -> i32;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_listener_fd(i64 handle) -> i32;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_listener_set_nonblocking(i64 handle, i32 enabled) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_set_nonblocking(i64 handle, i32 enabled) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_set_timeout(i64 handle, i64 milliseconds) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_read(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_tcp_stream_write(i64 handle, u8[] data, i64 offset, i64 count) -> i64;

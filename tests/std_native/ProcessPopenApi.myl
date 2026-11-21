@@ -1,0 +1,57 @@
+import { Process } from "Process.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { Str } from "core/Str";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<ProcessPipe, IoError> reader = Process::Popen("printf 'alpha\\nbeta'", "r");
+    match (reader) {
+        Ok(pipe1) => {
+            println_bool(pipe1.pid() > 0);
+            Result<u8[], IoError> data = pipe1.readAll();
+            match (data) {
+                Ok(bytes) => { println_i64(bytes.len() as i64); println(Str::FromBytes(bytes)); }
+                Err(e1) => { println_i64(e1.code as i64); }
+            }
+            Result<ProcessStatus, IoError> close1 = pipe1.close();
+            match (close1) { Ok(s1) => { println_i64(s1.exitCode()); } Err(e2) => { println_i64(e2.code as i64); } }
+        }
+        Err(e3) => { println_i64(e3.code as i64); }
+    }
+
+    Result<ProcessPipe, IoError> binary = Process::Popen("printf 'A\\000B'", "r");
+    match (binary) {
+        Ok(pipeBin) => {
+            Result<u8[], IoError> binData = pipeBin.readAll();
+            match (binData) {
+                Ok(bytesBin) => {
+                    println_i64(bytesBin.len() as i64);
+                    println_i64((bytesBin[0] as i32) as i64);
+                    println_i64((bytesBin[1] as i32) as i64);
+                    println_i64((bytesBin[2] as i32) as i64);
+                }
+                Err(eBin) => { println_i64(eBin.code as i64); }
+            }
+            pipeBin.close();
+        }
+        Err(e8) => { println_i64(e8.code as i64); }
+    }
+
+    Result<ProcessPipe, IoError> writer = Process::Popen("cat >/dev/null", "w");
+    match (writer) {
+        Ok(pipe2) => {
+            u8[] payload = Str::Bytes("binary-ish");
+            Result<i64, IoError> wrote = pipe2.write(payload);
+            match (wrote) { Ok(n1) => { println_i64(n1); } Err(e4) => { println_i64(e4.code as i64); } }
+            Result<ProcessStatus, IoError> close2 = pipe2.close();
+            match (close2) { Ok(s2) => { println_i64(s2.exitCode()); } Err(e5) => { println_i64(e5.code as i64); } }
+        }
+        Err(e6) => { println_i64(e6.code as i64); }
+    }
+
+    Result<ProcessPipe, IoError> badMode = Process::Popen("true", "x");
+    match (badMode) { Ok(p3) => { println("bad-mode-ok"); p3.close(); } Err(e7) => { println_i64(e7.code as i64); } }
+    return 0;
+}

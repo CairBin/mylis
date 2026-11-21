@@ -1,0 +1,9 @@
+class Holder {
+    pub i32 x = this.y;
+    pub i32 y = 2;
+}
+
+fn main() -> i32 {
+    Holder h = new Holder();
+    return h.x;
+}

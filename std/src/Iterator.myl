@@ -1,0 +1,4 @@
+// std 迭代器协议：显式 next()，不依赖 for-in 或闭包。
+pub interface Iterator<T> {
+    fn next() -> Option<T>;
+}

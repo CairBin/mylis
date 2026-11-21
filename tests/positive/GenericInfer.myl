@@ -1,0 +1,36 @@
+import { println_i64, println } from "Io.myl";
+import { Vec } from "Vec.myl";
+
+fn identity<T>(T x) -> T { return x; }
+
+class Box<T> {
+    pub T v;
+    pub fn init(T x) -> void { this.v = x; }
+    pub fn get() -> T { return this.v; }
+}
+
+enum Maybe<T> {
+    Nothing,
+    Just(T),
+}
+
+fn main() -> i32 {
+    Vec<i64> v = new Vec();
+    v.push(10);
+    println_i64(v.get(0));
+
+    i64 a = identity(42);
+    string s = identity("hi");
+    println_i64(a);
+    println(s);
+
+    Box<i64> b = new Box(1);
+    println_i64(b.get());
+
+    Maybe<i64> m = Maybe::Just(7);
+    match m {
+        Maybe::Just(x) => { println_i64(x); }
+        Maybe::Nothing => { println_i64(0); }
+    }
+    return 0;
+}

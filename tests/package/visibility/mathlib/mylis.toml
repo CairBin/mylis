@@ -1,0 +1,5 @@
+[package]
+name = "mathlib"
+version = "0.1.0"
+[lib]
+entry = "src/lib.myl"

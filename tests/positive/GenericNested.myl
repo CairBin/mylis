@@ -1,0 +1,75 @@
+import { Vec } from "Vec.myl";
+import { Map } from "Map.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+class Box<T> {
+    pub T value;
+
+    pub fn init(T v) -> void {
+        this.value = v;
+    }
+
+    pub fn all() -> Vec<T> {
+        Vec<T> out = new Vec<T>();
+        out.push(this.value);
+        return out;
+    }
+
+    pub fn maybe(bool want) -> Option<Vec<T>> {
+        if (!want) {
+            return None;
+        }
+        return Some(this.all());
+    }
+
+    pub fn nested() -> Vec<Vec<T>> {
+        Vec<Vec<T>> out = new Vec<Vec<T>>();
+        out.push(this.all());
+        return out;
+    }
+}
+
+interface Seq<T> {
+    fn all() -> Vec<T>;
+}
+
+enum Node<T> {
+    Leaf(T),
+    Pair(Vec<T>),
+}
+
+fn main() -> i32 {
+    Box<i64> b = new Box<i64>(7);
+    Vec<i64> one = b.all();
+    println_i64(one.len());
+    println_i64(one.get(0));
+
+    Option<Vec<i64>> some = b.maybe(true);
+    match (some) {
+        Some(sv) => { println_i64(sv.len()); }
+        None => { println_i64(-1); }
+    }
+
+    Vec<Vec<i64>> nested = b.nested();
+    println_i64(nested.len());
+    println_i64(nested.get(0).get(0));
+
+    Seq<i64> s = b;
+    Vec<i64> viaIface = s.all();
+    println_i64(viaIface.get(0));
+
+    Node<i64> pair = Node<i64>::Pair(one);
+    match (pair) {
+        Node::Leaf(x) => { println_i64(x); }
+        Node::Pair(vs) => { println_i64(vs.len()); }
+    }
+
+    Map<string, Vec<i64>> m = new Map<string, Vec<i64>>();
+    m.set("a", one);
+    Option<Vec<i64>> got = m.get("a");
+    match (got) {
+        Some(mv) => { println_i64(mv.get(0)); }
+        None => { println_i64(-1); }
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+// UDP 接收结果：payload + 来源地址字符串。
+pub class UdpPacket {
+    pub u8[] data;
+    pub string from;
+
+    pub fn init(u8[] d, string f) -> void {
+        this.data = d;
+        this.from = f;
+    }
+}

@@ -1,0 +1,9 @@
+enum E {
+    A(i32),
+    B,
+}
+
+fn main() -> i32 {
+    E x = E::A(3);
+    return x.f0;
+}

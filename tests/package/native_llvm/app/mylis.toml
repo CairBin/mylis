@@ -1,0 +1,5 @@
+[package]
+name = "app"
+version = "0.1.0"
+[dependencies]
+native_lib = { mylib = "../native_lib.mylib" }

@@ -1,0 +1,277 @@
+// 轻量路径工具：不访问文件系统，只做字符串处理。
+// 同时接受 '/' 和 '\\' 作为分隔符；不做完整 normalize。
+import { Str } from "core/Str";
+
+fn is_sep(u8 b) -> bool {
+    return b == 47 || b == 92;
+}
+
+fn has_drive(string value) -> bool {
+    u8[] b = Str::Bytes(value);
+    if (b.len() < 2) {
+        return false;
+    }
+    bool letter = (b[0] >= 65 && b[0] <= 90) || (b[0] >= 97 && b[0] <= 122);
+    return letter && b[1] == 58;
+}
+
+pub class Path {
+    pub static fn IsAbsolute(string value) -> bool {
+        u8[] b = Str::Bytes(value);
+        if (b.len() == 0) {
+            return false;
+        }
+        if (is_sep(b[0])) {
+            return true;
+        }
+        return has_drive(value);
+    }
+
+    pub static fn BaseName(string value) -> string {
+        u8[] b = Str::Bytes(value);
+        i64 end = b.len() as i64;
+        while (end > 0) {
+            if (!is_sep(b[end - 1])) {
+                break;
+            }
+            end = end - 1;
+        }
+        i64 start = 0;
+        i64 i = end - 1;
+        while (i >= 0) {
+            if (is_sep(b[i])) {
+                start = i + 1;
+                break;
+            }
+            i = i - 1;
+        }
+        if (start >= end) {
+            return "";
+        }
+        return Str::Substring(value, start as u64, (end - start) as u64);
+    }
+
+    pub static fn DirName(string value) -> string {
+        u8[] b = Str::Bytes(value);
+        i64 end = b.len() as i64;
+        while (end > 1) {
+            if (!is_sep(b[end - 1])) {
+                break;
+            }
+            end = end - 1;
+        }
+        i64 i = end - 1;
+        while (i >= 0) {
+            if (is_sep(b[i])) {
+                if (i == 0) {
+                    return "/";
+                }
+                return Str::Substring(value, 0, i as u64);
+            }
+            i = i - 1;
+        }
+        return ".";
+    }
+
+    pub static fn Extension(string value) -> string {
+        u8[] b = Str::Bytes(value);
+        i64 end = b.len() as i64;
+        while (end > 0) {
+            if (!is_sep(b[end - 1])) {
+                break;
+            }
+            end = end - 1;
+        }
+        i64 start = 0;
+        i64 i = end - 1;
+        while (i >= 0) {
+            if (is_sep(b[i])) {
+                start = i + 1;
+                break;
+            }
+            i = i - 1;
+        }
+        i64 dot = -1;
+        i64 j = end - 1;
+        while (j >= start) {
+            if (b[j] == 46) {
+                dot = j;
+                break;
+            }
+            j = j - 1;
+        }
+        if (dot <= start) {
+            return "";
+        }
+        return Str::Substring(value, (dot + 1) as u64, (end - dot - 1) as u64);
+    }
+
+    pub static fn Stem(string value) -> string {
+        u8[] b = Str::Bytes(value);
+        i64 end = b.len() as i64;
+        while (end > 0) {
+            if (!is_sep(b[end - 1])) {
+                break;
+            }
+            end = end - 1;
+        }
+        i64 start = 0;
+        i64 i = end - 1;
+        while (i >= 0) {
+            if (is_sep(b[i])) {
+                start = i + 1;
+                break;
+            }
+            i = i - 1;
+        }
+        i64 dot = -1;
+        i64 j = end - 1;
+        while (j >= start) {
+            if (b[j] == 46) {
+                dot = j;
+                break;
+            }
+            j = j - 1;
+        }
+        if (dot > start) {
+            end = dot;
+        }
+        if (start >= end) {
+            return "";
+        }
+        return Str::Substring(value, start as u64, (end - start) as u64);
+    }
+
+    pub static fn Normalize(string value) -> string {
+        u8[] b = Str::Bytes(value);
+        i64 n = b.len() as i64;
+        string drive = "";
+        bool absolute = false;
+        i64 start = 0;
+        if (has_drive(value)) {
+            drive = Str::Substring(value, 0, 2);
+            start = 2;
+        }
+        if (start < n) {
+            if (is_sep(b[start])) {
+                absolute = true;
+                while (start < n) {
+                    if (!is_sep(b[start])) {
+                        break;
+                    }
+                    start = start + 1;
+                }
+            }
+        }
+        string sep = "/";
+        if (n > 0) {
+            if (b[0] == 92) {
+                sep = "\\";
+            }
+        }
+        string[] stack = new string[256];
+        i64 top = 0;
+        i64 i = start;
+        while (i <= n) {
+            i64 begin = i;
+            while (i < n) {
+                if (is_sep(b[i])) {
+                    break;
+                }
+                i = i + 1;
+            }
+            string part = Str::Substring(value, begin as u64, (i - begin) as u64);
+            if (part != "" && part != ".") {
+                if (part == "..") {
+                    bool popped = false;
+                    if (top > 0) {
+                        string last = stack[top - 1];
+                        if (last != "..") {
+                            top = top - 1;
+                            popped = true;
+                        }
+                    }
+                    if (!popped && !absolute && top < 256) {
+                        stack[top] = "..";
+                        top = top + 1;
+                    }
+                } else {
+                    if (top < 256) {
+                        stack[top] = part;
+                        top = top + 1;
+                    }
+                }
+            }
+            while (i < n) {
+                if (!is_sep(b[i])) {
+                    break;
+                }
+                i = i + 1;
+            }
+            if (i >= n) {
+                break;
+            }
+        }
+        string result = "";
+        if (drive != "") {
+            result = drive;
+            if (absolute) {
+                result = Str::Concat(result, sep);
+            }
+        } else if (absolute) {
+            result = sep;
+        }
+        i64 k = 0;
+        while (k < top) {
+            if (k > 0 || (result != "" && !Str::EndsWith(result, sep))) {
+                result = Str::Concat(result, sep);
+            }
+            result = Str::Concat(result, stack[k]);
+            k = k + 1;
+        }
+        if (result == "") {
+            if (absolute) {
+                return sep;
+            }
+            return ".";
+        }
+        return result;
+    }
+
+    pub static fn Join(string left, string right) -> string {
+        if (Path::IsAbsolute(right)) {
+            return right;
+        }
+        if (left == "") {
+            return right;
+        }
+        if (right == "") {
+            return left;
+        }
+        u8[] l = Str::Bytes(left);
+        i64 end = l.len() as i64;
+        while (end > 0) {
+            if (!is_sep(l[end - 1])) {
+                break;
+            }
+            end = end - 1;
+        }
+        string base = Str::Substring(left, 0, end as u64);
+        string sep = "/";
+        if (end > 0) {
+            if (l[end - 1] == 92) {
+                sep = "\\";
+            }
+        }
+        u8[] r = Str::Bytes(right);
+        i64 start = 0;
+        while (start < r.len() as i64) {
+            if (!is_sep(r[start])) {
+                break;
+            }
+            start = start + 1;
+        }
+        string tail = Str::Substring(right, start as u64, (r.len() as i64 - start) as u64);
+        return Str::Concat(Str::Concat(base, sep), tail);
+    }
+}

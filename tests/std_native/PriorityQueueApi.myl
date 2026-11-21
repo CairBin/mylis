@@ -1,0 +1,18 @@
+import { PriorityQueue } from "PriorityQueue.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    PriorityQueue<i64> q = new PriorityQueue<i64>();
+    q.push(3);
+    q.push(1);
+    q.push(7);
+    q.push(2);
+    q.push(7);
+    while (true) {
+        match (q.pop()) {
+            Some(v) => { println_i64(v); }
+            None => { break; }
+        }
+    }
+    return 0;
+}

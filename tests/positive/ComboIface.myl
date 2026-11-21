@@ -1,0 +1,71 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+// 接口组合：内嵌已有接口名（并集），自身再补方法
+interface Reader {
+    fn read(i32 n) -> i32;
+}
+
+interface Writer {
+    fn write(i32 n) -> void;
+}
+
+interface Closer {
+    fn close() -> i32;
+}
+
+interface ReadWriteCloser {
+    Reader;
+    Writer;
+    Closer;
+}
+
+class Buf {
+    pub i32 v;
+    pub i32 closed;
+
+    pub fn init() {
+        this.v = 0;
+        this.closed = 0;
+    }
+
+    pub fn read(i32 n) -> i32 {
+        this.v = this.v + n;
+        return this.v;
+    }
+
+    pub fn write(i32 n) -> void {
+        this.v = this.v - n;
+    }
+
+    pub fn close() -> i32 {
+        this.closed = 1;
+        return this.v;
+    }
+}
+
+class Logged {
+    pub i32 calls;
+
+    pub fn init() {
+        this.calls = 0;
+    }
+
+    pub fn read(i32 n) -> i32 { this.calls = this.calls + 1; return n * 2; }
+    pub fn write(i32 n) -> void { this.calls = this.calls + 1; }
+    pub fn close() -> i32 { this.calls = this.calls + 1; return this.calls; }
+}
+
+fn use_all(ReadWriteCloser o) -> i32 {
+    i32 a = o.read(10);
+    o.write(3);
+    return a + o.close();
+}
+
+fn main() -> i32 {
+    Buf b = new Buf();
+    println_i32(use_all(b));          // 10 + (7) = 17
+    Logged l = new Logged();
+    println_i32(use_all(l));          // 20 + 3 = 23
+    println_i32(b.closed);
+    return 0;
+}

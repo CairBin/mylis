@@ -1,0 +1,19 @@
+[package]
+name = "mylrt-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mylrt"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std = []
+no-panic-handler = []
+small-roots = []
+no-backend-gc = []
+
+[profile.release]
+panic = "abort"

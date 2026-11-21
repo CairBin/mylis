@@ -1,0 +1,7 @@
+import "c";
+import { println_i32 } from "Io.myl";
+
+fn main() -> i32 {
+    println_i32(mathlib::vector::A(1));
+    return 0;
+}

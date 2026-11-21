@@ -1,0 +1,73 @@
+// std 进程 native 后端绑定（Rust staticlib，C ABI）。
+// Run 同步执行并捕获输出；Spawn 返回句柄，wait/kill/close 管理生命周期。
+@header("mylis_process.h")
+pub unsafe fn mylis_process_run(i8* command) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_spawn(i8* command) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_popen(i8* command, i8* mode) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_popen2(i8* command) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_pid(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_read_all(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_read_line(i64 handle) -> i8*;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_read_line_timeout(i64 handle, i64 timeout_ms) -> i8*;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_last_status() -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_read_copy(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_write(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_close_input(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pipe_close(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_pid(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_wait(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_wait_exit_code() -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_wait_signal() -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_kill(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_close(i64 handle) -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_exit_code() -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_signal() -> i64;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_stdout() -> i8*;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_last_stderr() -> i8*;
+
+@header("mylis_process.h")
+pub unsafe fn mylis_process_free_string(i8* text) -> void;

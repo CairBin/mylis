@@ -1,0 +1,12 @@
+// Iterator 构造入口；容器的迭代器类分别放在各自文件。
+import { RangeIter } from "RangeIter.myl";
+
+pub class Iter {
+    pub static fn Range(i64 start, i64 end) -> RangeIter {
+        return new RangeIter(start, end, 1);
+    }
+
+    pub static fn RangeStep(i64 start, i64 end, i64 step) -> RangeIter {
+        return new RangeIter(start, end, step);
+    }
+}

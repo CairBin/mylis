@@ -1,0 +1,37 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+enum Level {
+    Low,
+    High,
+
+    @deprecated("改用 Level::plain()")
+    pub fn legacy() -> string { return "legacy"; }
+
+    pub fn plain() -> string {
+        match this {
+            Level::Low => { return "low"; }
+            Level::High => { return "high"; }
+        }
+    }
+
+    pub fn to_string() -> string { return this.plain(); }
+}
+
+@layer("demo")
+class Calc {
+    pub i32 base = 10;
+
+    @inline
+    pub fn add(i32 n) -> i32 { return this.base + n; }
+
+    @deprecated("改用 Calc::add")
+    pub fn plus(i32 n) -> i32 { return this.add(n); }
+}
+
+fn main() -> i32 {
+    Calc c = new Calc();
+    println("add = {c.add(5)}");
+    println("plus = {c.plus(1)}");
+    println("level = {Level::High} / {Level::Low.legacy()}");
+    return 0;
+}

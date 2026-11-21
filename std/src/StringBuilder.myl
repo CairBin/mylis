@@ -1,0 +1,47 @@
+// StringBuilder：用 Vec<string> 累积片段，最后一次性拼接。
+// 适用于少量到中等量的文本构建；toString() 会分配新字符串并逐段复制。
+import { Vec } from "Vec.myl";
+import { Str } from "core/Str";
+
+pub class StringBuilder {
+    pub Vec<string> parts;
+    pub i64 chars;
+
+    pub fn init() -> void {
+        this.parts = new Vec<string>();
+        this.chars = 0;
+    }
+
+    pub fn append(string value) -> void {
+        this.parts.push(value);
+        this.chars = this.chars + Str::Len(value) as i64;
+    }
+
+    pub fn appendLine(string value) -> void {
+        this.append(value);
+        this.append("\n");
+    }
+
+    pub fn len() -> i64 {
+        return this.chars;
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.chars == 0;
+    }
+
+    pub fn clear() -> void {
+        this.parts.clear();
+        this.chars = 0;
+    }
+
+    pub fn toString() -> string {
+        string out = "";
+        i64 i = 0;
+        while (i < this.parts.len()) {
+            out = out + this.parts.get(i);
+            i = i + 1;
+        }
+        return out;
+    }
+}

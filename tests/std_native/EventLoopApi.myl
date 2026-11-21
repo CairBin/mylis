@@ -1,0 +1,108 @@
+import { EventLoop } from "EventLoop.myl";
+import { IoHandler } from "IoHandler.myl";
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+class EchoHandler {
+    EventLoop loop;
+
+    pub fn init(EventLoop l) -> void {
+        this.loop = l;
+    }
+
+    pub fn onAccept(TcpListener listener) -> void {
+        println("accept");
+        Result<TcpStream, IoError> r = listener.accept();
+        match r {
+            Ok(stream) => {
+                IoHandler selfHandler = this;
+                this.loop.add(stream, selfHandler);
+            }
+            Err(e) => { println_i64(e.code as i64); }
+        }
+    }
+
+    pub fn onReadable(TcpStream stream) -> void {
+        println("read");
+        Result<u8[], IoError> r = stream.read(4);
+        match r {
+            Ok(data) => {
+                println_i64(data.len() as i64);
+                println_i64(data[0] as i64);
+            }
+            Err(e) => { println_i64(e.code as i64); }
+        }
+        this.loop.setWriteInterest(stream, true);
+    }
+
+    pub fn onWritable(TcpStream stream) -> void {
+        println("writable");
+        Result<i64, IoError> w = stream.writeAllText("pong");
+        match w {
+            Ok(_) => { }
+            Err(we) => { println_i64(we.code as i64); }
+        }
+        this.loop.setWriteInterest(stream, false);
+        this.loop.stop();
+    }
+
+    pub fn onError(TcpStream stream, IoError error) -> void {
+        println_i64(error.code as i64);
+        this.loop.stop();
+    }
+
+    pub fn onListenerError(TcpListener listener, IoError error) -> void {
+        println_i64(error.code as i64);
+        this.loop.stop();
+    }
+
+    pub fn onUdpReadable(UdpSocket socket) -> void {
+    }
+}
+
+fn main() -> i32 {
+    Result<TcpListener, IoError> bound = TcpListener::Bind("127.0.0.1:0");
+    match bound {
+        Ok(listener) => {
+            i64 port = listener.localPort();
+            println_bool(port > 0);
+            if (port <= 0) {
+                return 1;
+            }
+            string addr = Str::Concat("127.0.0.1:", fmt_i64(port));
+            Result<TcpStream, IoError> client = TcpStream::Connect(addr);
+            match client {
+                Ok(c) => {
+                    c.writeAllText("ping");
+                    EventLoop loop = new EventLoop();
+                    EchoHandler echo = new EchoHandler(loop);
+                    IoHandler handler = echo;
+                    loop.addListener(listener, handler);
+                    loop.run();
+
+                    Result<u8[], IoError> pong = c.read(4);
+                    match pong {
+                        Ok(data) => {
+                            println_i64(data.len() as i64);
+                            println_i64(data[0] as i64);
+                        }
+                        Err(e) => { println_i64(e.code as i64); }
+                    }
+                    loop.removeListener(listener);
+                    loop.close();
+                    c.close();
+                }
+                Err(e) => { println_i64(e.code as i64); }
+            }
+            listener.close();
+        }
+        Err(e) => { println_i64(e.code as i64); }
+    }
+    println_bool(true);
+    return 0;
+}

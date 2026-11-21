@@ -1,0 +1,15 @@
+class Counter {
+    pub static i32 total = 0;
+
+    pub static fn bump() -> i32 {
+        Counter::total = Counter::total + 1;
+        return Counter::total;
+    }
+
+    pub i32 v = 0;
+}
+
+fn main() -> i32 {
+    Counter c = new Counter();
+    return c.bump();
+}

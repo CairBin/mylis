@@ -1,0 +1,26 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { FmtSpec, FmtArg } from "Fmt.myl";
+
+fn main() -> i32 {
+    FmtSpec z = new FmtSpec(8, 2, FmtSpec::ZERO);
+    println(Fmt::Format(FmtArg::F64(3.14159), z));
+    println("[" + Fmt::FormatF64(3.14159, new FmtSpec(8, 2, 0)) + "]");
+
+    FmtSpec iz = new FmtSpec(6, -1, FmtSpec::ZERO);
+    println(Fmt::FormatI64(-42, iz));
+    println(Fmt::FormatI64(42, iz));
+
+    FmtSpec plus = new FmtSpec(6, -1, FmtSpec::PLUS);
+    println("[" + Fmt::FormatI64(42, plus) + "]");
+    println("[" + Fmt::FormatU64(42, new FmtSpec(4, -1, FmtSpec::PLUS)) + "]");
+
+    FmtSpec left = new FmtSpec(4, -1, FmtSpec::LEFT);
+    println("[" + Fmt::Format(FmtArg::Str("hi"), left) + "]");
+    println("[" + Fmt::FormatBool(true, new FmtSpec(6, -1, FmtSpec::LEFT)) + "]");
+
+    println(Fmt::FormatI64(7, new FmtSpec(4, -1, FmtSpec::SPACE)));
+    println(Fmt::FormatI64(7, FmtSpec::Width(4)));
+    println("[" + Fmt::Format(FmtArg::U64(18446744073709551615), new FmtSpec(25, -1, 0)) + "]");
+    return 0;
+}

@@ -1,0 +1,187 @@
+// core 层：纯格式化，不打印、不做 I/O。
+import { myrt_i64_to_string, myrt_u64_to_string, myrt_f64_to_string, myrt_f64_to_string_prec, myrt_f64_to_string_fmt } from "Mylrt_bind.myl";
+import { Str } from "Str.myl";
+pub import { FmtSpec } from "FmtSpec.myl";
+pub import { FmtArg } from "FmtArg.myl";
+
+pub class Fmt {
+    pub static fn I8(i8 value) -> string { return fmt_i8(value); }
+    pub static fn I16(i16 value) -> string { return fmt_i16(value); }
+    pub static fn I32(i32 value) -> string { return fmt_i32(value); }
+    pub static fn I64(i64 value) -> string { return fmt_i64(value); }
+    pub static fn U8(u8 value) -> string { return fmt_u8(value); }
+    pub static fn U16(u16 value) -> string { return fmt_u16(value); }
+    pub static fn U32(u32 value) -> string { return fmt_u32(value); }
+    pub static fn U64(u64 value) -> string { return fmt_u64(value); }
+    pub static fn F32(f32 value) -> string { return fmt_f32(value); }
+    pub static fn F64(f64 value) -> string { return fmt_f64(value); }
+    pub static fn F64Prec(f64 value, i32 digits) -> string { return fmt_f64_prec(value, digits); }
+    pub static fn F64Width(f64 value, i32 digits, i32 width) -> string { return fmt_f64_width(value, digits, width, 0); }
+    pub static fn F64WidthLeft(f64 value, i32 digits, i32 width) -> string { return fmt_f64_width(value, digits, width, 1); }
+    pub static fn F64WidthZero(f64 value, i32 digits, i32 width) -> string { return fmt_f64_width(value, digits, width, 4); }
+    pub static fn F64WidthPlus(f64 value, i32 digits, i32 width) -> string { return fmt_f64_width(value, digits, width, 2); }
+    pub static fn F32Prec(f32 value, i32 digits) -> string { return fmt_f64_prec(value as f64, digits); }
+    pub static fn F32Width(f32 value, i32 digits, i32 width) -> string { return fmt_f64_width(value as f64, digits, width, 0); }
+    pub static fn F32WidthLeft(f32 value, i32 digits, i32 width) -> string { return fmt_f64_width(value as f64, digits, width, 1); }
+    pub static fn F32WidthZero(f32 value, i32 digits, i32 width) -> string { return fmt_f64_width(value as f64, digits, width, 4); }
+    pub static fn F32WidthPlus(f32 value, i32 digits, i32 width) -> string { return fmt_f64_width(value as f64, digits, width, 2); }
+    pub static fn Bool(bool value) -> string { return fmt_bool(value); }
+
+    // 统一入口：Fmt::Format(FmtArg::F64(3.14), spec)
+    pub static fn Format(FmtArg value, FmtSpec spec) -> string {
+        match value {
+            FmtArg::I64(iv) => { return format_i64_spec(iv, spec); }
+            FmtArg::U64(uv) => { return format_u64_spec(uv, spec); }
+            FmtArg::F64(fv) => { return format_f64_spec(fv, spec); }
+            FmtArg::Bool(bv) => { return format_bool_spec(bv, spec); }
+            FmtArg::Str(sv) => { return format_str_spec(sv, spec); }
+        }
+    }
+
+    // 类型化快捷入口，避免调用方手写 FmtArg。
+    pub static fn FormatI8(i8 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::I64(value as i64), spec); }
+    pub static fn FormatI16(i16 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::I64(value as i64), spec); }
+    pub static fn FormatI32(i32 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::I64(value as i64), spec); }
+    pub static fn FormatI64(i64 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::I64(value), spec); }
+    pub static fn FormatU8(u8 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::U64(value as u64), spec); }
+    pub static fn FormatU16(u16 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::U64(value as u64), spec); }
+    pub static fn FormatU32(u32 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::U64(value as u64), spec); }
+    pub static fn FormatU64(u64 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::U64(value), spec); }
+    pub static fn FormatF32(f32 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::F64(value as f64), spec); }
+    pub static fn FormatF64(f64 value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::F64(value), spec); }
+    pub static fn FormatBool(bool value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::Bool(value), spec); }
+    pub static fn FormatStr(string value, FmtSpec spec) -> string { return Fmt::Format(FmtArg::Str(value), spec); }
+}
+
+pub fn fmt_i8(i8 value) -> string { return fmt_i64(value as i64); }
+pub fn fmt_i16(i16 value) -> string { return fmt_i64(value as i64); }
+pub fn fmt_i32(i32 value) -> string { return fmt_i64(value as i64); }
+pub fn fmt_u8(u8 value) -> string { return fmt_u64(value as u64); }
+pub fn fmt_u16(u16 value) -> string { return fmt_u64(value as u64); }
+pub fn fmt_u32(u32 value) -> string { return fmt_u64(value as u64); }
+pub fn fmt_f32(f32 value) -> string { return fmt_f64(value as f64); }
+
+pub fn fmt_i64(i64 value) -> string {
+    unsafe {
+        return myrt_i64_to_string(value);
+    }
+}
+
+pub fn fmt_u64(u64 value) -> string {
+    unsafe {
+        return myrt_u64_to_string(value);
+    }
+}
+
+pub fn fmt_f64(f64 value) -> string {
+    unsafe {
+        return myrt_f64_to_string(value);
+    }
+}
+
+pub fn fmt_f64_prec(f64 value, i32 digits) -> string {
+    unsafe {
+        return myrt_f64_to_string_prec(value, digits);
+    }
+}
+
+pub fn fmt_f32_prec(f32 value, i32 digits) -> string {
+    return fmt_f64_prec(value as f64, digits);
+}
+
+pub fn fmt_f64_width(f64 value, i32 digits, i32 width, i32 flags) -> string {
+    unsafe {
+        return myrt_f64_to_string_fmt(value, width, digits, flags);
+    }
+}
+
+pub fn fmt_f64_width_left(f64 value, i32 digits, i32 width) -> string {
+    return fmt_f64_width(value, digits, width, 1);
+}
+
+pub fn fmt_f64_width_zero(f64 value, i32 digits, i32 width) -> string {
+    return fmt_f64_width(value, digits, width, 4);
+}
+
+pub fn fmt_f64_width_plus(f64 value, i32 digits, i32 width) -> string {
+    return fmt_f64_width(value, digits, width, 2);
+}
+
+pub fn fmt_bool(bool value) -> string {
+    if (value) {
+        return "true";
+    }
+    return "false";
+}
+
+
+pub fn format_i64_spec(i64 value, FmtSpec spec) -> string {
+    string s = fmt_i64(value);
+    if (value >= 0) {
+        if ((spec.flags & FmtSpec::PLUS) != 0) {
+            s = "+" + s;
+        } else if ((spec.flags & FmtSpec::SPACE) != 0) {
+            s = " " + s;
+        }
+    }
+    return pad_string(s, spec.width, spec.flags);
+}
+
+pub fn format_u64_spec(u64 value, FmtSpec spec) -> string {
+    string s = fmt_u64(value);
+    if ((spec.flags & FmtSpec::PLUS) != 0) {
+        s = "+" + s;
+    } else if ((spec.flags & FmtSpec::SPACE) != 0) {
+        s = " " + s;
+    }
+    return pad_string(s, spec.width, spec.flags);
+}
+
+pub fn format_f64_spec(f64 value, FmtSpec spec) -> string {
+    if (spec.precision >= 0) {
+        return fmt_f64_width(value, spec.precision, spec.width, spec.flags);
+    }
+    string s = fmt_f64(value);
+    if (value >= 0.0) {
+        if ((spec.flags & FmtSpec::PLUS) != 0) {
+            s = "+" + s;
+        } else if ((spec.flags & FmtSpec::SPACE) != 0) {
+            s = " " + s;
+        }
+    }
+    return pad_string(s, spec.width, spec.flags);
+}
+
+pub fn format_bool_spec(bool value, FmtSpec spec) -> string {
+    return pad_string(fmt_bool(value), spec.width, spec.flags & FmtSpec::LEFT);
+}
+
+pub fn format_str_spec(string value, FmtSpec spec) -> string {
+    return pad_string(value, spec.width, spec.flags & FmtSpec::LEFT);
+}
+
+// 按字符宽度补位；零填充插在符号之后，不把 '-' 变成 '0-'。
+pub fn pad_string(string value, i32 width, i32 flags) -> string {
+    u64 len = Str::Len(value);
+    if (width <= 0) {
+        return value;
+    }
+    u64 w = width as u64;
+    if (w <= len) {
+        return value;
+    }
+    u64 count = w - len;
+    if ((flags & FmtSpec::LEFT) != 0) {
+        return value + Str::Repeat(" ", count);
+    }
+    if ((flags & FmtSpec::ZERO) != 0) {
+        string sign = "";
+        string body = value;
+        if (Str::StartsWith(value, "-") || Str::StartsWith(value, "+") || Str::StartsWith(value, " ")) {
+            sign = Str::Substring(value, 0, 1);
+            body = Str::Substring(value, 1, len - 1);
+        }
+        return sign + Str::Repeat("0", count) + body;
+    }
+    return Str::Repeat(" ", count) + value;
+}

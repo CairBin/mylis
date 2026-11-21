@@ -1,0 +1,26 @@
+import { println } from "Io.myl";
+
+interface Show {
+    fn show() -> string;
+}
+
+class Good {
+    pub fn show() -> string { return "good"; }
+}
+
+class Holder<T: Show> {
+    pub T v;
+    pub fn init(T x) -> void { this.v = x; }
+    pub fn ShowIt() -> string { return this.v.show(); }
+}
+
+fn describe<T: Show>(T x) -> string {
+    return x.show();
+}
+
+fn main() -> i32 {
+    Holder<Good> h = new Holder<Good>(new Good());
+    println(h.ShowIt());
+    println(describe<Good>(new Good()));
+    return 0;
+}

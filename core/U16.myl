@@ -1,0 +1,52 @@
+// core 层：u16 整数溢出语义。
+// 命名：类名、静态方法大驼峰；本文件不放实例状态。
+
+pub class U16 {
+    pub static fn CheckedAdd(u16 a, u16 b) -> Option<u16> {
+        if (a > 65535 - b) { return None; }
+        return Some(a + b);
+    }
+
+    pub static fn CheckedSub(u16 a, u16 b) -> Option<u16> {
+        if (a < b) { return None; }
+        return Some(a - b);
+    }
+
+    pub static fn CheckedMul(u16 a, u16 b) -> Option<u16> {
+        if (b != 0 && a > 65535 / b) { return None; }
+        return Some(a * b);
+    }
+
+    pub static fn CheckedDiv(u16 a, u16 b) -> Option<u16> {
+        if (b == 0) { return None; }
+        return Some(a / b);
+    }
+
+    pub static fn WrappingAdd(u16 a, u16 b) -> u16 {
+        return a + b;
+    }
+
+    pub static fn WrappingSub(u16 a, u16 b) -> u16 {
+        return a - b;
+    }
+
+    pub static fn WrappingMul(u16 a, u16 b) -> u16 {
+        return a * b;
+    }
+
+    pub static fn SaturatingAdd(u16 a, u16 b) -> u16 {
+        if (a > 65535 - b) { return 65535; }
+        return a + b;
+    }
+
+    pub static fn SaturatingSub(u16 a, u16 b) -> u16 {
+        if (a < b) { return 0; }
+        return a - b;
+    }
+
+    pub static fn SaturatingMul(u16 a, u16 b) -> u16 {
+        Option<u16> r = U16::CheckedMul(a, b);
+        if (r.is_some()) { return r.unwrap(); }
+        return 65535;
+    }
+}

@@ -1,0 +1,9 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+
+fn main() -> i32 {
+    println(Fmt::F64Prec(3.1415926, 2));
+    println(Fmt::F64Prec(2.0, 3));
+    println(Fmt::F32Prec(1.5 as f32, 4));
+    return 0;
+}

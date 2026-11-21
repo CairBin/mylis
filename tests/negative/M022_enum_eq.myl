@@ -1,0 +1,17 @@
+enum E {
+    A(i32),
+    B,
+}
+
+fn main() -> i32 {
+    E x = E::A(1);
+    E y = E::B;
+    if (x == y) {
+        return 1;
+    }
+    match x {
+        E::A(_v) => { return 0; }
+        E::B => { return 0; }
+    }
+    return 0;
+}

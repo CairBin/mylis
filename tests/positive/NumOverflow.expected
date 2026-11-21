@@ -1,0 +1,7 @@
+i32 add overflow
+i32 sub overflow
+-2147483648
+2147483647
+-2147483648
+i64 mul overflow
+-2

@@ -1,0 +1,21 @@
+import { Time } from "Time.myl";
+import { Random } from "Random.myl";
+import { Log } from "Log.myl";
+import { println_bool, println_i64, println } from "Io.myl";
+
+fn main() -> i32 {
+    println_bool(Time::NowMillis() > 0);
+    i64 start = Time::MonotonicMillis();
+    Time::SleepMillis(5);
+    i64 end = Time::MonotonicMillis();
+    println_bool(end >= start);
+    println_bool(Time::NowNanos() > 0);
+
+    Random r = new Random(12345);
+    i64 n = r.range(0, 10);
+    println_bool(n >= 0 && n < 10);
+    f64 f = r.nextF64();
+    println_bool(f >= 0.0 && f < 1.0);
+    Log::Info("hello");
+    return 0;
+}

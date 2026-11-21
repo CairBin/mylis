@@ -1,0 +1,45 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+class Point {
+    pub i32 x;
+    pub i32 y;
+
+    pub fn init(i32 a, i32 b) -> void {
+        this.x = a;
+        this.y = b;
+    }
+
+    pub fn to_string() -> string {
+        return "({this.x}, {this.y})";
+    }
+}
+
+pub interface Named {
+    fn to_string() -> string;
+}
+
+class Tagged {
+    pub string tag;
+
+    pub fn init(string t) -> void {
+        this.tag = t;
+    }
+
+    pub fn to_string() -> string {
+        return "#{this.tag}";
+    }
+}
+
+fn main() -> i32 {
+    Point p = new Point(2, 5);
+    println("point = {p}");
+    Tagged t = new Tagged("mylis");
+    Named n = t;
+    println("via interface = {n}");
+    i32[] arr = [10, 20, 30];
+    println("arr = {arr}");
+    println("literal braces: {{ok}} and {p.x} + {p.y} = {p.x + p.y}");
+    string word = "str";
+    println("mixed {p} {{}} {arr.len()} {1.25} {false} {word}");
+    return 0;
+}

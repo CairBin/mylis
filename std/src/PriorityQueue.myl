@@ -1,0 +1,84 @@
+// PriorityQueue<T>：基于 Vec<T> 的大顶堆，要求 T: Ord。
+// push/pop 均为 O(log n)，peek 为 O(1)。
+import { Ord } from "core/Ord";
+import { Vec } from "Vec.myl";
+
+pub class PriorityQueue<T: Ord> {
+    Vec<T> heap;
+
+    pub fn init() -> void {
+        this.heap = new Vec<T>();
+    }
+
+    fn siftUp(i64 i) -> void {
+        while (i > 0) {
+            i64 parent = (i - 1) / 2;
+            if (this.heap.get(i).compare(this.heap.get(parent)) <= 0) {
+                return;
+            }
+            this.heap.swap(i, parent);
+            i = parent;
+        }
+    }
+
+    fn siftDown(i64 i) -> void {
+        i64 n = this.heap.len();
+        while (true) {
+            i64 left = i * 2 + 1;
+            i64 right = left + 1;
+            if (left >= n) {
+                return;
+            }
+            i64 larger = left;
+            if (right < n) {
+                if (this.heap.get(right).compare(this.heap.get(left)) > 0) {
+                    larger = right;
+                }
+            }
+            if (this.heap.get(i).compare(this.heap.get(larger)) >= 0) {
+                return;
+            }
+            this.heap.swap(i, larger);
+            i = larger;
+        }
+    }
+
+    pub fn push(T value) -> void {
+        this.heap.push(value);
+        this.siftUp(this.heap.len() - 1);
+    }
+
+    pub fn pop() -> Option<T> {
+        if (this.heap.len() == 0) {
+            return None;
+        }
+        T top = this.heap.get(0);
+        Option<T> last = this.heap.pop();
+        match last {
+            Some(value) => {
+                if (this.heap.len() > 0) {
+                    this.heap.set(0, value);
+                    this.siftDown(0);
+                }
+            }
+            None => { }
+        }
+        return Some(top);
+    }
+
+    pub fn peek() -> Option<T> {
+        return this.heap.first();
+    }
+
+    pub fn len() -> i64 {
+        return this.heap.len();
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.heap.isEmpty();
+    }
+
+    pub fn clear() -> void {
+        this.heap.clear();
+    }
+}

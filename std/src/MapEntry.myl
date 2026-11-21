@@ -1,0 +1,18 @@
+// Map 迭代器使用的键值对。字段是值语义，修改它不会回写 Map。
+pub class MapEntry<K, V> {
+    pub K key;
+    pub V value;
+
+    pub fn init(K key, V value) -> void {
+        this.key = key;
+        this.value = value;
+    }
+
+    pub fn getKey() -> K {
+        return this.key;
+    }
+
+    pub fn getValue() -> V {
+        return this.value;
+    }
+}

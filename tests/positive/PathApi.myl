@@ -1,0 +1,27 @@
+import { Path } from "Path.myl";
+import { println, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    println(Path::Join("a", "b"));
+    println(Path::Join("a/", "b"));
+    println(Path::Join("", "b"));
+    println(Path::Join("a", ""));
+    println(Path::BaseName("a/b.txt"));
+    println(Path::DirName("a/b.txt"));
+    println(Path::DirName("/a"));
+    println(Path::Extension("a/b.txt"));
+    println(Path::Extension("a/b"));
+    println(Path::Stem("a/b.txt"));
+    println(Path::Stem("a/.gitignore"));
+    println(Path::Stem("a/b"));
+    println(Path::Stem("a/b."));
+    println_bool(Path::IsAbsolute("/a"));
+    println_bool(Path::IsAbsolute("C:/a"));
+    println(Path::Normalize("a/./b/../c"));
+    println(Path::Normalize("/a/../../b"));
+    println(Path::Normalize("a//b"));
+    println(Path::Normalize("."));
+    println(Path::Normalize(""));
+    println_bool(Path::IsAbsolute("a/b"));
+    return 0;
+}

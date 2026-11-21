@@ -1,0 +1,27 @@
+import { Vec } from "Vec.myl";
+import { VecIter } from "VecIter.myl";
+import { Iterator } from "Iterator.myl";
+import { Iter } from "Iter.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Vec<i64> values = new Vec<i64>();
+    values.push(10);
+    values.push(20);
+    values.push(30);
+    Iterator<i64> it = new VecIter<i64>(values);
+    while (true) {
+        match (it.next()) {
+            Some(v) => { println_i64(v); }
+            None => { break; }
+        }
+    }
+    Iterator<i64> range = Iter::Range(1, 4);
+    while (true) {
+        match (range.next()) {
+            Some(v) => { println_i64(v); }
+            None => { break; }
+        }
+    }
+    return 0;
+}

@@ -1,0 +1,95 @@
+// Deque<T>：双端队列，用两个 Vec<T> 分别存放前端和后端。
+// pushFront/pushBack/popFront/popBack 均摊 O(1)；只在需要时把一侧倒到另一侧。
+import { Vec } from "Vec.myl";
+
+pub class Deque<T> {
+    pub Vec<T> front;
+    pub Vec<T> back;
+
+    pub fn init() -> void {
+        this.front = new Vec<T>();
+        this.back = new Vec<T>();
+    }
+
+    fn refillFront() -> void {
+        i64 n = this.back.len();
+        while (n > 0) {
+            this.front.push(this.back.get(n - 1));
+            this.back.truncate(n - 1);
+            n = n - 1;
+        }
+    }
+
+    fn refillBack() -> void {
+        i64 n = this.front.len();
+        while (n > 0) {
+            this.back.push(this.front.get(n - 1));
+            this.front.truncate(n - 1);
+            n = n - 1;
+        }
+    }
+
+    pub fn pushFront(T value) -> void {
+        this.front.push(value);
+    }
+
+    pub fn pushBack(T value) -> void {
+        this.back.push(value);
+    }
+
+    pub fn popFront() -> Option<T> {
+        if (this.front.isEmpty()) {
+            this.refillFront();
+        }
+        return this.front.pop();
+    }
+
+    pub fn popBack() -> Option<T> {
+        if (this.back.isEmpty()) {
+            this.refillBack();
+        }
+        return this.back.pop();
+    }
+
+    pub fn peekFront() -> Option<T> {
+        if (this.front.isEmpty()) {
+            this.refillFront();
+        }
+        return this.front.last();
+    }
+
+    pub fn peekBack() -> Option<T> {
+        if (this.back.isEmpty()) {
+            this.refillBack();
+        }
+        return this.back.last();
+    }
+
+    pub fn len() -> i64 {
+        return this.front.len() + this.back.len();
+    }
+
+    pub fn isEmpty() -> bool {
+        return this.len() == 0;
+    }
+
+    pub fn clear() -> void {
+        this.front.clear();
+        this.back.clear();
+    }
+
+    pub fn toVec() -> Vec<T> {
+        Vec<T> out = new Vec<T>();
+        i64 i = this.front.len() - 1;
+        while (i >= 0) {
+            out.push(this.front.get(i));
+            i = i - 1;
+        }
+        i = 0;
+        while (i < this.back.len()) {
+            out.push(this.back.get(i));
+            i = i + 1;
+        }
+        return out;
+    }
+}

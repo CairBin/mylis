@@ -1,0 +1,61 @@
+// std 文件 native 后端绑定（Rust staticlib，C ABI）。
+// 句柄是不透明 i64；data 是 Mylis u8[]，native 侧按 { u64 len; u8 items[]; } 读取。
+@header("mylis_file.h")
+pub unsafe fn mylis_file_open(i8* path, i32 mode) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_close(i64 handle) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_exists(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_remove(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_rename(i8* from, i8* to) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_size(i64 handle) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_read(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_write(i64 handle, u8[] data, i64 offset, i64 count) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_seek(i64 handle, i64 offset) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_flush(i64 handle) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_is_dir(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_mkdir(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_mkdir_all(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_remove_dir(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_remove_dir_all(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_metadata_size(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_read_dir_count(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_read_dir_entry(i8* path, i64 index) -> i8*;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_free_string(i8* text) -> void;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_tell(i64 handle) -> i64;

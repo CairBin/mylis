@@ -1,0 +1,18 @@
+# 构建产物
+build/
+build-win/
+bin/
+mylc/target/
+dist/
+*.myl-c
+*.myl.c
+*.o
+*.a
+*.exe
+
+# 本地工具链（Boehm GC / MinGW，由 make bootstrap 或自行安装）
+toolchain/
+
+# 打包与临时
+*.zip
+*.vsix

@@ -1,0 +1,36 @@
+// std 进程执行结果：同步命令结束后复制的 stdout/stderr 与退出状态。
+// 子进程不共享 Mylis 堆；本对象只是父进程里的普通值对象。
+pub class ProcessOutput {
+    i64 code;
+    i64 term;
+    string out;
+    string err;
+
+    pub fn init(i64 exitCode, i64 signal, string stdoutText, string stderrText) -> void {
+        this.code = exitCode;
+        this.term = signal;
+        this.out = stdoutText;
+        this.err = stderrText;
+    }
+
+    pub fn exitCode() -> i64 {
+        return this.code;
+    }
+
+    pub fn signal() -> i64 {
+        return this.term;
+    }
+
+    pub fn stdout() -> string {
+        return this.out;
+    }
+
+    pub fn stderr() -> string {
+        return this.err;
+    }
+
+    pub fn success() -> bool {
+        return this.term == 0 && this.code == 0;
+    }
+}
+

@@ -1,0 +1,37 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+enum Msg {
+    Quit,
+    Move(i32, i32),
+    Name(string),
+    Ratio(f64),
+
+    pub fn to_string() -> string {
+        match this {
+            Msg::Quit => { return "Q"; }
+            Msg::Move(x, y) => { return "M({x},{y})"; }
+            Msg::Name(n) => { return "N({n})"; }
+            Msg::Ratio(r) => { return "R({r})"; }
+        }
+    }
+}
+
+fn dump(Msg m) -> string {
+    match m {
+        Msg::Quit => { return "quit"; }
+        Msg::Move(x, y) => { return "move({x},{y})"; }
+        Msg::Name(n) => { return "name={n}"; }
+        Msg::Ratio(r) => { return "ratio={r}"; }
+    }
+}
+
+fn main() -> i32 {
+    Msg m1 = Msg::Quit;
+    Msg m2 = Msg::Move(5, -3);
+    Msg m3 = Msg::Name("abc");
+    Msg m4 = Msg::Ratio(1.5);
+    println("{dump(m1)} | {dump(m2)} | {dump(m3)} | {dump(m4)}");
+    Msg[] all = [m1, m2, m3, m4];
+    println("{all}");
+    return 0;
+}

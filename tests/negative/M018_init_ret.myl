@@ -1,0 +1,12 @@
+class Bad {
+    pub i32 v;
+    pub fn init() -> i32 {
+        this.v = 1;
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    Bad b = new Bad();
+    return b.v;
+}

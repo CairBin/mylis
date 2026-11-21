@@ -1,0 +1,9 @@
+class K {
+    pub fn init() { }
+    pub fn m() -> i32 { return 1; }
+}
+
+// class 不能出现在接口内嵌位置
+interface D { K; }
+
+fn main() -> i32 { return 0; }

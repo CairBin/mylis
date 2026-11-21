@@ -1,0 +1,122 @@
+// std 层：标准输出。core 层负责格式化、字符串、数学、GC 绑定。
+// 纯计算项目可以只依赖 core；需要 I/O 时才依赖 std。
+pub import { Fmt, fmt_i64, fmt_u64, fmt_f64, fmt_bool } from "core/Fmt";
+pub import { Str, concat, equals, len, is_empty } from "core/Str";
+pub import { ToString } from "core/ToString";
+pub import { myrt_alloc, myrt_register_root, myrt_unregister_root, myrt_gc_stats_dump, myrt_str_cstr, myrt_str_ptr, myrt_str_len, myrt_gc_collect, myrt_panic, myrt_i64_to_string, myrt_u64_to_string, myrt_f64_to_string, myrt_clock } from "core/Mylrt_bind";
+import { myrt_print, myrt_println } from "Io_bind.myl";
+
+pub class Io {
+    pub static fn Print(string text) -> void { print(text); }
+    pub static fn Println(string text) -> void { println(text); }
+    pub static fn PrintI32(i32 value) -> void { print_i32(value); }
+    pub static fn PrintlnI32(i32 value) -> void { println_i32(value); }
+    pub static fn PrintI64(i64 value) -> void { print_i64(value); }
+    pub static fn PrintlnI64(i64 value) -> void { println_i64(value); }
+    pub static fn PrintU64(u64 value) -> void { print_u64(value); }
+    pub static fn PrintlnU64(u64 value) -> void { println_u64(value); }
+    pub static fn PrintF64(f64 value) -> void { print_f64(value); }
+    pub static fn PrintlnF64(f64 value) -> void { println_f64(value); }
+    pub static fn PrintBool(bool value) -> void { print_bool(value); }
+    pub static fn PrintlnBool(bool value) -> void { println_bool(value); }
+}
+
+pub fn print(string text) -> void {
+    unsafe {
+        myrt_print(text);
+    }
+}
+
+pub fn println(string text) -> void {
+    unsafe {
+        myrt_println(text);
+    }
+}
+
+pub fn print_i32(i32 value) -> void {
+    print(fmt_i64(value as i64));
+}
+
+pub fn println_i32(i32 value) -> void {
+    println(fmt_i64(value as i64));
+}
+
+pub fn print_i8(i8 value) -> void {
+    print(fmt_i64(value as i64));
+}
+
+pub fn println_i8(i8 value) -> void {
+    println(fmt_i64(value as i64));
+}
+
+pub fn print_i16(i16 value) -> void {
+    print(fmt_i64(value as i64));
+}
+
+pub fn println_i16(i16 value) -> void {
+    println(fmt_i64(value as i64));
+}
+
+pub fn print_i64(i64 value) -> void {
+    print(fmt_i64(value));
+}
+
+pub fn print_u8(u8 value) -> void {
+    print(fmt_u64(value as u64));
+}
+
+pub fn println_u8(u8 value) -> void {
+    println(fmt_u64(value as u64));
+}
+
+pub fn print_u16(u16 value) -> void {
+    print(fmt_u64(value as u64));
+}
+
+pub fn println_u16(u16 value) -> void {
+    println(fmt_u64(value as u64));
+}
+
+pub fn print_u32(u32 value) -> void {
+    print(fmt_u64(value as u64));
+}
+
+pub fn println_u32(u32 value) -> void {
+    println(fmt_u64(value as u64));
+}
+
+pub fn print_u64(u64 value) -> void {
+    print(fmt_u64(value));
+}
+
+pub fn print_f32(f32 value) -> void {
+    print(fmt_f64(value as f64));
+}
+
+pub fn println_f32(f32 value) -> void {
+    println(fmt_f64(value as f64));
+}
+
+pub fn print_f64(f64 value) -> void {
+    print(fmt_f64(value));
+}
+
+pub fn print_bool(bool value) -> void {
+    print(fmt_bool(value));
+}
+
+pub fn println_i64(i64 value) -> void {
+    println(fmt_i64(value));
+}
+
+pub fn println_u64(u64 value) -> void {
+    println(fmt_u64(value));
+}
+
+pub fn println_f64(f64 value) -> void {
+    println(fmt_f64(value));
+}
+
+pub fn println_bool(bool value) -> void {
+    println(fmt_bool(value));
+}

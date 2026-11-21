@@ -1,0 +1,24 @@
+import { Vec } from "Vec.myl";
+import { println_i64 } from "Io.myl";
+
+class Wrap<T> {
+    pub T value;
+
+    pub fn init(T v) -> void {
+        this.value = v;
+    }
+
+    pub fn toVec() -> Vec<T> {
+        Vec<T> out = new Vec<T>();
+        out.push(this.value);
+        return out;
+    }
+}
+
+fn main() -> i32 {
+    Wrap<i64> w = new Wrap<i64>(7);
+    Vec<i64> v = w.toVec();
+    println_i64(v.len());
+    println_i64(v.get(0));
+    return 0;
+}

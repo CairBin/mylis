@@ -1,0 +1,39 @@
+import { println_i64, println_bool } from "Io.myl";
+import { Vec } from "Vec.myl";
+
+class Box<T> {
+    pub T value;
+    pub fn init(T v) -> void { this.value = v; }
+    pub fn get() -> T { return this.value; }
+    pub fn Map<U>(U x) -> U { return x; }
+}
+
+interface Container<T> {
+    fn get() -> T;
+}
+
+fn identity<T>(T value) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    Box<i64> b = new Box<i64>(42);
+    println_i64(b.get());
+    println_i64(b.Map<i64>(7));
+
+    Container<i64> c = b;
+    println_i64(c.get());
+
+    println_i64(identity<i64>(11));
+
+    Vec<i64> v = new Vec<i64>();
+    v.push(10);
+    v.push(20);
+    v.push(30);
+    println_i64(v.len());
+    println_i64(v.get(0));
+    println_i64(v.get(2));
+    v.set(1, 99);
+    println_i64(v.get(1));
+    return 0;
+}

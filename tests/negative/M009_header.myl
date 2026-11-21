@@ -1,0 +1,3 @@
+@header("stdio.h")
+fn with_body() -> void {
+}

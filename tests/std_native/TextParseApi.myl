@@ -1,0 +1,17 @@
+import { Text } from "Text.myl";
+import { Vec } from "Vec.myl";
+import { println_i64, println, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    match (Text::ParseI32("42")) { Some(i32v) => { println_i64(i32v as i64); } None => { println("bad"); } }
+    match (Text::ParseI32("2147483648")) { Some(i32big) => { println_i64(i32big as i64); } None => { println("range"); } }
+    match (Text::ParseF64(" -12.5e2 ")) { Some(f1) => { println_i64((f1 * 10.0) as i64); } None => { println("bad"); } }
+    match (Text::ParseF64("1.25")) { Some(f2) => { println_i64((f2 * 100.0) as i64); } None => { println("bad"); } }
+    match (Text::ParseF64("abc")) { Some(f3) => { println("bad"); } None => { println("badfloat"); } }
+    Vec<string> parts = Text::SplitWhitespace("  a\tb\nc  ");
+    println_i64(parts.len() as i64);
+    println(parts.get(0));
+    println(parts.get(1));
+    println(parts.get(2));
+    return 0;
+}

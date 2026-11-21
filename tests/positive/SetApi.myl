@@ -1,0 +1,39 @@
+import { Set } from "Set.myl";
+import { Vec } from "Vec.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn showI(Option<i64> value) -> void {
+    match value {
+        Some(x) => { println_i64(x); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn main() -> i32 {
+    Set<i64> values = new Set<i64>();
+    println_i64(values.len());
+    println_bool(values.isEmpty());
+
+    println_bool(values.add(1));
+    println_bool(values.add(1));
+    println_bool(values.add(2));
+    println_i64(values.len());
+    println_bool(values.contains(1));
+    println_bool(values.contains(3));
+
+    println_bool(values.remove(1));
+    println_bool(values.remove(1));
+    println_i64(values.len());
+
+    showI(values.get(0));
+    showI(values.get(1));
+
+    Vec<i64> all = values.toVec();
+    println_i64(all.len());
+    println_i64(all.get(0));
+
+    values.clear();
+    println_i64(values.len());
+    println_bool(values.isEmpty());
+    return 0;
+}

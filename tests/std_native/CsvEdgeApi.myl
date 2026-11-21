@@ -1,0 +1,54 @@
+import { Csv } from "Csv.myl";
+import { Vec } from "Vec.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Vec<Vec<string>>, string> utf8 = Csv::Parse("甲,乙\n丙,丁");
+    match (utf8) {
+        Ok(rows1) => {
+            println_i64(rows1.len() as i64);
+            println(rows1.get(0).get(0));
+            println(rows1.get(0).get(1));
+            println(rows1.get(1).get(0));
+        }
+        Err(message1) => { println(message1); }
+    }
+
+    Result<Vec<Vec<string>>, string> quoted = Csv::Parse("\"中文,字段\",\"含\"\"引号\"\"\"");
+    match (quoted) {
+        Ok(rows2) => {
+            println_i64(rows2.len() as i64);
+            println(rows2.get(0).get(0));
+            println(rows2.get(0).get(1));
+        }
+        Err(message2) => { println(message2); }
+    }
+
+    Vec<Vec<string>> single = new Vec<Vec<string>>();
+    Vec<string> emptyRow = new Vec<string>();
+    emptyRow.push("");
+    single.push(emptyRow);
+    string text = Csv::Stringify(single);
+    println("[" + text + "]");
+    Result<Vec<Vec<string>>, string> roundTrip = Csv::Parse(text);
+    match (roundTrip) {
+        Ok(rows3) => {
+            println_i64(rows3.len() as i64);
+            println_bool(rows3.get(0).get(0) == "");
+        }
+        Err(message3) => { println(message3); }
+    }
+
+    Result<Vec<Vec<string>>, string> badQuote = Csv::Parse("a\"b");
+    match (badQuote) {
+        Ok(rows4) => { println("bad-quote-ok"); }
+        Err(message4) => { println(message4); }
+    }
+
+    Result<Vec<Vec<string>>, string> crlf = Csv::Parse("a,b\r\nc,d");
+    match (crlf) {
+        Ok(rows5) => { println_i64(rows5.len() as i64); }
+        Err(message5) => { println(message5); }
+    }
+    return 0;
+}

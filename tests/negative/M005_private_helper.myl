@@ -1,0 +1,7 @@
+class Hidden {
+    pub i32 v;
+
+    pub fn init(i32 x) -> void {
+        this.v = x;
+    }
+}

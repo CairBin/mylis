@@ -1,0 +1,20 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+import { myrt_alloc, myrt_unregister_root, myrt_gc_collect } from "Mylrt_bind.myl";
+
+pub class Unsafe {
+}
+
+unsafe fn store(i8* p, i8 v) -> void {
+    *p = v;
+}
+
+fn main() -> i32 {
+    unsafe {
+        i8* p = myrt_alloc(8);
+        store(p, 42);
+        println_i32(*p as i32);
+        myrt_unregister_root(p);
+        myrt_gc_collect();
+    }
+    return 0;
+}

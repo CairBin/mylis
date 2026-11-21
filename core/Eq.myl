@@ -1,0 +1,6 @@
+// core 层：相等比较协议。
+// 这里的 Self 是接口方法签名中的占位类型，绑定时替换为实际类型；
+// 该接口只用于 bound，不生成运行时 interface 值。
+pub interface Eq {
+    fn equals(Self other) -> bool;
+}

@@ -1,0 +1,49 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+pub class Results {
+}
+
+fn div(i32 a, i32 b) -> Result<i32, string> {
+    if (b == 0) {
+        return Err("divide by zero");
+    }
+    return Ok(a / b);
+}
+
+fn div_twice(i32 a, i32 b, i32 c) -> Result<i32, string> {
+    i32 q = div(a, b)?;
+    i32 r = div(q, c)?;
+    return Ok(r);
+}
+
+fn find(i32 target) -> Option<i32> {
+    if (target < 0) {
+        return None;
+    }
+    return Some(target * 2);
+}
+
+pub fn main() -> i32 {
+    Result<i32, string> ok = div(20, 4);
+    println_i32(ok.unwrap());
+    println_bool(ok.is_ok());
+
+    Result<i32, string> bad = div(1, 0);
+    println_bool(bad.is_err());
+    println_i32(bad.unwrap_or(-1));
+
+    Result<i32, string> chained = div_twice(100, 5, 2);
+    println_i32(chained.unwrap());
+
+    Result<i32, string> broken = div_twice(10, 0, 2);
+    if (broken.is_err()) {
+        println("propagated");
+    }
+
+    Option<i32> some = find(5);
+    println_i32(some.unwrap());
+    Option<i32> none = find(-5);
+    println_bool(none.is_none());
+    println_i32(none.unwrap_or(0));
+    return 0;
+}

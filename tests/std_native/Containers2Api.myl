@@ -1,0 +1,77 @@
+import { HashMap } from "HashMap.myl";
+import { HashMapIter, iter_hash_map } from "HashMapIter.myl";
+import { BTreeMap } from "BTreeMap.myl";
+import { BTreeMapIter, iter_btree_map } from "BTreeMapIter.myl";
+import { BTreeSet } from "BTreeSet.myl";
+import { BTreeSetIter, iter_btree_set } from "BTreeSetIter.myl";
+import { MapEntry } from "MapEntry.myl";
+import { Vec } from "Vec.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    HashMap<string, i64> hm = new HashMap<string, i64>();
+    hm.set("one", 1);
+    hm.set("two", 2);
+    hm.set("three", 3);
+    hm.set("two", 20);
+    println_i64(hm.len());
+    println_i64(hm.getOr("two", -1));
+    println_bool(hm.containsKey("four"));
+    println_i64(hm.remove("one").unwrap_or(-1));
+    println_i64(hm.len());
+    hm.set("four", 4);
+    println_i64(hm.len());
+
+    HashMapIter<string, i64> hit = iter_hash_map(hm);
+    i64 hc = 0;
+    while (true) {
+        match (hit.next()) {
+            Some(entry) => {
+                hc = hc + entry.getValue();
+            }
+            None => { break; }
+        }
+    }
+    println_i64(hc);
+
+    HashMap<i64, string> nums = new HashMap<i64, string>();
+    nums.set(7, "seven");
+    nums.set(42, "forty-two");
+    println(nums.getOr(42, "missing"));
+    println_i64(nums.len());
+
+    BTreeMap<string, i64> bm = new BTreeMap<string, i64>();
+    bm.set("gamma", 3);
+    bm.set("alpha", 1);
+    bm.set("beta", 2);
+    println_i64(bm.len());
+    println_i64(bm.getOr("beta", -1));
+    Option<string> firstKey = bm.firstKey();
+    match (firstKey) { Some(fk) => { println(fk); } None => { println("none"); } }
+    Option<string> lastKey = bm.lastKey();
+    match (lastKey) { Some(lk) => { println(lk); } None => { println("none"); } }
+    BTreeMapIter<string, i64> bit = iter_btree_map(bm);
+    while (true) {
+        match (bit.next()) {
+            Some(be) => { println(be.getKey()); }
+            None => { break; }
+        }
+    }
+
+    BTreeSet<i64> bs = new BTreeSet<i64>();
+    bs.add(5);
+    bs.add(1);
+    bs.add(3);
+    bs.add(3);
+    println_i64(bs.len());
+    println_i64(bs.first().unwrap_or(-1));
+    println_i64(bs.last().unwrap_or(-1));
+    BTreeSetIter<i64> bsi = iter_btree_set(bs);
+    while (true) {
+        match (bsi.next()) {
+            Some(v) => { println_i64(v); }
+            None => { break; }
+        }
+    }
+    return 0;
+}

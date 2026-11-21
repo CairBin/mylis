@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    i32 x = "not an int";
+    return 0;
+}

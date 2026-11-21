@@ -1,0 +1,51 @@
+import { Set } from "Set.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Set<i64> a = new Set<i64>();
+    a.add(1);
+    a.add(2);
+    a.add(3);
+    Set<i64> b = new Set<i64>();
+    b.add(3);
+    b.add(4);
+    println_i64(a.len());
+    println_bool(a.containsAll(b));
+    a.addAll(b);
+    println_i64(a.len());
+    println_bool(a.contains(4));
+    println_bool(a.add(4));
+    a.retainAll(b);
+    println_i64(a.len());
+    println_bool(a.contains(3));
+    println_bool(a.contains(1));
+    a.removeAll(b);
+    println_i64(a.len());
+    println_bool(a.isEmpty());
+
+    set_algebra();
+    return 0;
+}
+
+fn set_algebra() -> void {
+    Set<i64> x = new Set<i64>();
+    x.add(1);
+    x.add(2);
+    x.add(3);
+    Set<i64> y = new Set<i64>();
+    y.add(3);
+    y.add(4);
+
+    Set<i64> uni = x.union(y);
+    println_i64(uni.len());
+    println_bool(uni.contains(1));
+    println_bool(uni.contains(4));
+
+    Set<i64> inter = x.intersection(y);
+    println_i64(inter.len());
+    println_bool(inter.contains(3));
+
+    Set<i64> diff = x.difference(y);
+    println_i64(diff.len());
+    println_bool(diff.contains(2));
+}

@@ -1,0 +1,61 @@
+import { Json } from "Json.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    string text = "{{\"name\":\"mylis\",\"ok\":true,\"n\":7,\"f\":1.5,\"arr\":[1,null,\"x\"]}}";
+    Result<Json, string> parsed = Json::Parse(text);
+    match parsed {
+        Ok(root) => {
+            Option<Json> nameNode = root.get("name");
+            match nameNode {
+                Some(nameValue) => {
+                    Option<string> nameText = nameValue.asString();
+                    match nameText { Some(s) => { println(s); } None => { println("no-name"); } }
+                }
+                None => { println("no-name"); }
+            }
+            Option<Json> okNode = root.get("ok");
+            match okNode {
+                Some(okValue) => {
+                    Option<bool> ok = okValue.asBool();
+                    match ok { Some(b) => { println_bool(b); } None => { println_bool(false); } }
+                }
+                None => { println_bool(false); }
+            }
+            Option<Json> nNode = root.get("n");
+            match nNode {
+                Some(nValue) => {
+                    Option<i64> n = nValue.asInt();
+                    match n { Some(v) => { println_i64(v); } None => { println_i64(-1); } }
+                }
+                None => { println_i64(-1); }
+            }
+            Option<Json> arrNode = root.get("arr");
+            match arrNode {
+                Some(arrValue) => {
+                    Option<Json> first = arrValue.at(0);
+                    match first {
+                        Some(firstValue) => {
+                            Option<i64> firstInt = firstValue.asInt();
+                            match firstInt { Some(v) => { println_i64(v); } None => { println_i64(-1); } }
+                        }
+                        None => { println_i64(-1); }
+                    }
+                    Option<Json> third = arrValue.at(2);
+                    match third {
+                        Some(thirdValue) => {
+                            Option<string> thirdText = thirdValue.asString();
+                            match thirdText { Some(v) => { println(v); } None => { println("no-third"); } }
+                        }
+                        None => { println("no-third"); }
+                    }
+                }
+                None => { println("no-arr"); }
+            }
+            string encoded = Json::Stringify(root);
+            println_bool(encoded == text);
+        }
+        Err(message) => { println(message); }
+    }
+    return 0;
+}

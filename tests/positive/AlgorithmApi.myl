@@ -1,0 +1,38 @@
+import { Vec } from "Vec.myl";
+import { sort, is_sorted, binary_search } from "Algorithms.myl";
+import { println_i64, println_bool } from "Io.myl";
+
+fn showIndex(Option<i64> value) -> void {
+    match value {
+        Some(i) => { println_i64(i); }
+        None => { println_i64(-1); }
+    }
+}
+
+fn main() -> i32 {
+    Vec<i64> values = new Vec<i64>();
+    values.push(3);
+    values.push(1);
+    values.push(2);
+    values.push(2);
+    values.push(5);
+
+    println_bool(is_sorted(values));
+    sort(values);
+    println_bool(is_sorted(values));
+    println_i64(values.get(0));
+    println_i64(values.get(1));
+    println_i64(values.get(2));
+    println_i64(values.get(3));
+    println_i64(values.get(4));
+
+    showIndex(binary_search(values, 1));
+    showIndex(binary_search(values, 2));
+    showIndex(binary_search(values, 5));
+    showIndex(binary_search(values, 4));
+
+    Vec<i64> empty = new Vec<i64>();
+    println_bool(is_sorted(empty));
+    showIndex(binary_search(empty, 1));
+    return 0;
+}

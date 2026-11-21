@@ -1,0 +1,26 @@
+// Set<T> 的显式迭代器；按集合内部顺序返回值。
+import { Eq } from "core/Eq";
+import { Set } from "Set.myl";
+
+pub class SetIter<T: Eq> {
+    Set<T> set;
+    i64 index;
+
+    pub fn init(Set<T> set) -> void {
+        this.set = set;
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<T> {
+        if (this.index >= this.set.len()) {
+            return None;
+        }
+        T value = this.set.data[this.index];
+        this.index = this.index + 1;
+        return Some(value);
+    }
+}
+
+pub fn iter_set<T: Eq>(Set<T> set) -> SetIter<T> {
+    return new SetIter<T>(set);
+}

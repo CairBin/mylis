@@ -1,0 +1,71 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+// 空接口 Any：隐式/显式装箱、拆箱、as / as? 受检转换。
+interface Any { }
+
+interface I32 {
+    fn get() -> i32;
+}
+
+class BoxI32 {
+    pub i32 v;
+
+    pub fn init(i32 n) {
+        this.v = n;
+    }
+
+    pub fn get() -> i32 {
+        return this.v;
+    }
+}
+
+fn main() -> i32 {
+    Any a = 42;
+    println_i32(a as i32);
+
+    Option<i32> o = a as? i32;
+    println_bool(o.is_some());
+    if (o.is_some()) {
+        println_i32(o.unwrap());
+    }
+
+    Any s = "hi";
+    string z = s as string;
+    println(z);
+
+    Option<i32> q = s as? i32;
+    println_bool(q.is_none());
+
+    Any t = true;
+    Option<bool> tb = t as? bool;
+    println_bool(tb.unwrap());
+
+    Any e = 7 as Any;
+    println_i32(e as i32);
+
+    Any c = new BoxI32(9);
+    BoxI32 b = c as BoxI32;
+    println_i32(b.get());
+
+    I32 i = c as I32;
+    println_i32(i.get());
+
+    Option<BoxI32> ob = c as? BoxI32;
+    println_bool(ob.unwrap().get() == 9);
+
+    Option<I32> oi = c as? I32;
+    println_bool(oi.is_some());
+    println_i32(oi.unwrap().get());
+
+    Any miss = 5;
+    Option<I32> nope = miss as? I32;
+    println_bool(nope.is_none());
+
+    Option<I32> some = Some(c as I32);
+    println_i32(some.unwrap().get());
+
+    BoxI32 raw = new BoxI32(11);
+    I32 ri = raw as I32;
+    println_i32(ri.get());
+    return 0;
+}

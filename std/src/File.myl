@@ -1,0 +1,319 @@
+// std 文件 API：阻塞文本/二进制读写。第一版不做异步文件，也不自动关闭句柄。
+import { IoError } from "IoError.myl";
+import { Vec } from "Vec.myl";
+import { Str } from "core/Str";
+import { myrt_str_ptr, myrt_str_cstr } from "core/Mylrt_bind";
+import { mylis_file_open, mylis_file_close, mylis_file_size, mylis_file_exists, mylis_file_remove, mylis_file_rename, mylis_file_read, mylis_file_write, mylis_file_seek, mylis_file_flush, mylis_file_is_dir, mylis_file_mkdir, mylis_file_mkdir_all, mylis_file_remove_dir, mylis_file_remove_dir_all, mylis_file_metadata_size, mylis_file_read_dir_count, mylis_file_read_dir_entry, mylis_file_free_string, mylis_file_tell } from "File_bind.myl";
+
+pub class File {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    pub static fn Open(string path) -> Result<File, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_file_open(myrt_str_ptr(path), 0);
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new File(h));
+    }
+
+    pub static fn Create(string path) -> Result<File, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_file_open(myrt_str_ptr(path), 1);
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new File(h));
+    }
+
+    pub static fn Append(string path) -> Result<File, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_file_open(myrt_str_ptr(path), 2);
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new File(h));
+    }
+
+    pub static fn Exists(string path) -> bool {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_exists(myrt_str_ptr(path));
+        }
+        return rc == 1;
+    }
+
+    pub static fn Remove(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_remove(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub static fn Rename(string from, string to) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_rename(myrt_str_ptr(from), myrt_str_ptr(to));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn size() -> Result<i64, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_file_size(this.handle);
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n);
+    }
+
+    pub fn readAllBytes() -> Result<u8[], IoError> {
+        i64 size = 0;
+        unsafe {
+            size = mylis_file_size(this.handle);
+        }
+        if (size < 0) {
+            return Err(new IoError((-size) as i32));
+        }
+        if (size == 0) {
+            return Ok(new u8[0]);
+        }
+        i64 pos = 0;
+        unsafe {
+            pos = mylis_file_seek(this.handle, 0);
+        }
+        if (pos < 0) {
+            return Err(new IoError((-pos) as i32));
+        }
+        u8[] data = new u8[size];
+        i64 got = 0;
+        while (got < size) {
+            i64 n = 0;
+            unsafe {
+                n = mylis_file_read(this.handle, data, got, size - got);
+            }
+            if (n < 0) {
+                return Err(new IoError((-n) as i32));
+            }
+            if (n == 0) {
+                break;
+            }
+            got = got + n;
+        }
+        if (got < size) {
+            u8[] trimmed = new u8[got];
+            i64 i = 0;
+            while (i < got) {
+                trimmed[i] = data[i];
+                i = i + 1;
+            }
+            return Ok(trimmed);
+        }
+        return Ok(data);
+    }
+
+    pub fn readAllText() -> Result<string, IoError> {
+        Result<u8[], IoError> bytes = this.readAllBytes();
+        match bytes {
+            Ok(data) => { return Ok(Str::FromBytes(data)); }
+            Err(e) => { return Err(e); }
+        }
+    }
+
+    pub fn writeAllBytes(u8[] data) -> Result<i64, IoError> {
+        i64 total = 0;
+        i64 len = data.len() as i64;
+        while (total < len) {
+            i64 n = 0;
+            unsafe {
+                n = mylis_file_write(this.handle, data, total, len - total);
+            }
+            if (n < 0) {
+                return Err(new IoError((-n) as i32));
+            }
+            if (n == 0) {
+                break;
+            }
+            total = total + n;
+        }
+        return Ok(total);
+    }
+
+    pub fn writeAllText(string text) -> Result<i64, IoError> {
+        u8[] data = Str::Bytes(text);
+        return this.writeAllBytes(data);
+    }
+
+    pub fn flush() -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_flush(this.handle);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn close() -> void {
+        unsafe {
+            mylis_file_close(this.handle);
+        }
+        this.handle = -1;
+    }
+
+    pub static fn IsDir(string path) -> bool {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_is_dir(myrt_str_ptr(path));
+        }
+        return rc == 1;
+    }
+
+    pub static fn Size(string path) -> Result<i64, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_file_metadata_size(myrt_str_ptr(path));
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n);
+    }
+
+    pub static fn Mkdir(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_mkdir(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub static fn MkdirAll(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_mkdir_all(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub static fn RemoveDir(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_remove_dir(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub static fn RemoveDirAll(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_remove_dir_all(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub static fn ReadDir(string path) -> Result<Vec<string>, IoError> {
+        i64 count = 0;
+        unsafe {
+            count = mylis_file_read_dir_count(myrt_str_ptr(path));
+        }
+        if (count < 0) {
+            return Err(new IoError((-count) as i32));
+        }
+        Vec<string> out = new Vec<string>();
+        i64 i = 0;
+        unsafe {
+            while (i < count) {
+                i8* raw = mylis_file_read_dir_entry(myrt_str_ptr(path), i);
+                string name = myrt_str_cstr(raw);
+                mylis_file_free_string(raw);
+                if (name != "") {
+                    out.push(name);
+                }
+                i = i + 1;
+            }
+        }
+        return Ok(out);
+    }
+
+    pub fn seek(i64 offset) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_seek(this.handle, offset);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn tell() -> Result<i64, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_file_tell(this.handle);
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n);
+    }
+
+    pub fn readSome(i64 maxBytes) -> Result<u8[], IoError> {
+        if (maxBytes <= 0) {
+            return Ok(new u8[0]);
+        }
+        u8[] data = new u8[maxBytes];
+        i64 got = 0;
+        unsafe {
+            got = mylis_file_read(this.handle, data, 0, maxBytes);
+        }
+        if (got < 0) {
+            return Err(new IoError((-got) as i32));
+        }
+        if (got == 0) {
+            return Ok(new u8[0]);
+        }
+        if (got == maxBytes) {
+            return Ok(data);
+        }
+        u8[] trimmed = new u8[got];
+        i64 i = 0;
+        while (i < got) {
+            trimmed[i] = data[i];
+            i = i + 1;
+        }
+        return Ok(trimmed);
+    }
+}

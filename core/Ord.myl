@@ -1,0 +1,5 @@
+// core 层：排序比较协议。
+// compare 返回负数表示小于，0 表示相等，正数表示大于。
+pub interface Ord {
+    fn compare(Self other) -> i32;
+}

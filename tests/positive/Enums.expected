@@ -1,0 +1,2 @@
+quit | move(5,-3) | name=abc | ratio=1.5
+[Q, M(5,-3), N(abc), R(1.5)]

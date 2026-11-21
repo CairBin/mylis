@@ -1,0 +1,40 @@
+import { Io, print, println, print_i32, println_i32, print_i8, println_i8, print_i16, println_i16, print_i64, print_u8, println_u8, print_u16, println_u16, print_u32, println_u32, print_u64, print_f32, println_f32, print_f64, print_bool, println_i64, println_u64, println_f64, println_bool } from "Io.myl";
+
+pub class Account {
+    pub string owner;
+    pub i32 balance;
+
+    pub fn init(string who, i32 initial) -> void {
+        this.owner = who;
+        this.balance = initial;
+    }
+
+    pub static fn empty(string who) -> Account {
+        return new Account(who, 0);
+    }
+
+    pub static fn bonus(string who, i32 base) -> Account {
+        Account a = new Account(who, base);
+        a.balance = a.balance + 5;
+        return a;
+    }
+
+    pub static fn vip(string who) -> Account {
+        Account a = Account::bonus(who, 100);
+        a.balance = a.balance * 2;
+        return a;
+    }
+
+    pub fn to_string() -> string {
+        return "{this.owner}: {this.balance}";
+    }
+}
+
+fn main() -> i32 {
+    Account a = new Account("ann", 10);
+    Account b = Account::empty("bob");
+    Account c = Account::bonus("cat", 10);
+    Account d = Account::vip("dan");
+    println("{a} | {b} | {c} | {d}");
+    return 0;
+}

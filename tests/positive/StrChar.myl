@@ -1,0 +1,13 @@
+import { println } from "Io.myl";
+import { Fmt } from "Fmt.myl";
+import { Str } from "Str.myl";
+
+fn main() -> i32 {
+    println(Str::CharAt("你好", 1));
+    println(Fmt::U32(Str::CharCodeAt("你好", 0)));
+    println(Fmt::U32(Str::CharCodeAt("你好", 1)));
+    println(Str::CharAt("你好", 9));
+    println("[" + Str::Trim("　你好　") + "]");
+    println(Str::Trim("\t hello \n"));
+    return 0;
+}

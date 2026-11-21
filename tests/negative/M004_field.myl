@@ -1,0 +1,7 @@
+class Bad {
+    i32 a;
+}
+
+fn main() -> i32 {
+    return 0;
+}

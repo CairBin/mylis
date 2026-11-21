@@ -1,0 +1,56 @@
+// std 伪随机数：xorshift64*，只用于非密码学场景。
+pub class Random {
+    u64 state;
+
+    pub fn init(u64 seed) -> void {
+        if (seed == 0) {
+            this.state = 88172645463325252;
+        } else {
+            this.state = seed;
+        }
+    }
+
+    pub fn reseed(u64 seed) -> void {
+        if (seed == 0) {
+            this.state = 88172645463325252;
+        } else {
+            this.state = seed;
+        }
+    }
+
+    fn nextU64() -> u64 {
+        u64 x = this.state;
+        x = x ^ (x >> 12);
+        x = x ^ (x << 25);
+        x = x ^ (x >> 27);
+        this.state = x;
+        return x * 2685821657736338717;
+    }
+
+    pub fn nextU32() -> u32 {
+        return (this.nextU64() >> 32) as u32;
+    }
+
+    pub fn nextI32() -> i32 {
+        return this.nextU32() as i32;
+    }
+
+    // [0, 1) 的 f64。
+    pub fn nextF64() -> f64 {
+        u64 bits = this.nextU64() >> 11;
+        return (bits as f64) / 9007199254740992.0;
+    }
+
+    // 半开区间 [min, maxExclusive)。
+    pub fn range(i64 min, i64 maxExclusive) -> i64 {
+        if (min >= maxExclusive) {
+            return min;
+        }
+        u64 span = (maxExclusive - min) as u64;
+        return min + ((this.nextU64() % span) as i64);
+    }
+
+    pub fn nextBool() -> bool {
+        return (this.nextU64() >> 63) == 1;
+    }
+}

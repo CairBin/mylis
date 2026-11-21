@@ -1,0 +1,28 @@
+// Map<K,V> 的显式迭代器；按 Map 内部插入顺序返回键值对。
+import { Eq } from "core/Eq";
+import { Map } from "Map.myl";
+import { MapEntry } from "MapEntry.myl";
+
+pub class MapIter<K: Eq, V> {
+    Map<K, V> map;
+    i64 index;
+
+    pub fn init(Map<K, V> map) -> void {
+        this.map = map;
+        this.index = 0;
+    }
+
+    pub fn next() -> Option<MapEntry<K, V>> {
+        if (this.index >= this.map.len()) {
+            return None;
+        }
+        K key = this.map.keys[this.index];
+        V value = this.map.values[this.index];
+        this.index = this.index + 1;
+        return Some(new MapEntry<K, V>(key, value));
+    }
+}
+
+pub fn iter_map<K: Eq, V>(Map<K, V> map) -> MapIter<K, V> {
+    return new MapIter<K, V>(map);
+}
