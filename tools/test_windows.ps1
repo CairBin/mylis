@@ -11,7 +11,9 @@
 #   3. 验证 bin/ 发行布局
 #   4. 编译并运行 hello、u64 模式、FmtSpec、三个后端
 #   5. 生成并消费一个本地 .mylib
-#   6. 可选：make dist，解开 zip 后再跑一遍包内 mylc.exe
+#   6. Windows 原生 std：File / Time / Process / TCP / UDP / EventLoop / Worker
+#      协议、WorkerFlaky、写超时，含 LLVM/MIR/AST 后端
+#   7. 可选：make dist，解开 zip 后再跑一遍包内 mylc.exe
 #
 # 不修改源码；所有临时文件放在系统临时目录，成功后删除。
 [CmdletBinding()]
@@ -39,6 +41,7 @@ $OldMylisFamily = $env:MYLIS_FAMILY
 $OldCC = $env:CC
 $OldAR = $env:AR
 $Success = $false
+$script:StdHelpers = @{}
 
 function Write-Step([string]$Text) {
     Write-Host ""
@@ -187,6 +190,9 @@ function Build-All {
     Assert-File (Join-Path $Root "bin\std\src\Io.myl") "bin/std/src/Io.myl"
     Assert-File (Join-Path $Root "bin\std-win32\native\event.rs") "bin/std-win32/native/event.rs"
     Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_file.lib") "bin/build/std-win32/native/mylis_file.lib"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_net.lib") "bin/build/std-win32/native/mylis_net.lib"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_io.lib") "bin/build/std-win32/native/mylis_io.lib"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_time.lib") "bin/build/std-win32/native/mylis_time.lib"
     Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_event.lib") "bin/build/std-win32/native/mylis_event.lib"
     Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_process.lib") "bin/build/std-win32/native/mylis_process.lib"
     Write-Ok "bin/ 目录布局完整"
@@ -289,8 +295,44 @@ function Test-LocalMylib {
     Write-Ok ".mylib 生成、链接、执行通过"
 }
 
+function Get-StdHelper([string]$Name) {
+    if ($script:StdHelpers.ContainsKey($Name)) {
+        return $script:StdHelpers[$Name]
+    }
+    $mylc = Join-Path $Root "bin\mylc.exe"
+    $helperExe = Join-Path $Work ($Name + ".exe")
+    $null = Invoke-Native $mylc @("--std", "--backend", "mir", (Join-Path $Root ("tests\std_native\" + $Name + ".myl")), "-o", $helperExe) $Name
+    $script:StdHelpers[$Name] = $helperExe
+    return $helperExe
+}
+
+function Invoke-StdCase {
+    param(
+        [string]$Name,
+        [string[]]$Backends,
+        [string]$Label,
+        [string]$Helper = "",
+        [int]$Repeat = 1
+    )
+    $mylc = Join-Path $Root "bin\mylc.exe"
+    $source = Join-Path $Root ("tests\std_native\" + $Name + ".myl")
+    $expected = Get-Content -LiteralPath (Join-Path $Root ("tests\std_native\" + $Name + ".expected")) -Raw
+    if (-not [string]::IsNullOrWhiteSpace($Helper)) {
+        $env:WORKER_CMD = Get-StdHelper $Helper
+    }
+    foreach ($backend in $Backends) {
+        $exe = Join-Path $Work ("std-" + $Name + "-" + $backend + ".exe")
+        Invoke-Native $mylc @($source, "--std", "--backend", $backend, "-o", $exe) "$Label ($backend)"
+        for ($iteration = 0; $iteration -lt $Repeat; $iteration = $iteration + 1) {
+            Assert-Text (Invoke-Program $exe @() "$Label ($backend)") $expected "$Label ($backend) 输出"
+        }
+    }
+}
+
 function Test-StdNative {
-    Write-Step "Windows 标准库冒烟（File / Time / Process / TCP / UDP）"
+    Write-Step "Windows 标准库冒烟（File / Time / Process / TCP / UDP / EventLoop / Worker）"
+    $oldWorkerCmd = $env:WORKER_CMD
+    $oldSleeperCmd = $env:SLEEPER_CMD
     Push-Location $Root
     try {
         $buildDir = Join-Path $Root "build\tests"
@@ -299,11 +341,42 @@ function Test-StdNative {
         $env:MYLIS_PATH = (Join-Path $Root "bin") + ";" + (Join-Path $Root "bin\std\src")
         $env:MYLIS_GC = $Gc
         $env:MYLIS_ROOT = (Join-Path $Root "bin")
-        $exe = Join-Path $Work "windows-std.exe"
-        Invoke-Native $mylc @((Join-Path $Root "tests\std_native\WindowsStdApi.myl"), "--std", "--backend", "mir", "-o", $exe) "WindowsStdApi"
-        Assert-Text (Invoke-Program $exe @() "WindowsStdApi") "5`nhello`ntrue`n7`n0`ntrue`ntrue" "WindowsStdApi 输出"
+
+        $sleeperExe = Join-Path $Work "win-sleeper.exe"
+        $sleeperC = @'
+#include <windows.h>
+int main(void) {
+    Sleep(10000);
+    return 0;
+}
+'@
+        $sleeperSource = Join-Path $Work "win-sleeper.c"
+        Set-Content -Path $sleeperSource -Value $sleeperC -Encoding ASCII
+        Invoke-Native "cl.exe" @("/nologo", ("/Fe:" + $sleeperExe), ("/Fo:" + (Join-Path $Work "win-sleeper.obj")), $sleeperSource, "/link", "kernel32.lib") "win-sleeper"
+        $env:SLEEPER_CMD = $sleeperExe
+
+        $backends = @("mir", "ast")
+        if (-not $SkipLlvm) {
+            $backends = @("llvm") + $backends
+        }
+        Invoke-StdCase "WindowsStdApi" @("mir") "WindowsStdApi"
+        Invoke-StdCase "EventLoopApi" $backends "EventLoopApi"
+        Invoke-StdCase "TcpApi" $backends "TcpApi"
+        Invoke-StdCase "UdpApi" @("mir", "ast") "UdpApi"
+        Invoke-StdCase "FileApi" @("mir") "FileApi"
+        Invoke-StdCase "WorkerApi" @("mir") "WorkerApi" -Helper "WorkerEcho"
+        Invoke-StdCase "WorkerPoolApi" @("mir") "WorkerPoolApi" -Helper "WorkerEcho"
+        Invoke-StdCase "WorkerFlakyApi" @("mir") "WorkerFlakyApi" -Helper "WorkerFlaky" -Repeat 5
+        Invoke-StdCase "WorkerReplyApi" @("mir") "WorkerReplyApi" -Helper "WorkerResultServer"
+        Invoke-StdCase "WorkerReplyInvalidApi" @("mir") "WorkerReplyInvalidApi" -Helper "WorkerReplyBadServer"
+        Invoke-StdCase "WorkerPoolReplyApi" @("mir") "WorkerPoolReplyApi" -Helper "WorkerReplyMixedServer"
+        Invoke-StdCase "WindowsProcessApi" @("mir") "WindowsProcessApi"
+        Invoke-StdCase "WindowsWriteTimeoutApi" @("mir") "WindowsWriteTimeoutApi"
+        Invoke-StdCase "WindowsWorkerWriteTimeoutApi" @("mir") "WindowsWorkerWriteTimeoutApi"
         Write-Ok "Windows 标准库冒烟通过"
     } finally {
+        $env:WORKER_CMD = $oldWorkerCmd
+        $env:SLEEPER_CMD = $oldSleeperCmd
         Pop-Location
     }
 }
@@ -331,7 +404,12 @@ function Test-Package {
     Assert-File (Join-Path $pkgRoot "std\src\Io.myl") "包内 std/src/Io.myl"
     Assert-File (Join-Path $pkgRoot "build\mylrt.lib") "包内 build/mylrt.lib"
     Assert-File (Join-Path $pkgRoot "build\mylgc.lib") "包内 build/mylgc.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_file.lib") "包内 build/std-win32/native/mylis_file.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_net.lib") "包内 build/std-win32/native/mylis_net.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_io.lib") "包内 build/std-win32/native/mylis_io.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_time.lib") "包内 build/std-win32/native/mylis_time.lib"
     Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_event.lib") "包内 build/std-win32/native/mylis_event.lib"
+    Assert-File (Join-Path $pkgRoot "build\std-win32\native\mylis_process.lib") "包内 build/std-win32/native/mylis_process.lib"
     Assert-File (Join-Path $pkgRoot "mylis-toolchain.json") "包内 mylis-toolchain.json"
     Assert-File (Join-Path $pkgRoot "mylis-build.json") "包内 mylis-build.json"
 

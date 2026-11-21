@@ -499,7 +499,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\test_windows.ps1
 - 构建 `bin/`；
 - 编译并运行 hello、`u64` 模式、`FmtSpec`，分别测试默认 LLVM、MIR-C、AST-C；
 - 生成并消费一个本地 `.mylib`；
-- 执行 `make dist`，解开 zip 后用包内 `mylc.exe` 再跑一次，验证 `core/`、`std/src/`、`build/mylrt.lib`、`build/mylgc.lib` 都在。
+- 运行 Windows 原生 std 测试：File、Process、TCP、UDP、EventLoop（LLVM/MIR/AST）、Worker/WorkerPool/WorkerReply 协议、WorkerFlaky 时序回归，以及进程与 Worker 写超时；写超时用 MSVC 现场编译一个不读 stdin 的 sleeper 子进程；
+- 执行 `make dist`，解开 zip 后用包内 `mylc.exe` 再跑一次，验证 `core/`、`std/src/`、`build/mylrt.lib`、`build/mylgc.lib` 和 `build/std-win32/native/` 六个 std 库都在。
 
 常用参数：
 

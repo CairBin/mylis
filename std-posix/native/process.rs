@@ -121,8 +121,35 @@ fn wait_readable(fd: i64, timeout_ms: i64) -> Result<bool, i64> {
     wait_event(fd as i32, 1, timeout_ms) // POLLIN
 }
 
+enum ReadWait {
+    Ready,
+    Exited,
+    Timeout,
+}
+
 #[cfg(windows)]
-fn wait_readable(handle: i64, timeout_ms: i64) -> Result<bool, i64> {
+fn child_exited(child: &mut Child) -> Result<bool, i64> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn WaitForSingleObject(handle: *mut c_void, milliseconds: u32) -> u32;
+        fn GetLastError() -> u32;
+    }
+    let handle = child.as_raw_handle() as *mut c_void;
+    match unsafe { WaitForSingleObject(handle, 0) } {
+        0 => Ok(true),      // WAIT_OBJECT_0
+        258 => Ok(false),   // WAIT_TIMEOUT
+        _ => Err(-win_error_code(unsafe { GetLastError() })),
+    }
+}
+
+#[cfg(windows)]
+fn wait_readable_or_exit(
+    handle: i64,
+    timeout_ms: i64,
+    child: &mut Child,
+) -> Result<ReadWait, i64> {
     use std::ffi::c_void;
     #[link(name = "kernel32")]
     extern "system" {
@@ -156,18 +183,50 @@ fn wait_readable(handle: i64, timeout_ms: i64) -> Result<bool, i64> {
             let raw = unsafe { GetLastError() };
             // ERROR_BROKEN_PIPE / ERROR_PIPE_NOT_CONNECTED: a subsequent read sees EOF.
             if raw == 109 || raw == 232 {
-                return Ok(true);
+                return Ok(ReadWait::Ready);
             }
             return Err(-win_error_code(raw));
         }
         if available > 0 {
-            return Ok(true);
+            return Ok(ReadWait::Ready);
+        }
+        // On Windows the pipe can stay open after the child exits. Do not turn
+        // a real EOF into ETIMEDOUT just because handle inheritance kept the
+        // write end alive.
+        if child_exited(child)? {
+            return Ok(ReadWait::Exited);
         }
         if timeout_ms >= 0 && start.elapsed().as_millis() as i64 >= timeout_ms {
-            return Ok(false);
+            return Ok(ReadWait::Timeout);
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[cfg(unix)]
+fn wait_readable_or_exit(
+    fd: i64,
+    timeout_ms: i64,
+    child: &mut Child,
+) -> Result<ReadWait, i64> {
+    if wait_readable(fd, timeout_ms)? {
+        return Ok(ReadWait::Ready);
+    }
+    // POSIX pipes close reliably; the extra check only covers unusual fd leaks.
+    match child.try_wait() {
+        Ok(Some(_)) => Ok(ReadWait::Exited),
+        Ok(None) => Ok(ReadWait::Timeout),
+        Err(error) => Err(error_code(error)),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn wait_readable_or_exit(
+    _fd: i64,
+    _timeout_ms: i64,
+    _child: &mut Child,
+) -> Result<ReadWait, i64> {
+    Err(-95)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -257,6 +316,8 @@ fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> 
             overlapped: *mut c_void,
         ) -> i32;
         fn CloseHandle(handle: *mut c_void) -> i32;
+        fn CancelSynchronousIo(thread: *mut c_void) -> i32;
+        fn WaitForSingleObject(handle: *mut c_void, milliseconds: u32) -> u32;
         fn GetLastError() -> u32;
     }
     if timeout_ms < 0 {
@@ -287,7 +348,7 @@ fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> 
     let data = bytes.to_vec();
     let duplicate_value = duplicate as usize;
     let (sender, receiver) = mpsc::channel::<Result<usize, i64>>();
-    std::thread::spawn(move || {
+    let writer = std::thread::spawn(move || {
         let handle = duplicate_value as *mut c_void;
         let mut written = 0u32;
         let result = unsafe {
@@ -308,9 +369,37 @@ fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> 
         unsafe { CloseHandle(handle) };
     });
     match receiver.recv_timeout(Duration::from_millis(timeout_ms as u64)) {
-        Ok(outcome) => outcome,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(-110),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(-32),
+        Ok(outcome) => {
+            // The writer closes its duplicated handle before exiting; join so a
+            // completed write never leaves a detached cleanup thread behind.
+            let _ = writer.join();
+            outcome
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // Cancel the blocking WriteFile on the writer thread. Without this,
+            // a timed-out pipe write can keep a duplicated handle and a thread
+            // alive until the child exits. Retry briefly: the thread may not
+            // have entered WriteFile yet when the first cancel is issued.
+            let raw_thread = writer.as_raw_handle() as *mut c_void;
+            let deadline = Instant::now() + Duration::from_millis(100);
+            loop {
+                unsafe {
+                    CancelSynchronousIo(raw_thread);
+                }
+                if unsafe { WaitForSingleObject(raw_thread, 10) } == 0 {
+                    let _ = writer.join();
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    break;
+                }
+            }
+            Err(-110)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = writer.join();
+            Err(-32)
+        }
     }
 }
 
@@ -344,6 +433,7 @@ fn read_line_from(
     output: &mut ChildStdout,
     buffer: &mut Vec<u8>,
     timeout_ms: i64,
+    child: &mut Child,
 ) -> Result<LineOutcome, i64> {
     if let Some(line) = take_line(buffer) {
         return Ok(LineOutcome::Line(line));
@@ -356,8 +446,26 @@ fn read_line_from(
             if remaining <= 0 {
                 return Ok(LineOutcome::Timeout);
             }
-            if !wait_readable(stdout_handle(output), remaining)? {
-                return Ok(LineOutcome::Timeout);
+            match wait_readable_or_exit(stdout_handle(output), remaining, child)? {
+                ReadWait::Ready => {}
+                ReadWait::Exited => {
+                    if buffer.is_empty() {
+                        return Ok(LineOutcome::Eof);
+                    }
+                    return Ok(LineOutcome::Line(std::mem::take(buffer)));
+                }
+                ReadWait::Timeout => return Ok(LineOutcome::Timeout),
+            }
+        } else {
+            match wait_readable_or_exit(stdout_handle(output), -1, child)? {
+                ReadWait::Ready => {}
+                ReadWait::Exited => {
+                    if buffer.is_empty() {
+                        return Ok(LineOutcome::Eof);
+                    }
+                    return Ok(LineOutcome::Line(std::mem::take(buffer)));
+                }
+                ReadWait::Timeout => return Ok(LineOutcome::Timeout),
             }
         }
         let mut chunk = [0u8; 4096];
@@ -387,11 +495,17 @@ fn read_line_from(
 }
 
 fn read_line_entry(entry: &mut PipeEntry, timeout_ms: i64) -> Result<LineOutcome, i64> {
-    let output = match entry.output.as_mut() {
+    let PipeEntry {
+        child,
+        output,
+        line_buffer,
+        ..
+    } = entry;
+    let output = match output.as_mut() {
         Some(output) => output,
         None => return Err(-22),
     };
-    read_line_from(output, &mut entry.line_buffer, timeout_ms)
+    read_line_from(output, line_buffer, timeout_ms, child)
 }
 
 static PIPES: Mutex<Vec<Option<PipeEntry>>> = Mutex::new(Vec::new());
@@ -463,6 +577,48 @@ fn shell_command(command: &str) -> Command {
     }
 }
 
+#[cfg(windows)]
+fn direct_command(command: &str) -> Option<Command> {
+    use std::path::Path;
+    let text = command.trim();
+    let executable = if text.len() >= 2 && text.starts_with('"') && text.ends_with('"') {
+        &text[1..text.len() - 1]
+    } else {
+        text
+    };
+    if executable.is_empty()
+        || executable.contains(['&', '|', '<', '>', '^', '%', '!', '*', '?'])
+    {
+        return None;
+    }
+    let path = Path::new(executable);
+    if !path.is_file() {
+        return None;
+    }
+    let extension = path.extension()?.to_string_lossy().to_ascii_lowercase();
+    if extension != "exe" {
+        return None;
+    }
+    Some(Command::new(executable))
+}
+
+#[cfg(not(windows))]
+fn direct_command(_command: &str) -> Option<Command> {
+    None
+}
+
+fn process_command(command: &str) -> Command {
+    #[cfg(windows)]
+    {
+        let direct = direct_command(command);
+        direct.unwrap_or_else(|| shell_command(command))
+    }
+    #[cfg(not(windows))]
+    {
+        shell_command(command)
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn mylis_process_run(command: *const c_char) -> i64 {
     if command.is_null() {
@@ -472,7 +628,7 @@ pub extern "C" fn mylis_process_run(command: *const c_char) -> i64 {
         Ok(text) => text,
         Err(_) => return -22,
     };
-    let mut cmd = shell_command(text);
+    let mut cmd = process_command(text);
     // Do not let a child consume the parent's interactive stdin.
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -520,12 +676,12 @@ pub extern "C" fn mylis_process_popen(command: *const c_char, mode: *const c_cha
     };
     let (mode, mut cmd) = match mode_text {
         "r" => {
-            let mut cmd = shell_command(text);
+            let mut cmd = process_command(text);
             cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
             (1u8, cmd)
         }
         "w" => {
-            let mut cmd = shell_command(text);
+            let mut cmd = process_command(text);
             cmd.stdin(Stdio::piped()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
             (2u8, cmd)
         }
@@ -698,7 +854,12 @@ fn pipe_write_common(
     let bytes = unsafe { std::slice::from_raw_parts(data.add(8 + start), n) };
     match write_with_timeout(input, bytes, timeout_ms) {
         Ok(written) if written == n => written as i64,
-        Ok(_) => -110, // 部分写入后超时；调用方必须按失败处理并重启 worker
+        Ok(_) => {
+            -110
+        }
+        Err(-110) => {
+            -110
+        }
         Err(code) => code,
     }
 }
@@ -802,7 +963,7 @@ pub extern "C" fn mylis_process_popen2(command: *const c_char) -> i64 {
         Ok(text) => text,
         Err(_) => return -22,
     };
-    let mut cmd = shell_command(text);
+    let mut cmd = process_command(text);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
@@ -839,7 +1000,7 @@ pub extern "C" fn mylis_process_spawn(command: *const c_char) -> i64 {
         Ok(text) => text,
         Err(_) => return -22,
     };
-    let mut cmd = shell_command(text);
+    let mut cmd = process_command(text);
     cmd.stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());

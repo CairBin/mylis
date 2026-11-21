@@ -29,8 +29,104 @@ fn arg_string(index: i64) -> Option<String> {
         .map(|s| s.to_string_lossy().into_owned())
 }
 
+#[cfg(windows)]
+fn read_line_windows() -> (i64, Vec<u8>) {
+    use std::ffi::c_void;
+    use std::sync::Mutex;
+    type Handle = *mut c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(which: u32) -> Handle;
+        fn GetFileType(handle: Handle) -> u32;
+        fn ReadFile(
+            handle: Handle,
+            buffer: *mut c_void,
+            bytes_to_read: u32,
+            bytes_read: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
+        fn GetLastError() -> u32;
+    }
+    const STD_INPUT_HANDLE: u32 = (-10i32) as u32;
+    const FILE_TYPE_DISK: u32 = 1;
+    const FILE_TYPE_PIPE: u32 = 3;
+    // Bytes already read from the pipe but not yet returned as a line. Rust's
+    // stdin buffering can wait for more than one line when several Rust
+    // staticlibs are linked into the same Mylis executable, so read the raw
+    // pipe directly and carry the remainder across calls.
+    static PENDING: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle.is_null() || handle as isize == -1 {
+        return (-1, Vec::new());
+    }
+    let kind = unsafe { GetFileType(handle) };
+    if kind != FILE_TYPE_PIPE && kind != FILE_TYPE_DISK {
+        return (-1, Vec::new()); // caller falls back to std::io::stdin
+    }
+    let mut pending = {
+        let mut guard = PENDING.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::mem::take(&mut *guard)
+    };
+    loop {
+        if let Some(pos) = pending.iter().position(|&byte| byte == b'\n') {
+            let mut line: Vec<u8> = pending.drain(..=pos).collect();
+            line.pop(); // drop the newline
+            if line.ends_with(b"\r") {
+                line.pop();
+            }
+            let status = if line.is_empty() { 0 } else { 1 };
+            let mut guard = PENDING.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            *guard = pending;
+            return (status, line);
+        }
+
+        // A one-byte ReadFile on a pipe created by Rust's Command is
+        // occasionally not satisfied even when PeekNamedPipe reports bytes
+        // available. Read in chunks instead; the pending buffer above keeps
+        // any bytes that belong to the next line.
+        let mut buffer = [0u8; 4096];
+        let mut read = 0u32;
+        let ok = unsafe {
+            ReadFile(
+                handle,
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len() as u32,
+                &mut read,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let raw = unsafe { GetLastError() };
+            if raw == 109 || raw == 232 {
+                break;
+            }
+            return (-1, Vec::new());
+        }
+        if read == 0 {
+            break;
+        }
+        pending.extend_from_slice(&buffer[..read as usize]);
+    }
+    if pending.ends_with(b"\r") {
+        pending.pop();
+    }
+    let status = if pending.is_empty() { 0 } else { 1 };
+    let mut guard = PENDING.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Vec::new();
+    (status, pending)
+}
+
 #[no_mangle]
 pub extern "C" fn mylis_io_read_line() -> *mut c_char {
+    #[cfg(windows)]
+    {
+        let (status, bytes) = read_line_windows();
+        if status >= 0 {
+            set_status(status);
+            return cstring(String::from_utf8_lossy(&bytes).into_owned());
+        }
+        // FILE_TYPE_CHAR (console) keeps Rust's line-editing behavior.
+    }
     let mut line = String::new();
     match std::io::stdin().read_line(&mut line) {
         Ok(0) => { set_status(0); cstring(String::new()) }
@@ -104,5 +200,26 @@ pub extern "C" fn mylis_io_env_get(key: *const c_char) -> *mut c_char {
 
 #[no_mangle]
 pub extern "C" fn mylis_io_exit(code: i32) {
-    std::process::exit(code);
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn TerminateProcess(handle: *mut std::ffi::c_void, code: u32) -> i32;
+            fn ExitProcess(code: u32) -> !;
+        }
+        // std::process::exit and ExitProcess both run loader/CRT teardown.
+        // With several Rust staticlibs linked into one Mylis executable that
+        // teardown can occasionally deadlock, so a worker would stay alive
+        // after Stdio::Exit. Stdio::Exit is specified as an immediate process
+        // exit; terminate without running DLL detach or atexit handlers.
+        unsafe {
+            TerminateProcess(GetCurrentProcess(), code as u32);
+            ExitProcess(code as u32)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::exit(code);
+    }
 }

@@ -1,0 +1,34 @@
+// Windows Worker 写超时回归：不读 stdin 的子进程应在 20ms 返回 110。
+import { Worker } from "Worker.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { Stdio } from "Stdio.myl";
+import { Str } from "core/Str";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("SLEEPER_CMD");
+    match (command) {
+        None => { println_i64(1); return 1; }
+        Some(path) => {
+            Result<Worker, IoError> spawned = Worker::Spawn(path);
+            match (spawned) {
+                Ok(worker) => {
+                    string payload = Str::repeat("x", 1048576);
+                    Result<i64, IoError> sent = worker.sendTimeout(payload, 20);
+                    match (sent) {
+                        Ok(count) => { println_i64(count); }
+                        Err(error) => { println_i64(error.code as i64); }
+                    }
+                    Result<ProcessStatus, IoError> done = worker.terminate();
+                    match (done) {
+                        Ok(status) => { println_i64(status.exitCode()); println_i64(status.signal()); }
+                        Err(error2) => { println_i64(error2.code as i64); }
+                    }
+                }
+                Err(error3) => { println_i64(error3.code as i64); }
+            }
+        }
+    }
+    return 0;
+}

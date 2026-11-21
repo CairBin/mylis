@@ -1,0 +1,59 @@
+// Windows 进程 API 冒烟：命令输出捕获、读管道、EOF、等待退出。
+import { Process } from "Process.myl";
+import { ProcessOutput } from "ProcessOutput.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn printResult(Result<ProcessOutput, IoError> result) -> void {
+    match (result) {
+        Ok(output) => {
+            println_i64(output.exitCode());
+            println_i64(output.signal());
+            println(output.stdout());
+            println(output.stderr());
+            println_bool(output.success());
+        }
+        Err(message) => { println_i64(message.code as i64); }
+    }
+}
+
+fn main() -> i32 {
+    printResult(Process::Run("echo hello, process"));
+    printResult(Process::Run("echo out&exit /b 7"));
+    printResult(Process::Run("exit /b 3"));
+
+    Result<ProcessPipe, IoError> opened = Process::Popen("echo alpha", "r");
+    match (opened) {
+        Ok(pipe) => {
+            Result<Option<string>, IoError> first = pipe.readLine();
+            match (first) {
+                Ok(value) => {
+                    match (value) {
+                        Some(text) => { println(text); }
+                        None => { println("eof"); }
+                    }
+                }
+                Err(error) => { println_i64(error.code as i64); }
+            }
+            Result<Option<string>, IoError> second = pipe.readLine();
+            match (second) {
+                Ok(value2) => {
+                    match (value2) {
+                        Some(text2) => { println(text2); }
+                        None => { println("eof"); }
+                    }
+                }
+                Err(error2) => { println_i64(error2.code as i64); }
+            }
+            Result<ProcessStatus, IoError> done = pipe.close();
+            match (done) {
+                Ok(status) => { println_i64(status.exitCode()); println_i64(status.signal()); }
+                Err(error3) => { println_i64(error3.code as i64); }
+            }
+        }
+        Err(error4) => { println_i64(error4.code as i64); }
+    }
+    return 0;
+}

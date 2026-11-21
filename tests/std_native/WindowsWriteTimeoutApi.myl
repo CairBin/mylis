@@ -1,0 +1,35 @@
+// Windows 进程写超时回归：子进程不读 stdin，写满管道后应在 20ms 返回 110。
+import { Process } from "Process.myl";
+import { ProcessPipe } from "ProcessPipe.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { Stdio } from "Stdio.myl";
+import { Str } from "core/Str";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("SLEEPER_CMD");
+    match (command) {
+        None => { println_i64(1); return 1; }
+        Some(path) => {
+            Result<ProcessPipe, IoError> opened = Process::Popen(path, "w");
+            match (opened) {
+                Ok(pipe) => {
+                    string payload = Str::repeat("x", 1048576);
+                    Result<i64, IoError> wrote = pipe.writeTimeout(Str::Bytes(payload), 20);
+                    match (wrote) {
+                        Ok(count) => { println_i64(count); }
+                        Err(error) => { println_i64(error.code as i64); }
+                    }
+                    Result<ProcessStatus, IoError> done = pipe.terminate();
+                    match (done) {
+                        Ok(status) => { println_i64(status.exitCode()); println_i64(status.signal()); }
+                        Err(error2) => { println_i64(error2.code as i64); }
+                    }
+                }
+                Err(error3) => { println_i64(error3.code as i64); }
+            }
+        }
+    }
+    return 0;
+}
