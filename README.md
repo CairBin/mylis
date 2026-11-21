@@ -432,7 +432,7 @@ build/mylrt.lib
 build/mylgc.lib
 build/gc_simple.lib
 docs/ mylc/src/ tests/ editors/
-mylis-toolchain.json   # {"family":"msvc","cc":"cl.exe","ar":"lib.exe"}
+mylis-toolchain.json   # {"family":"msvc"}；cl.exe/lib.exe 从 PATH 解析
 mylis-build.json       # 本套产物的 ABI/target/库路径，mylc 启动时校验
 ```
 

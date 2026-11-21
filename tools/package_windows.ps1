@@ -46,7 +46,7 @@ Pop-Location
 Copy-Item (Join-Path $Root "mylgc\$Out\mylgc.lib") (Join-Path $Root "build\mylgc.lib") -Force
 
 Write-Host "== 3c/5 std native 侧车（Rust staticlib，MSVC）"
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "tools\build_std_native.ps1")
+& (Join-Path $Root "tools\build_std_native.ps1")
 if ($LASTEXITCODE -ne 0) { throw "构建 std native 失败" }
 
 Write-Host "== 4/5 收集文件"
@@ -69,11 +69,11 @@ Copy-Item (Join-Path $Root "README.md"),(Join-Path $Root "Makefile"),(Join-Path 
 Copy-Item (Join-Path $Root "build\mylrt.lib") (Join-Path $Dist "build")
 Copy-Item (Join-Path $Root "build\mylgc.lib") (Join-Path $Dist "build")
 Copy-Item (Join-Path $Root "build\gc_simple.lib") (Join-Path $Dist "build")
-foreach ($name in @("mylis_file","mylis_io","mylis_time","mylis_net","mylis_event","mylis_process")) {
-    Copy-Item (Join-Path $Root "build\std-win32\native\$name.lib") (Join-Path $Dist "build\std-win32\native")
+foreach ($libName in @("mylis_file","mylis_io","mylis_time","mylis_net","mylis_event","mylis_process")) {
+    Copy-Item (Join-Path $Root "build\std-win32\native\$libName.lib") (Join-Path $Dist "build\std-win32\native")
 }
 
-$json = '{"family":"msvc","cc":"cl.exe","ar":"lib.exe"}'
+$json = '{"family":"msvc"}'
 Set-Content -Path (Join-Path $Dist "mylis-toolchain.json") -Value $json -Encoding ascii
 
 $manifest = [ordered]@{
