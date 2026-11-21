@@ -384,11 +384,12 @@ run_process_stdflag_case() {
 run_worker_case() {
   local name=$1
   local backend=$2
-  local helper="$OUT/WorkerEcho"
+  local helper_name=$3
+  local helper="$OUT/$helper_name"
   local exe="$OUT/${name}_$backend"
-  if ! "$ROOT/build/mylc" --std --backend mir tests/std_native/WorkerEcho.myl -o "$helper" >"$OUT/worker-echo.build.log" 2>&1; then
-    echo "FAIL WorkerEcho（编译失败）"
-    sed -n '1,20p' "$OUT/worker-echo.build.log"
+  if ! "$ROOT/build/mylc" --std --backend mir "tests/std_native/$helper_name.myl" -o "$helper" >"$OUT/$helper_name.build.log" 2>&1; then
+    echo "FAIL $helper_name（编译失败）"
+    sed -n '1,20p' "$OUT/$helper_name.build.log"
     return 1
   fi
   if ! "$ROOT/build/mylc" "tests/std_native/$name.myl" \
@@ -470,10 +471,12 @@ run_process_case WorkerTerminateApi ast
 run_process_case WorkerPoolTimeoutApi mir
 run_process_case WorkerPoolTimeoutApi ast
 run_process_stdflag_case
-run_worker_case WorkerApi mir
-run_worker_case WorkerApi ast
-run_worker_case WorkerPoolApi mir
-run_worker_case WorkerPoolApi ast
+run_worker_case WorkerApi mir WorkerEcho
+run_worker_case WorkerApi ast WorkerEcho
+run_worker_case WorkerPoolApi mir WorkerEcho
+run_worker_case WorkerPoolApi ast WorkerEcho
+run_worker_case WorkerFlakyApi mir WorkerFlaky
+run_worker_case WorkerFlakyApi ast WorkerFlaky
 run_platform_case mir
 run_platform_case ast
 

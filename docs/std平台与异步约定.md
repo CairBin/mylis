@@ -83,7 +83,7 @@ class File {
 - 编译器目前不支持 `Result<void, E>`，所以 `writeAllText` / `flush` 返回 `Result<i64, IoError>`。
 - 第一版 native 实现在 `std-posix/native/file.rs`（Rust staticlib，C ABI）；应用通过 `-I std-posix/native` 找头文件、`--link build/std-posix/native/libmylis_file.a` 链接。非嵌入 native 仍按第 6 节和包约定显式链接。
 - EventLoop 的 POSIX `poll` 实现在 `std-posix/native/event.rs`，需要 `--link build/std-posix/native/libmylis_event.a`。
-- Process 的 POSIX shell 实现在 `std-posix/native/process.rs`，需要 `--link build/std-posix/native/libmylis_process.a`；`Run` 同步捕获输出，`Spawn` 返回句柄并支持 pid/wait/kill/close，`Popen` 提供单向字节管道、`Popen2` 同时提供 stdin/stdout，`ProcessPipe::readLine` / `readLineTimeout` 支持不关闭 stdin 的逐行请求-响应，后者用 `poll` 读取超时；`ProcessPipe::terminate` 可强制结束不响应的子进程。Worker 基于这套行协议做进程隔离消息层，WorkerPool 在其上做固定进程池，但不从 native 线程回调 Mylis。
+- Process 的 POSIX shell 实现在 `std-posix/native/process.rs`，需要 `--link build/std-posix/native/libmylis_process.a`；`Run` 同步捕获输出，`Spawn` 返回句柄并支持 pid/wait/kill/close，`Popen` 提供单向字节管道、`Popen2` 同时提供 stdin/stdout，`ProcessPipe::readLine` / `readLineTimeout` 支持不关闭 stdin 的逐行请求-响应，后者用 `poll` 读取超时；`ProcessPipe::terminate` 可强制结束不响应的子进程。Worker 基于这套行协议做进程隔离消息层，WorkerPool 在其上做固定进程池，并用 callAllResults 对单任务失败做隔离重启，但不从 native 线程回调 Mylis。
 
 ### 3.3 网络
 

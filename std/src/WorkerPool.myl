@@ -1,14 +1,17 @@
 // WorkerPool：固定数量的独立 worker 进程，做同步 fan-out/fan-in。
-// 任务按提交顺序返回；任一 send/recv 失败或超时都会强制清理整池。
+// callAll 保持全有或全无语义；callAllResults 对单个任务失败隔离并在原槽位重启 worker。
 import { Worker } from "Worker.myl";
+import { WorkerTaskResult } from "WorkerTaskResult.myl";
 import { ProcessStatus } from "ProcessStatus.myl";
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
 
 pub class WorkerPool {
+    string command;
     Vec<Worker> workers;
 
-    pub fn init(Vec<Worker> list) -> void {
+    pub fn init(string cmd, Vec<Worker> list) -> void {
+        this.command = cmd;
         this.workers = list;
     }
 
@@ -33,27 +36,54 @@ pub class WorkerPool {
             }
             i = i + 1;
         }
-        return Ok(new WorkerPool(list));
+        return Ok(new WorkerPool(command, list));
     }
 
     pub fn count() -> i64 {
         return this.workers.len;
     }
 
-    // 同步提交 tasks，按 tasks 的顺序返回结果。
+    // 同步提交 tasks，按 tasks 的顺序返回结果；任一任务失败则整次失败。
     pub fn callAll(Vec<string> tasks) -> Result<Vec<string>, IoError> {
-        return this.callAllCore(tasks, -1);
+        Result<Vec<WorkerTaskResult>, IoError> results = this.callAllCore(tasks, -1);
+        match (results) {
+            Ok(values) => { return this.toTextResults(values); }
+            Err(error) => { return Err(error); }
+        }
     }
 
-    // 每条响应最多等待 timeoutMs 毫秒；超时会强制清理整池并返回 IoError(110)。
+    // 每条响应最多等待 timeoutMs 毫秒；任一任务失败则整次失败。
     pub fn callAllTimeout(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<string>, IoError> {
+        Result<Vec<WorkerTaskResult>, IoError> results = this.callAllCore(tasks, timeoutMs);
+        match (results) {
+            Ok(values) => { return this.toTextResults(values); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    // 每个任务单独返回成功/失败；worker 超时/退出时只重启该槽位，继续处理其他任务。
+    pub fn callAllResults(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<WorkerTaskResult>, IoError> {
         return this.callAllCore(tasks, timeoutMs);
     }
 
-    fn callAllCore(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<string>, IoError> {
+    fn toTextResults(Vec<WorkerTaskResult> results) -> Result<Vec<string>, IoError> {
+        Vec<string> texts = new Vec<string>();
+        i64 i = 0;
+        while (i < results.len) {
+            WorkerTaskResult item = results.get(i);
+            if (!item.ok) {
+                return Err(new IoError(item.code));
+            }
+            texts.push(item.value);
+            i = i + 1;
+        }
+        return Ok(texts);
+    }
+
+    fn callAllCore(Vec<string> tasks, i64 timeoutMs) -> Result<Vec<WorkerTaskResult>, IoError> {
         i64 total = tasks.len();
-        Vec<string> results = new Vec<string>();
-        results.resize(total, "");
+        Vec<WorkerTaskResult> results = new Vec<WorkerTaskResult>();
+        results.resize(total, WorkerTaskResult::Failure(0));
         i64 workerCount = this.workers.len;
         if (total == 0) {
             return Ok(results);
@@ -65,19 +95,9 @@ pub class WorkerPool {
         Vec<i64> slots = new Vec<i64>();
         slots.resize(workerCount, -1);
         i64 next = 0;
-        i64 i = 0;
-        while (i < workerCount && next < total) {
-            Result<i64, IoError> sent = this.workers.get(i).send(tasks.get(next));
-            match (sent) {
-                Ok(ignored) => { slots.set(i, next); next = next + 1; }
-                Err(error) => { this.terminate(); return Err(error); }
-            }
-            i = i + 1;
-        }
-
         i64 completed = 0;
         while (completed < total) {
-            i = 0;
+            i64 i = 0;
             while (i < workerCount && completed < total) {
                 i64 slot = slots.get(i);
                 if (slot >= 0) {
@@ -86,27 +106,81 @@ pub class WorkerPool {
                         Ok(value) => {
                             match (value) {
                                 Some(text) => {
-                                    results.set(slot, text);
+                                    results.set(slot, WorkerTaskResult::Success(text));
                                     slots.set(i, -1);
                                     completed = completed + 1;
                                     if (next < total) {
                                         Result<i64, IoError> sentNext = this.workers.get(i).send(tasks.get(next));
                                         match (sentNext) {
                                             Ok(ignored) => { slots.set(i, next); next = next + 1; }
-                                            Err(error) => { this.terminate(); return Err(error); }
+                                            Err(error) => {
+                                                results.set(next, WorkerTaskResult::Failure(error.code));
+                                                completed = completed + 1;
+                                                next = next + 1;
+                                                Result<Worker, IoError> restarted = this.restartAt(i);
+                                                match (restarted) {
+                                                    Ok(worker) => { }
+                                                    Err(restartError) => { this.terminate(); return Err(restartError); }
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                                None => { this.terminate(); return Err(new IoError(9)); }
+                                None => {
+                                    results.set(slot, WorkerTaskResult::Failure(9));
+                                    slots.set(i, -1);
+                                    completed = completed + 1;
+                                    Result<Worker, IoError> restarted = this.restartAt(i);
+                                    match (restarted) {
+                                        Ok(worker) => { }
+                                        Err(restartError) => { this.terminate(); return Err(restartError); }
+                                    }
+                                }
                             }
                         }
-                        Err(error) => { this.terminate(); return Err(error); }
+                        Err(error) => {
+                            results.set(slot, WorkerTaskResult::Failure(error.code));
+                            slots.set(i, -1);
+                            completed = completed + 1;
+                            Result<Worker, IoError> restarted = this.restartAt(i);
+                            match (restarted) {
+                                Ok(worker) => { }
+                                Err(restartError) => { this.terminate(); return Err(restartError); }
+                            }
+                        }
+                    }
+                } else if (next < total) {
+                    Result<i64, IoError> sent = this.workers.get(i).send(tasks.get(next));
+                    match (sent) {
+                        Ok(ignored) => { slots.set(i, next); next = next + 1; }
+                        Err(error) => {
+                            results.set(next, WorkerTaskResult::Failure(error.code));
+                            completed = completed + 1;
+                            next = next + 1;
+                            Result<Worker, IoError> restarted = this.restartAt(i);
+                            match (restarted) {
+                                Ok(worker) => { }
+                                Err(restartError) => { this.terminate(); return Err(restartError); }
+                            }
+                        }
                     }
                 }
                 i = i + 1;
             }
         }
         return Ok(results);
+    }
+
+    fn restartAt(i64 index) -> Result<Worker, IoError> {
+        this.workers.get(index).terminate();
+        Result<Worker, IoError> spawned = Worker::Spawn(this.command);
+        match (spawned) {
+            Ok(worker) => {
+                this.workers.set(index, worker);
+                return Ok(worker);
+            }
+            Err(error) => { return Err(error); }
+        }
     }
 
     // 正常关闭所有 worker；任一失败则强制清理整池。

@@ -43,6 +43,7 @@ pub import "ProcessPipe.myl";
 pub import "Worker.myl";
 pub import "WorkerHandler.myl";
 pub import "WorkerServer.myl";
+pub import "WorkerTaskResult.myl";
 pub import "WorkerPool.myl";
 pub import "TcpListener.myl";
 pub import "TcpStream.myl";

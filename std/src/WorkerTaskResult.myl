@@ -1,0 +1,20 @@
+// WorkerPool 的单任务结果：失败不会终止其他任务。
+pub class WorkerTaskResult {
+    pub bool ok;
+    pub string value;
+    pub i32 code;
+
+    pub fn init(bool success, string text, i32 errorCode) -> void {
+        this.ok = success;
+        this.value = text;
+        this.code = errorCode;
+    }
+
+    pub static fn Success(string text) -> WorkerTaskResult {
+        return new WorkerTaskResult(true, text, 0);
+    }
+
+    pub static fn Failure(i32 errorCode) -> WorkerTaskResult {
+        return new WorkerTaskResult(false, "", errorCode);
+    }
+}

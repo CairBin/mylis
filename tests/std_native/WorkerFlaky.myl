@@ -1,0 +1,17 @@
+import { WorkerServer } from "WorkerServer.myl";
+import { WorkerHandler } from "WorkerHandler.myl";
+import { Stdio } from "Stdio.myl";
+
+class FlakyHandler {
+    pub fn handle(string request) -> string {
+        if (request == "boom") {
+            Stdio::Exit(7);
+        }
+        return request;
+    }
+}
+
+fn main() -> i32 {
+    WorkerServer::Run(new FlakyHandler());
+    return 0;
+}
