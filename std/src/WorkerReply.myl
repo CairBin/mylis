@@ -1,0 +1,93 @@
+// Worker 结构化响应：成功携带 value，失败携带 code/message。
+// 线上格式是单行 JSON 对象，由 WorkerServer::RunResult 生成、Worker::callResult 解析。
+import { Json } from "Json.myl";
+import { Map } from "Map.myl";
+
+pub class WorkerReply {
+    pub bool ok;
+    pub string value;
+    pub i32 code;
+    pub string message;
+
+    pub fn init(bool success, string text, i32 errorCode, string errorMessage) -> void {
+        this.ok = success;
+        this.value = text;
+        this.code = errorCode;
+        this.message = errorMessage;
+    }
+
+    pub static fn Success(string text) -> WorkerReply {
+        return new WorkerReply(true, text, 0, "");
+    }
+
+    pub static fn Failure(i32 errorCode, string errorMessage) -> WorkerReply {
+        return new WorkerReply(false, "", errorCode, errorMessage);
+    }
+
+    pub fn toJson() -> Json {
+        Map<string, Json> object = new Map<string, Json>();
+        object.set("ok", Json::Bool(this.ok));
+        if (this.ok) {
+            object.set("value", Json::Str(this.value));
+        } else {
+            object.set("code", Json::Int(this.code as i64));
+            object.set("message", Json::Str(this.message));
+        }
+        return Json::Object(object);
+    }
+
+    pub static fn FromJson(Json value) -> Option<WorkerReply> {
+        if (value.kind != Json::OBJECT) {
+            return None;
+        }
+        Option<Json> okField = value.get("ok");
+        match (okField) {
+            None => { return None; }
+            Some(flag) => {
+                Option<bool> boolFlag = flag.asBool();
+                match (boolFlag) {
+                    None => { return None; }
+                    Some(ok) => {
+                        if (ok) {
+                            Option<Json> valueField = value.get("value");
+                            match (valueField) {
+                                None => { return None; }
+                                Some(field) => {
+                                    Option<string> text = field.asString();
+                                    match (text) {
+                                        None => { return None; }
+                                        Some(content) => { return Some(new WorkerReply(true, content, 0, "")); }
+                                    }
+                                }
+                            }
+                        }
+                        Option<Json> codeField = value.get("code");
+                        match (codeField) {
+                            None => { return None; }
+                            Some(field) => {
+                                Option<i64> code64 = field.asInt();
+                                match (code64) {
+                                    None => { return None; }
+                                    Some(number) => {
+                                        Option<Json> messageField = value.get("message");
+                                        match (messageField) {
+                                            None => { return None; }
+                                            Some(textField) => {
+                                                Option<string> messageText = textField.asString();
+                                                match (messageText) {
+                                                    None => { return None; }
+                                                    Some(content) => { return Some(new WorkerReply(false, "", number as i32, content)); }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+}

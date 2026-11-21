@@ -477,6 +477,10 @@ run_worker_case WorkerPoolApi mir WorkerEcho
 run_worker_case WorkerPoolApi ast WorkerEcho
 run_worker_case WorkerFlakyApi mir WorkerFlaky
 run_worker_case WorkerFlakyApi ast WorkerFlaky
+run_worker_case WorkerReplyApi mir WorkerResultServer
+run_worker_case WorkerReplyApi ast WorkerResultServer
+run_worker_case WorkerReplyInvalidApi mir WorkerReplyBadServer
+run_worker_case WorkerReplyInvalidApi ast WorkerReplyBadServer
 run_platform_case mir
 run_platform_case ast
 

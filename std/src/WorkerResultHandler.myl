@@ -1,0 +1,6 @@
+// Worker 结构化响应处理器；返回 WorkerReply，由 WorkerServer::RunResult 序列化。
+import { WorkerReply } from "WorkerReply.myl";
+
+pub interface WorkerResultHandler {
+    fn handle(string request) -> WorkerReply;
+}

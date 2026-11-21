@@ -1,0 +1,17 @@
+import { WorkerServer } from "WorkerServer.myl";
+import { WorkerResultHandler } from "WorkerResultHandler.myl";
+import { WorkerReply } from "WorkerReply.myl";
+
+class ReplyHandler {
+    pub fn handle(string request) -> WorkerReply {
+        if (request == "fail") {
+            return WorkerReply::Failure(7, "bad request");
+        }
+        return WorkerReply::Success(request);
+    }
+}
+
+fn main() -> i32 {
+    WorkerServer::RunResult(new ReplyHandler());
+    return 0;
+}

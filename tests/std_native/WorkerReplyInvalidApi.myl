@@ -1,0 +1,32 @@
+import { Worker } from "Worker.myl";
+import { WorkerReply } from "WorkerReply.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { Stdio } from "Stdio.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("WORKER_CMD");
+    match (command) {
+        None => { println_i64(1); return 1; }
+        Some(path) => {
+            Result<Worker, IoError> spawned = Worker::Spawn(path);
+            match (spawned) {
+                Ok(worker) => {
+                    string[] requests = ["raw", "object", "novalue", "nocode", "badtype"];
+                    for (i32 i = 0; i < requests.len(); i = i + 1) {
+                        Result<WorkerReply, IoError> reply = worker.callResult(requests[i], 1000);
+                        match (reply) {
+                            Ok(value) => { println_i64(value.code as i64); }
+                            Err(error) => { println_i64(error.code as i64); }
+                        }
+                    }
+                    Result<ProcessStatus, IoError> done = worker.shutdown();
+                    match (done) { Ok(status) => { println_i64(status.exitCode()); } Err(error2) => { println_i64(error2.code as i64); } }
+                }
+                Err(error3) => { println_i64(error3.code as i64); }
+            }
+        }
+    }
+    return 0;
+}

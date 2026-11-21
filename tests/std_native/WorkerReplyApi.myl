@@ -1,0 +1,34 @@
+import { Worker } from "Worker.myl";
+import { WorkerReply } from "WorkerReply.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { Stdio } from "Stdio.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Option<string> command = Stdio::Env("WORKER_CMD");
+    match (command) {
+        None => { println("missing-worker"); return 1; }
+        Some(path) => {
+            Result<Worker, IoError> spawned = Worker::Spawn(path);
+            match (spawned) {
+                Ok(worker) => {
+                    Result<WorkerReply, IoError> okReply = worker.callResult("hello", 1000);
+                    match (okReply) {
+                        Ok(reply1) => { println_bool(reply1.ok); println(reply1.value); }
+                        Err(error1) => { println_i64(error1.code as i64); }
+                    }
+                    Result<WorkerReply, IoError> badReply = worker.callResult("fail", 1000);
+                    match (badReply) {
+                        Ok(reply2) => { println_bool(reply2.ok); println_i64(reply2.code as i64); println(reply2.message); }
+                        Err(error2) => { println_i64(error2.code as i64); }
+                    }
+                    Result<ProcessStatus, IoError> done = worker.shutdown();
+                    match (done) { Ok(status) => { println_i64(status.exitCode()); } Err(error3) => { println_i64(error3.code as i64); } }
+                }
+                Err(error4) => { println_i64(error4.code as i64); }
+            }
+        }
+    }
+    return 0;
+}

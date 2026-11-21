@@ -2,6 +2,8 @@
 // 每行一条消息，调用方约定用 JSON 序列化；不共享 Mylis 对象、不共享 GC 堆。
 // 子进程 stderr 继承父进程；不做非阻塞/select。
 import { IoError } from "IoError.myl";
+import { Json } from "Json.myl";
+import { WorkerReply } from "WorkerReply.myl";
 import { Process } from "Process.myl";
 import { ProcessPipe } from "ProcessPipe.myl";
 import { ProcessStatus } from "ProcessStatus.myl";
@@ -49,6 +51,28 @@ pub class Worker {
     // 带超时的 call；超时返回 IoError(110)。
     pub fn callTimeout(string message, i64 timeoutMs) -> Result<string, IoError> {
         return this.callCore(message, timeoutMs);
+    }
+
+    // 结构化调用：响应必须是 WorkerServer::RunResult 生成的 JSON 对象。
+    // 远端失败仍返回 Ok(reply)，用 reply.ok 判断；解析失败返回 IoError(71)。
+    pub fn callResult(string message, i64 timeoutMs) -> Result<WorkerReply, IoError> {
+        Result<string, IoError> response = this.callTimeout(message, timeoutMs);
+        match (response) {
+            Err(error) => { return Err(error); }
+            Ok(text) => {
+                Result<Json, string> parsed = Json::Parse(text);
+                match (parsed) {
+                    Err(parseError) => { return Err(new IoError(71)); }
+                    Ok(value) => {
+                        Option<WorkerReply> reply = WorkerReply::FromJson(value);
+                        match (reply) {
+                            Some(result) => { return Ok(result); }
+                            None => { return Err(new IoError(71)); }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn callCore(string message, i64 timeoutMs) -> Result<string, IoError> {

@@ -1,6 +1,9 @@
 // Worker 侧行协议服务端：读一行、交给 handler、把返回值打印成一行。
 // 收到保留控制行 "__shutdown__" 时直接退出，Worker::shutdown 依赖这个约定。
 import { WorkerHandler } from "WorkerHandler.myl";
+import { WorkerResultHandler } from "WorkerResultHandler.myl";
+import { WorkerReply } from "WorkerReply.myl";
+import { Json } from "Json.myl";
 import { Stdio } from "Stdio.myl";
 import { println } from "Io.myl";
 
@@ -16,6 +19,24 @@ pub class WorkerServer {
                     }
                     string response = handler.handle(request);
                     println(response);
+                }
+            }
+        }
+        return 0;
+    }
+
+    // 结构化响应版本：handler 返回 WorkerReply，服务端统一输出单行 JSON。
+    pub static fn RunResult(WorkerResultHandler handler) -> i32 {
+        while (true) {
+            Option<string> line = Stdio::ReadLine();
+            match (line) {
+                None => { return 0; }
+                Some(request) => {
+                    if (request == "__shutdown__") {
+                        return 0;
+                    }
+                    WorkerReply reply = handler.handle(request);
+                    println(Json::Stringify(reply.toJson()));
                 }
             }
         }
