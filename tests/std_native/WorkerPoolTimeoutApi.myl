@@ -1,0 +1,23 @@
+import { WorkerPool } from "WorkerPool.myl";
+import { IoError } from "IoError.myl";
+import { Vec } from "Vec.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<WorkerPool, IoError> spawned = WorkerPool::Spawn("sleep 1", 2);
+    match (spawned) {
+        Ok(pool) => {
+            Vec<string> tasks = new Vec<string>();
+            tasks.push("x");
+            tasks.push("y");
+            Result<Vec<string>, IoError> results = pool.callAllTimeout(tasks, 50);
+            match (results) {
+                Ok(values) => { println_i64(values.len() as i64); }
+                Err(error) => { println_i64(error.code as i64); }
+            }
+            println_i64(pool.terminate());
+        }
+        Err(error2) => { println_i64(error2.code as i64); }
+    }
+    return 0;
+}

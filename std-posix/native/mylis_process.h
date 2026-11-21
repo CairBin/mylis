@@ -29,6 +29,7 @@ int64_t mylis_process_pipe_read_copy(int64_t handle, void* data, int64_t offset,
 int64_t mylis_process_pipe_write(int64_t handle, const void* data, int64_t offset, int64_t count);
 int64_t mylis_process_pipe_close_input(int64_t handle);
 int64_t mylis_process_pipe_close(int64_t handle);
+int64_t mylis_process_pipe_terminate(int64_t handle);
 int64_t mylis_process_last_exit_code(void);
 int64_t mylis_process_last_signal(void);
 char* mylis_process_last_stdout(void);

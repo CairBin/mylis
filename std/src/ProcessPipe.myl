@@ -3,7 +3,7 @@
 import { IoError } from "IoError.myl";
 import { ProcessStatus } from "ProcessStatus.myl";
 import { myrt_str_cstr } from "core/Mylrt_bind";
-import { mylis_process_pipe_pid, mylis_process_pipe_read_all, mylis_process_pipe_read_line_timeout, mylis_process_pipe_last_status, mylis_process_pipe_read_copy, mylis_process_pipe_write, mylis_process_pipe_close_input, mylis_process_pipe_close, mylis_process_last_wait_exit_code, mylis_process_last_wait_signal, mylis_process_free_string } from "Process_bind.myl";
+import { mylis_process_pipe_pid, mylis_process_pipe_read_all, mylis_process_pipe_read_line_timeout, mylis_process_pipe_last_status, mylis_process_pipe_read_copy, mylis_process_pipe_write, mylis_process_pipe_close_input, mylis_process_pipe_close, mylis_process_pipe_terminate, mylis_process_last_wait_exit_code, mylis_process_last_wait_signal, mylis_process_free_string } from "Process_bind.myl";
 
 pub class ProcessPipe {
     i64 handle;
@@ -105,12 +105,28 @@ pub class ProcessPipe {
         if (rc < 0) {
             return Err(new IoError((-rc) as i32));
         }
+        return Ok(this.lastStatus());
+    }
+
+    // 强制结束子进程：先 kill，再关闭管道并 wait。用于 close() 可能永久阻塞的 worker。
+    pub fn terminate() -> Result<ProcessStatus, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_process_pipe_terminate(this.handle);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(this.lastStatus());
+    }
+
+    fn lastStatus() -> ProcessStatus {
         i64 code = 0;
         i64 signal = 0;
         unsafe {
             code = mylis_process_last_wait_exit_code();
             signal = mylis_process_last_wait_signal();
         }
-        return Ok(new ProcessStatus(code, signal));
+        return new ProcessStatus(code, signal);
     }
 }

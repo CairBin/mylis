@@ -82,4 +82,9 @@ pub class Worker {
     pub fn close() -> Result<ProcessStatus, IoError> {
         return this.pipe.close();
     }
+
+    // 强制结束 worker；不等待它自己退出。
+    pub fn terminate() -> Result<ProcessStatus, IoError> {
+        return this.pipe.terminate();
+    }
 }

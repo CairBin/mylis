@@ -496,8 +496,7 @@ pub extern "C" fn mylis_process_pipe_close_input(handle: i64) -> i64 {
     0
 }
 
-#[no_mangle]
-pub extern "C" fn mylis_process_pipe_close(handle: i64) -> i64 {
+fn pipe_finish(handle: i64, force: bool) -> i64 {
     let mut table = lock_pipes();
     let index = match child_index(handle) {
         Some(index) => index,
@@ -513,9 +512,17 @@ pub extern "C" fn mylis_process_pipe_close(handle: i64) -> i64 {
     // Closing the pipe before wait prevents pclose-like deadlocks.
     entry.input.take();
     entry.output.take();
+    if force {
+        // Ignore kill errors such as ESRCH: the child may already have exited.
+        let _ = entry.child.kill();
+    }
     let status = match entry.child.wait() {
         Ok(status) => status,
-        Err(error) => return -(error.raw_os_error().unwrap_or(22) as i64),
+        Err(error) => {
+            *lock_last_wait_code() = -1;
+            *lock_last_wait_signal() = 0;
+            return -(error.raw_os_error().unwrap_or(22) as i64);
+        }
     };
     let code = status.code().unwrap_or(-1) as i64;
     #[cfg(unix)]
@@ -528,6 +535,16 @@ pub extern "C" fn mylis_process_pipe_close(handle: i64) -> i64 {
     *lock_last_wait_code() = code;
     *lock_last_wait_signal() = signal;
     0
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_process_pipe_close(handle: i64) -> i64 {
+    pipe_finish(handle, false)
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_process_pipe_terminate(handle: i64) -> i64 {
+    pipe_finish(handle, true)
 }
 
 #[no_mangle]

@@ -382,32 +382,33 @@ run_process_stdflag_case() {
 }
 
 run_worker_case() {
-  local backend=$1
+  local name=$1
+  local backend=$2
   local helper="$OUT/WorkerEcho"
-  local exe="$OUT/WorkerApi_$backend"
+  local exe="$OUT/${name}_$backend"
   if ! "$ROOT/build/mylc" --std --backend mir tests/std_native/WorkerEcho.myl -o "$helper" >"$OUT/worker-echo.build.log" 2>&1; then
     echo "FAIL WorkerEcho（编译失败）"
     sed -n '1,20p' "$OUT/worker-echo.build.log"
     return 1
   fi
-  if ! "$ROOT/build/mylc" tests/std_native/WorkerApi.myl \
+  if ! "$ROOT/build/mylc" "tests/std_native/$name.myl" \
       --backend "$backend" \
       -I "$ROOT/std/src" -I "$ROOT/std-posix/native" \
-      --link "$PROCESS" --link "$IO" -o "$exe" >"$OUT/worker-$backend.build.log" 2>&1; then
-    echo "FAIL WorkerApi（$backend 编译失败）"
-    sed -n '1,20p' "$OUT/worker-$backend.build.log"
+      --link "$PROCESS" --link "$IO" -o "$exe" >"$OUT/worker-$name-$backend.build.log" 2>&1; then
+    echo "FAIL $name（$backend 编译失败）"
+    sed -n '1,20p' "$OUT/worker-$name-$backend.build.log"
     return 1
   fi
-  if ! WORKER_CMD="$helper" timeout 30 "$exe" >"$OUT/WorkerApi.actual" 2>"$OUT/worker-$backend.err"; then
-    echo "FAIL WorkerApi（$backend 运行失败）"
-    sed -n '1,10p' "$OUT/worker-$backend.err"
+  if ! WORKER_CMD="$helper" timeout 30 "$exe" >"$OUT/$name.actual" 2>"$OUT/worker-$name-$backend.err"; then
+    echo "FAIL $name（$backend 运行失败）"
+    sed -n '1,10p' "$OUT/worker-$name-$backend.err"
     return 1
   fi
-  if ! diff -u tests/std_native/WorkerApi.expected "$OUT/WorkerApi.actual"; then
-    echo "FAIL WorkerApi（$backend 输出不一致）"
+  if ! diff -u "tests/std_native/$name.expected" "$OUT/$name.actual"; then
+    echo "FAIL $name（$backend 输出不一致）"
     return 1
   fi
-  echo "  ok   WorkerApi（$backend）"
+  echo "  ok   $name（$backend）"
 }
 
 run_platform_case() {
@@ -464,9 +465,15 @@ run_process_case ProcessTimeoutApi mir
 run_process_case ProcessTimeoutApi ast
 run_process_case WorkerTimeoutApi mir
 run_process_case WorkerTimeoutApi ast
+run_process_case WorkerTerminateApi mir
+run_process_case WorkerTerminateApi ast
+run_process_case WorkerPoolTimeoutApi mir
+run_process_case WorkerPoolTimeoutApi ast
 run_process_stdflag_case
-run_worker_case mir
-run_worker_case ast
+run_worker_case WorkerApi mir
+run_worker_case WorkerApi ast
+run_worker_case WorkerPoolApi mir
+run_worker_case WorkerPoolApi ast
 run_platform_case mir
 run_platform_case ast
 
@@ -625,6 +632,16 @@ if "$ROOT/build/mylc" tests/std_native/WorkerApi.myl --emit-llvm "$OUT/WorkerApi
 else
   echo "FAIL WorkerApi（LLVM 外部声明）"
   sed -n '1,12p' "$OUT/worker-llvm.emit.log"
+  exit 1
+fi
+
+if "$ROOT/build/mylc" tests/std_native/WorkerTerminateApi.myl --emit-llvm "$OUT/WorkerTerminateApi.ll" \
+    -I "$ROOT/std/src" -I "$ROOT/std-posix/native" --link "$PROCESS" >"$OUT/worker-terminate-llvm.emit.log" 2>&1 \
+    && grep -q 'declare i64 @mylis_process_pipe_terminate' "$OUT/WorkerTerminateApi.ll"; then
+  echo "  ok   WorkerTerminateApi（LLVM 外部声明）"
+else
+  echo "FAIL WorkerTerminateApi（LLVM 外部声明）"
+  sed -n '1,12p' "$OUT/worker-terminate-llvm.emit.log"
   exit 1
 fi
 

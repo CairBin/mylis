@@ -1,0 +1,24 @@
+import { Worker } from "Worker.myl";
+import { ProcessStatus } from "ProcessStatus.myl";
+import { IoError } from "IoError.myl";
+import { println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Worker, IoError> spawned = Worker::Spawn("sleep 100");
+    match (spawned) {
+        Ok(worker) => {
+            Result<string, IoError> reply = worker.callTimeout("ping", 50);
+            match (reply) {
+                Ok(text) => { println_i64(text.len() as i64); }
+                Err(error) => { println_i64(error.code as i64); }
+            }
+            Result<ProcessStatus, IoError> done = worker.terminate();
+            match (done) {
+                Ok(status) => { println_i64(status.exitCode()); println_i64(status.signal()); }
+                Err(error2) => { println_i64(error2.code as i64); }
+            }
+        }
+        Err(error3) => { println_i64(error3.code as i64); }
+    }
+    return 0;
+}
