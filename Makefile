@@ -344,6 +344,7 @@ test: all
 	bash tests/run_std_native_tests.sh
 	bash tests/test_lib.sh
 	bash tests/test_emit.sh
+	bash tests/test_native_include.sh
 	bash tests/test_toolchain.sh
 	bash tests/test_ir.sh
 	bash tests/test_mir_c.sh

@@ -345,8 +345,8 @@ std-win32-gnu           # Windows GNU/MinGW native backend（规划名）
 - C 库不进入 L；消费方必须自己链接：
   - `--link libfoo.a` / `--link foo.lib` / `--link foo.dll`
   - 或 `-L <dir> -l foo`
-- 消费方还需要 C 头文件路径（`-I`）和对应系统库。
-- `mylis.toml` 的 `[native]` 现在支持 `files` / `dirs` / `libs`，编译时合并进 `--link` / `-L` / `-l`；`import L` 仍不会自动传递 L 的 C 库路径。
+- 消费方还需要 C 头文件路径（`-I` 或根清单 `[native] include`）和对应系统库。
+- `mylis.toml` 的 `[native]` 现在支持 `include` / `files` / `dirs` / `libs`，编译时合并进 `-I` / `--link` / `-L` / `-l`；`import L` 仍不会自动传递 L 的 C 库路径。
 - C 库自己的传递依赖（如 zlib、pthread、ws2_32）也必须由消费方链接；嵌入 L 只带 L 指定的库，不会自动带它的依赖。
 - 优点：L 保持纯 MIR，可跨编译器构建方式共享；L 的 Mylis 实现仍会被合并。
 - 缺点：消费方必须自己处理 C 库、头文件和链接顺序。
@@ -371,7 +371,7 @@ mylc L.myl --emit-mylib L.mylib --embed-shared foo.lib   # Windows 导入库
 链接参数可以来自**消费方的构建命令**，也可以来自当前包的 `mylis.toml`：
 
 - 命令行：`--link`、`-l`、`-L`、`-I`、`--link-mylib`
-- `mylis.toml` 的 `[native]`：`files`、`dirs`、`libs`
+- `mylis.toml` 的 `[native]`：`include`、`files`、`dirs`、`libs`
 - `Makefile` / CI 脚本：把同样的参数拼进 `mylc` 调用
 - `mylis-build.json`：只描述运行时和系统库（`myrt` / `mylgc` / `system_libs`），不是项目 C 依赖的通用链接配置
 - `mylis.lock`：只记录依赖来源和 checksum，不记录链接参数
@@ -380,6 +380,7 @@ mylc L.myl --emit-mylib L.mylib --embed-shared foo.lib   # Windows 导入库
 
 ```toml
 [native]
+include = ["vendor/include"]
 files = ["vendor/libfoo.a", "vendor/foo.def"]
 dirs = ["vendor/foo/lib"]
 libs = ["foo", "ws2_32"]
@@ -387,11 +388,10 @@ libs = ["foo", "ws2_32"]
 
 语义：
 
-- `files` 映射到 `--link`，`dirs` 映射到 `-L`，`libs` 映射到 `-l`。
+- `include` 映射到 `-I`，`files` 映射到 `--link`，`dirs` 映射到 `-L`，`libs` 映射到 `-l`。
 - 相对路径相对 `mylis.toml` 所在目录解析，不相对当前工作目录。
-- 命令行参数仍然生效，和清单参数合并；去重由工具链/链接器处理。
+- 清单参数与命令行参数合并；`include` 和命令行 `-I` 同时加入 Mylis 模块搜索根。
 - 当前只作用于**当前编译的根包**；依赖包自己的 `[native]` 不会自动传递给消费方。
-- `include` / 头文件搜索路径尚未加入 `[native]`，仍用 `-I` 或构建脚本处理。
 - `import L` 不会自动带出 L 的 C 库路径；L 若需要自动链接，仍应以带 native 载荷的 `.mylib` 分发。
 
 ### 8.7 std 平台后端的链接责任

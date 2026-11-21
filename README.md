@@ -331,7 +331,7 @@ mylc hello.myl -o hello.exe
 
 | 文件 | 位置 | 作用 |
 | --- | --- | --- |
-| `mylis.toml` | 工程根（`mylc build` 从 cwd 向上找） | `[project]` 名称/版本、`[build] paths/backend`、`[targets.*]`、`[toolchain] cc/ar/cflags/ldflags/family` |
+| `mylis.toml` | 工程根（`mylc build` 从 cwd 向上找） | `[project]` 名称/版本、`[build] paths/backend`、`[targets.*]`、`[native] include/files/dirs/libs`、`[toolchain] cc/ar/cflags/ldflags/family` |
 | `mylis-toolchain.json` | 安装根（随包） | `{"cc":"...","ar":"...","family":"...","runtime":"..."}`，描述随包工具链 |
 | `mylis-build.json` | 安装根/构建根 | 本套 `build/` 的 `os/family/abi/target/cc/ar/myrt/mylgc/simple/system_libs`；`mylc` 链接前校验 |
 | `toolchains/*.toml` | 见 6.2 | 编译器家族规格（插件） |
@@ -583,7 +583,7 @@ ar = "lib.exe"
 ## 10. 测试与目录
 
 ```bash
-make test        # 正向/反向 114 项 + 后端对拍 76 项 + std native/库模式/工具链/MIR/LSP/裸机验收
+make test        # 正向/反向 114 项 + 后端对拍 76 项 + std native/库模式/工具链/MIR/[native] include/LSP/裸机验收
 bash tests/run_package_tests.sh  # 嵌套模块、std 包依赖（含复制到项目 lib/）、导入可见性、原生载荷 LLVM 声明/真实链接、mixed native/MIR、泛型 .mylib（需 clang 15+）
 bash tools/check_std.sh         # std 包自洽检查
 bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Process/Worker，MIR/AST/LLVM 声明

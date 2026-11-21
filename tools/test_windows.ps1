@@ -295,6 +295,75 @@ function Test-LocalMylib {
     Write-Ok ".mylib 生成、链接、执行通过"
 }
 
+function Test-NativeInclude {
+    Write-Step "mylis.toml [native] include/dirs/libs"
+    $mylc = Join-Path $Root "bin\mylc.exe"
+    $proj = Join-Path $Work "native-include"
+    New-Item -ItemType Directory -Force -Path (Join-Path $proj "src"), (Join-Path $proj "native") | Out-Null
+
+    $manifest = @'
+[package]
+name = "native_include"
+version = "0.1.0"
+
+[build]
+backend = "mir"
+
+[native]
+include = ["native"]
+dirs = ["native"]
+libs = ["answer"]
+
+[targets.app]
+kind = "exe"
+entry = "src/main.myl"
+out = "app.exe"
+'@
+    $bind = @'
+@header("answer.h")
+pub unsafe fn answer() -> i32;
+'@
+    $main = @'
+import { println_i32 } from "Io.myl";
+import { answer } from "native_bind.myl";
+
+fn main() -> i32 {
+    unsafe { println_i32(answer()); }
+    return 0;
+}
+'@
+    $header = @'
+#ifndef ANSWER_H
+#define ANSWER_H
+int answer(void);
+#endif
+'@
+    $source = @'
+#include "answer.h"
+int answer(void) { return 42; }
+'@
+    Set-Content -Path (Join-Path $proj "mylis.toml") -Value $manifest -Encoding ASCII
+    Set-Content -Path (Join-Path $proj "src\native_bind.myl") -Value $bind -Encoding ASCII
+    Set-Content -Path (Join-Path $proj "src\main.myl") -Value $main -Encoding ASCII
+    Set-Content -Path (Join-Path $proj "native\answer.h") -Value $header -Encoding ASCII
+    Set-Content -Path (Join-Path $proj "native\answer.c") -Value $source -Encoding ASCII
+
+    Push-Location $proj
+    try {
+        Invoke-Native "cl.exe" @("/nologo", "/c", "native\answer.c", "/Fo:native\answer.obj") "native-include C 编译"
+        Invoke-Native "lib.exe" @("/nologo", "/OUT:native\answer.lib", "native\answer.obj") "native-include lib"
+        $env:MYLIS_PATH = (Join-Path $Root "bin") + ";" + (Join-Path $Root "bin\std\src")
+        $env:MYLIS_GC = $Gc
+        $env:MYLIS_ROOT = (Join-Path $Root "bin")
+        Invoke-Native $mylc @("build", "app") "native-include 构建"
+        $exe = Join-Path $proj "app.exe"
+        Assert-Text (Invoke-Program $exe @() "native-include") "42" "native-include 输出"
+        Write-Ok "[native] include/dirs/libs 生效"
+    } finally {
+        Pop-Location
+    }
+}
+
 function Get-StdHelper([string]$Name) {
     if ($script:StdHelpers.ContainsKey($Name)) {
         return $script:StdHelpers[$Name]
@@ -440,6 +509,7 @@ try {
     New-SmokeSources
     Test-CompilerAt (Join-Path $Root "bin") "bin" ((Join-Path $Root "bin") + ";" + (Join-Path $Root "bin\std\src"))
     Test-LocalMylib
+    Test-NativeInclude
     Test-StdNative
     if ($Mode -ne "quick" -and -not $SkipPackage) {
         Test-Package

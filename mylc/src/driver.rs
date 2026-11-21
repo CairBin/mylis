@@ -247,6 +247,13 @@ pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
         if let Some(mpath) = manifest::locate_from(src_dir) {
             if let Ok(m) = manifest::Manifest::load(&mpath) {
                 let base = mpath.parent().unwrap_or(Path::new("."));
+                for inc in m.native_includes {
+                    let p = Path::new(&inc);
+                    let path = if p.is_absolute() { p.to_path_buf() } else { base.join(p) };
+                    if !owned.includes.iter().any(|x| Path::new(x) == path.as_path()) {
+                        owned.includes.push(path.to_string_lossy().to_string());
+                    }
+                }
                 for f in m.native_link_files {
                     let p = Path::new(&f);
                     let path = if p.is_absolute() { p.to_path_buf() } else { base.join(p) };
@@ -1292,9 +1299,6 @@ fn emit_msvc(
     for d in &tc.ldflags {
         cmd.arg(d);
     }
-    for d in &args.link_dirs {
-        cmd.arg(format!("/LIBPATH:{}", d));
-    }
     cmd.arg(cpath);
     cmd.arg(&lay.myrt_msvc_lib);
     match gc {
@@ -1341,6 +1345,9 @@ fn emit_msvc(
         Mode::Shared => {
             cmd.arg("/LD").arg(format!("/Fe:{}", output));
             cmd.arg("/link");
+            for d in &args.link_dirs {
+                cmd.arg(format!("/LIBPATH:{}", d));
+            }
             for l in &args.link_libs {
                 cmd.arg(tc.link_lib.replace("{name}", l));
             }
@@ -1365,6 +1372,9 @@ fn emit_msvc(
         _ => {
             cmd.arg(format!("/Fe:{}", output));
             cmd.arg("/link").arg("/SUBSYSTEM:CONSOLE");
+            for d in &args.link_dirs {
+                cmd.arg(format!("/LIBPATH:{}", d));
+            }
             for l in &args.link_libs {
                 cmd.arg(tc.link_lib.replace("{name}", l));
             }

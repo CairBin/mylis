@@ -12,6 +12,12 @@
 //! kind = "exe"                # exe | static | shared
 //! entry = "src/app.myl"
 //! out = "build/myapp"         # 可省略：默认 build/<target 名>
+//!
+//! [native]
+//! include = ["include"]        # C 头文件搜索目录（相对工程根）
+//! dirs = ["lib"]               # 链接器库搜索目录
+//! libs = ["foo"]               # 链接库名
+//! files = ["lib/libfoo.a"]     # 精确链接文件
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -95,6 +101,8 @@ pub struct Manifest {
     pub lib_entry: Option<String>,
     /// 本地路径依赖
     pub dependencies: Vec<Dependency>,
+    /// `[native] include`：传给 C 编译器的头文件搜索目录
+    pub native_includes: Vec<String>,
     /// `[native] files`：直接传给 `--link` 的原生文件
     pub native_link_files: Vec<String>,
     /// `[native] dirs`：直接传给 `-L` 的原生库目录
@@ -128,6 +136,7 @@ impl Manifest {
         let mut targets: Vec<Target> = Vec::new();
         let mut lib_entry: Option<String> = None;
         let mut dependencies: Vec<Dependency> = Vec::new();
+        let mut native_includes = Vec::new();
         let mut native_link_files = Vec::new();
         let mut native_link_dirs = Vec::new();
         let mut native_link_libs = Vec::new();
@@ -170,6 +179,7 @@ impl Manifest {
                     _ => {}
                 },
                 "native" => match k.trim() {
+                    "include" | "includes" => native_includes = parse_array(v),
                     "files" | "link_files" => native_link_files = parse_array(v),
                     "dirs" | "link_dirs" => native_link_dirs = parse_array(v),
                     "libs" | "link_libs" => native_link_libs = parse_array(v),
@@ -247,7 +257,7 @@ impl Manifest {
         }
         Ok(Manifest {
             name, version, paths, backend, targets, lib_entry, dependencies,
-            native_link_files, native_link_dirs, native_link_libs,
+            native_includes, native_link_files, native_link_dirs, native_link_libs,
         })
     }
 }
@@ -420,6 +430,7 @@ fn resolve_mylib(dep: &Dependency, base: &Path, offline: bool) -> Result<(PathBu
         targets: Vec::new(),
         lib_entry: None,
         dependencies: Vec::new(),
+        native_includes: Vec::new(),
         native_link_files: Vec::new(),
         native_link_dirs: Vec::new(),
         native_link_libs: Vec::new(),
