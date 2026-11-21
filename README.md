@@ -451,6 +451,9 @@ Windows 分支默认强制 `CC=cl`、`AR=lib`，会忽略终端继承的 `CC=cc`
 命令行仍可用 `make CC=clang-cl`。如果显式传 `make CC=cc`，Makefile 会拒绝。
 `make test-win` 也会锁定并在结束后恢复。
 
+Windows 分支不需要 gcc。GNU Make 需要 4.x；GnuWin32 的 3.81 在 cmd 配方下会卡住，
+可换用 ezwinports 的 `make-4.4.1-without-guile-w32-bin.zip`。
+
 `make all` 默认：
 
 - 后端：`BACKEND=llvm`
