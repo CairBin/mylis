@@ -17,4 +17,4 @@
 是否存在的准确判断用 `mylis_io_env_exists()`。
 
 这不是嵌入 `.mylib` 的 native 载荷；按包约定，最终链接者必须显式提供非嵌入 native。
-当前在 Linux/POSIX 上验证；Windows MSVC/GNU 的静态库 ABI 与打包尚未验证。
+当前在 Linux/POSIX 上验证；Windows MSVC 侧车在 `std-win32/native/`，使用 Winsock `WSAPoll` 与 Windows 进程管道实现。

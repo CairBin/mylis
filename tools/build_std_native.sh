@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUT="$ROOT/build/std-posix/native"
-mkdir -p "$OUT"
+TARGET=${TARGET:-}
 RUSTC=${RUSTC:-rustc}
 if ! command -v "$RUSTC" >/dev/null 2>&1; then
   if [ -x "$HOME/.cargo/bin/rustc" ]; then
@@ -12,22 +11,29 @@ if ! command -v "$RUSTC" >/dev/null 2>&1; then
     exit 1
   fi
 fi
-"$RUSTC" --edition 2021 --crate-name mylis_file --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/file.rs" -o "$OUT/libmylis_file.a"
-"$RUSTC" --edition 2021 --crate-name mylis_net --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/net.rs" -o "$OUT/libmylis_net.a"
-"$RUSTC" --edition 2021 --crate-name mylis_event --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/event.rs" -o "$OUT/libmylis_event.a"
-"$RUSTC" --edition 2021 --crate-name mylis_io --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/io.rs" -o "$OUT/libmylis_io.a"
-"$RUSTC" --edition 2021 --crate-name mylis_time --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/time.rs" -o "$OUT/libmylis_time.a"
-"$RUSTC" --edition 2021 --crate-name mylis_process --crate-type staticlib \
-  -C panic=abort -C opt-level=3 \
-  "$ROOT/std-posix/native/process.rs" -o "$OUT/libmylis_process.a"
-echo "已生成 $OUT/libmylis_file.a $OUT/libmylis_io.a $OUT/libmylis_time.a $OUT/libmylis_net.a $OUT/libmylis_event.a $OUT/libmylis_process.a"
+
+if [ -n "$TARGET" ] && [[ "$TARGET" == *windows* ]]; then
+  OUT="$ROOT/build/std-win32/native"
+  SRC="$ROOT/std-win32/native"
+  EXT="lib"
+  CRATE_PREFIX=""
+else
+  OUT="$ROOT/build/std-posix/native"
+  SRC="$ROOT/std-posix/native"
+  EXT="a"
+  CRATE_PREFIX="lib"
+fi
+mkdir -p "$OUT"
+
+TARGET_ARGS=()
+if [ -n "$TARGET" ]; then
+  TARGET_ARGS=(--target "$TARGET")
+fi
+
+for name in file net event io time process; do
+  "$RUSTC" --edition 2021 --crate-name "mylis_$name" --crate-type staticlib \
+    -C panic=abort -C opt-level=3 \
+    "${TARGET_ARGS[@]}" \
+    "$SRC/$name.rs" -o "$OUT/${CRATE_PREFIX}mylis_$name.$EXT"
+done
+echo "已生成 $OUT/${CRATE_PREFIX}mylis_{file,io,time,net,event,process}.$EXT"

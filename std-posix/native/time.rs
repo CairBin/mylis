@@ -1,5 +1,5 @@
-//! Wall-clock, monotonic clock and sleep for hosted std.
-//! POSIX and Windows Rust targets share the same implementation.
+//  Wall-clock, monotonic clock and sleep for hosted std.
+//  POSIX and Windows Rust targets share the same implementation.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};

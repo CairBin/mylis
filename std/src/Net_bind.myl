@@ -19,10 +19,10 @@ pub unsafe fn mylis_tcp_listener_close(i64 handle) -> i64;
 pub unsafe fn mylis_tcp_stream_close(i64 handle) -> i64;
 
 @header("mylis_net.h")
-pub unsafe fn mylis_tcp_stream_fd(i64 handle) -> i32;
+pub unsafe fn mylis_tcp_stream_fd(i64 handle) -> i64;
 
 @header("mylis_net.h")
-pub unsafe fn mylis_tcp_listener_fd(i64 handle) -> i32;
+pub unsafe fn mylis_tcp_listener_fd(i64 handle) -> i64;
 
 @header("mylis_net.h")
 pub unsafe fn mylis_tcp_listener_set_nonblocking(i64 handle, i32 enabled) -> i64;

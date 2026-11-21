@@ -18,7 +18,7 @@ pub unsafe fn mylis_udp_recv_from(i64 handle, u8[] data, i64 offset, i64 count, 
 pub unsafe fn mylis_udp_set_nonblocking(i64 handle, i32 enabled) -> i64;
 
 @header("mylis_net.h")
-pub unsafe fn mylis_udp_fd(i64 handle) -> i32;
+pub unsafe fn mylis_udp_fd(i64 handle) -> i64;
 
 @header("mylis_net.h")
 pub unsafe fn mylis_udp_close(i64 handle) -> i64;

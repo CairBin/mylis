@@ -298,17 +298,21 @@ pub fn apply_std_defaults(a: &mut Args) -> Result<(), String> {
             a.includes.push(project.to_string_lossy().to_string());
         }
     }
-    // 当前只接入 POSIX 侧车；Windows 侧车尚未提供。
-    if cfg!(target_os = "linux") || cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
-        let native = root.parent().unwrap_or(&root).join("std-posix").join("native");
-        if native.is_dir() && !a.includes.iter().any(|x| Path::new(x) == native) {
-            a.includes.push(native.to_string_lossy().to_string());
-        }
-        for name in ["libmylis_file.a", "libmylis_io.a", "libmylis_time.a", "libmylis_net.a", "libmylis_event.a", "libmylis_process.a"] {
-            let lib = root.parent().unwrap_or(&root).join("build").join("std-posix").join("native").join(name);
-            if lib.is_file() && !a.link_files.iter().any(|x| Path::new(x) == lib) {
-                a.link_files.push(lib.to_string_lossy().to_string());
-            }
+    // 平台侧车随编译器目标选择：POSIX 用 std-posix，Windows 用 std-win32。
+    let (pkg, prefix, ext) = if cfg!(windows) {
+        ("std-win32", "", "lib")
+    } else {
+        ("std-posix", "lib", "a")
+    };
+    let native = root.parent().unwrap_or(&root).join(pkg).join("native");
+    if native.is_dir() && !a.includes.iter().any(|x| Path::new(x) == native) {
+        a.includes.push(native.to_string_lossy().to_string());
+    }
+    for stem in ["file", "io", "time", "net", "event", "process"] {
+        let name = format!("{}mylis_{}.{}", prefix, stem, ext);
+        let lib = root.parent().unwrap_or(&root).join("build").join(pkg).join("native").join(&name);
+        if lib.is_file() && !a.link_files.iter().any(|x| Path::new(x) == lib) {
+            a.link_files.push(lib.to_string_lossy().to_string());
         }
     }
     Ok(())

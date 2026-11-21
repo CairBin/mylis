@@ -11,7 +11,24 @@ use std::os::raw::c_char;
 use std::ptr;
 
 fn errno(e: std::io::Error) -> i64 {
-    -(e.raw_os_error().unwrap_or(5) as i64)
+    #[cfg(windows)]
+    {
+        let raw = e.raw_os_error().unwrap_or(5);
+        let posix = match raw {
+            2 | 3 => 2,
+            5 | 32 | 33 => 13,
+            80 | 183 => 17,
+            87 | 123 | 206 => 22,
+            109 | 232 => 32,
+            995 | 258 => 110,
+            _ => 5,
+        };
+        -(posix as i64)
+    }
+    #[cfg(not(windows))]
+    {
+        -(e.raw_os_error().unwrap_or(5) as i64)
+    }
 }
 
 fn path_str<'a>(path: *const c_char) -> Result<&'a str, i64> {

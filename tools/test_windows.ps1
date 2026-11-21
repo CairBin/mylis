@@ -185,6 +185,9 @@ function Build-All {
     Assert-File (Join-Path $Root "bin\build\gc_simple.lib") "bin/build/gc_simple.lib"
     Assert-File (Join-Path $Root "bin\core\Fmt.myl") "bin/core/Fmt.myl"
     Assert-File (Join-Path $Root "bin\std\src\Io.myl") "bin/std/src/Io.myl"
+    Assert-File (Join-Path $Root "bin\std-win32\native\mylis_file.lib") "bin/std-win32/native/mylis_file.lib"
+    Assert-File (Join-Path $Root "bin\std-win32\native\mylis_event.lib") "bin/std-win32/native/mylis_event.lib"
+    Assert-File (Join-Path $Root "bin\build\std-win32\native\mylis_process.lib") "bin/build/std-win32/native/mylis_process.lib"
     Write-Ok "bin/ 目录布局完整"
 }
 
@@ -285,6 +288,25 @@ function Test-LocalMylib {
     Write-Ok ".mylib 生成、链接、执行通过"
 }
 
+function Test-StdNative {
+    Write-Step "Windows 标准库冒烟（File / Time / Process / TCP / UDP）"
+    Push-Location $Root
+    try {
+        $buildDir = Join-Path $Root "build\tests"
+        New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+        $mylc = Join-Path $Root "bin\mylc.exe"
+        $env:MYLIS_PATH = (Join-Path $Root "bin") + ";" + (Join-Path $Root "bin\std\src")
+        $env:MYLIS_GC = $Gc
+        $env:MYLIS_ROOT = (Join-Path $Root "bin")
+        $exe = Join-Path $Work "windows-std.exe"
+        Invoke-Native $mylc @((Join-Path $Root "tests\std_native\WindowsStdApi.myl"), "--std", "--backend", "mir", "-o", $exe) "WindowsStdApi"
+        Assert-Text (Invoke-Program $exe @() "WindowsStdApi") "5`nhello`ntrue`n7`n0`ntrue`ntrue" "WindowsStdApi 输出"
+        Write-Ok "Windows 标准库冒烟通过"
+    } finally {
+        Pop-Location
+    }
+}
+
 function Test-Package {
     Write-Step "构建并验证 Windows 发行 zip"
     $make = Get-ToolPath "make"
@@ -338,6 +360,7 @@ try {
     New-SmokeSources
     Test-CompilerAt (Join-Path $Root "bin") "bin" ((Join-Path $Root "bin") + ";" + (Join-Path $Root "bin\std\src"))
     Test-LocalMylib
+    Test-StdNative
     if ($Mode -ne "quick" -and -not $SkipPackage) {
         Test-Package
     }

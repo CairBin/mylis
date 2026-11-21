@@ -28,4 +28,4 @@ bash tools/build_std_native.sh
 
 非嵌入 native 不随源码包自动传播，最终链接者必须显式提供。
 
-当前只在 Linux/POSIX 验证；Windows 需要单独的 `std-win32-*` 侧车包。
+Windows 的 MSVC 侧车见 `std-win32/`；本包只用于 POSIX 目标。

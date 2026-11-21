@@ -1,5 +1,5 @@
 // 单线程 EventLoop：事件后端等待就绪 -> Mylis 主线程分发 handler。
-// Linux 使用 epoll，其他 POSIX 使用 poll 后备；Rust 后端不执行 Mylis 回调。
+// Linux 使用 epoll，其他 POSIX 使用 poll 后备，Windows 使用 Winsock WSAPoll；Rust 后端不执行 Mylis 回调。
 import { IoHandler } from "IoHandler.myl";
 import { TcpListener } from "TcpListener.myl";
 import { TcpStream } from "TcpStream.myl";
@@ -10,10 +10,10 @@ import { mylis_event_new, mylis_event_add, mylis_event_modify, mylis_event_remov
 class EventEntry {
     i64 handle;
     i32 kind;
-    i32 fd;
+    i64 fd;
     IoHandler handler;
 
-    pub fn init(i64 h, i32 k, i32 d, IoHandler hd) -> void {
+    pub fn init(i64 h, i32 k, i64 d, IoHandler hd) -> void {
         this.handle = h;
         this.kind = k;
         this.fd = d;
@@ -60,7 +60,7 @@ pub class EventLoop {
         return -1;
     }
 
-    fn findFd(i32 fd) -> i32 {
+    fn findFd(i64 fd) -> i32 {
         i32 i = 0;
         while (i < this.count) {
             if (this.entries[i].fd == fd) {
@@ -71,7 +71,7 @@ pub class EventLoop {
         return -1;
     }
 
-    fn addEntry(i64 handle, i32 kind, i32 fd, IoHandler handler) -> void {
+    fn addEntry(i64 handle, i32 kind, i64 fd, IoHandler handler) -> void {
         if (this.count >= this.capacity) {
             this.grow();
         }
@@ -88,7 +88,7 @@ pub class EventLoop {
         if (idx < 0) {
             return;
         }
-        i32 fd = this.entries[idx].fd;
+        i64 fd = this.entries[idx].fd;
         unsafe {
             mylis_event_remove(this.eventHandle, fd);
         }
@@ -149,8 +149,8 @@ pub class EventLoop {
         this.stopped = false;
         while (!this.stopped && this.count > 0) {
             i32 n = this.count;
-            i32[] fds = new i32[n];
-            i32[] revents = new i32[n];
+            i64[] fds = new i64[n];
+            i64[] revents = new i64[n];
             i32 rc = 0;
             unsafe {
                 rc = mylis_event_wait(this.eventHandle, 100, fds, revents, n);
@@ -163,7 +163,7 @@ pub class EventLoop {
             while (i < rc) {
                 i32 idx = this.findFd(fds[i]);
                 if (idx >= 0) {
-                    i32 mask = revents[i];
+                    i64 mask = revents[i];
                     if ((mask & 1) != 0) {
                         if (this.entries[idx].kind == 1) {
                             this.entries[idx].handler.onReadable(new TcpStream(this.entries[idx].handle));

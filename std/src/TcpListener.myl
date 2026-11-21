@@ -60,8 +60,8 @@ pub class TcpListener {
         return this.handle;
     }
 
-    pub fn nativeFd() -> i32 {
-        i32 fd = -1;
+    pub fn nativeFd() -> i64 {
+        i64 fd = -1;
         unsafe {
             fd = mylis_tcp_listener_fd(this.handle);
         }

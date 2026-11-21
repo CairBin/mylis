@@ -1,0 +1,68 @@
+// Windows 标准库冒烟测试：文件、时间、进程、TCP、UDP。
+// 只使用 Windows 也存在的 API；由 tools/test_windows.ps1 用 --std 自动链接。
+import { File } from "File.myl";
+import { IoError } from "IoError.myl";
+import { Time } from "Time.myl";
+import { Process } from "Process.myl";
+import { ProcessOutput } from "ProcessOutput.myl";
+import { TcpListener } from "TcpListener.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    string path = "build/tests/windows_std.txt";
+    Result<File, IoError> created = File::Create(path);
+    match (created) {
+        Ok(createdFile) => {
+            Result<i64, IoError> wrote = createdFile.writeAllText("hello");
+            match (wrote) {
+                Ok(n) => { println_i64(n); }
+                Err(writeError) => { println_i64(writeError.code as i64); }
+            }
+            createdFile.close();
+        }
+        Err(createError) => { println_i64(createError.code as i64); }
+    }
+    Result<File, IoError> opened = File::Open(path);
+    match (opened) {
+        Ok(openedFile) => {
+            Result<string, IoError> text = openedFile.readAllText();
+            match (text) {
+                Ok(value) => { println(value); }
+                Err(readError) => { println_i64(readError.code as i64); }
+            }
+            openedFile.close();
+        }
+        Err(openError) => { println_i64(openError.code as i64); }
+    }
+
+    println_bool(Time::NowMillis() > 0);
+
+    Result<ProcessOutput, IoError> ran = Process::Run("cmd /C exit 7");
+    match (ran) {
+        Ok(output) => {
+            println_i64(output.exitCode());
+            println_i64(output.signal());
+        }
+        Err(processError) => { println_i64(processError.code as i64); }
+    }
+
+    Result<TcpListener, IoError> bound = TcpListener::Bind("127.0.0.1:0");
+    match (bound) {
+        Ok(listener) => {
+            println_bool(listener.localPort() > 0);
+            listener.close();
+        }
+        Err(tcpError) => { println_i64(tcpError.code as i64); }
+    }
+
+    Result<UdpSocket, IoError> udp = UdpSocket::Bind("127.0.0.1:0");
+    match (udp) {
+        Ok(socket) => {
+            println_bool(socket.localPort() > 0);
+            socket.close();
+        }
+        Err(udpError) => { println_i64(udpError.code as i64); }
+    }
+    return 0;
+}

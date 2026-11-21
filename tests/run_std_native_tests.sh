@@ -581,7 +581,7 @@ fi
 
 if "$ROOT/build/mylc" tests/std_native/UdpLoopApi.myl --emit-llvm "$OUT/UdpLoopApi.ll" \
     -I "$ROOT/std/src" -I "$ROOT/std-posix/native" --link "$NET" --link "$EVENT" >"$OUT/udploop-llvm.emit.log" 2>&1 \
-    && grep -q 'declare i32 @mylis_udp_fd' "$OUT/UdpLoopApi.ll"; then
+    && grep -q 'declare i64 @mylis_udp_fd' "$OUT/UdpLoopApi.ll"; then
   echo "  ok   UdpLoopApi（LLVM 外部声明）"
 else
   echo "FAIL UdpLoopApi（LLVM 外部声明）"

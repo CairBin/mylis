@@ -1,0 +1,7 @@
+[package]
+name = "std-win32"
+version = "0.1.0"
+
+# std-win32 是 Windows MSVC 的 native 侧车包：平台后端通过 native/ 下的
+# Rust staticlib + C header 提供，由消费端显式 --link。
+# 它没有独立的 Mylis 源码 API；公共 API 仍在 std 包。

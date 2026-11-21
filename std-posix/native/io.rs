@@ -1,6 +1,6 @@
-//! stdio / process environment native backend for Linux and other POSIX hosts.
-//! Every returned char* is owned by the caller and must be released with
-//! mylis_io_free_string.
+//  stdio / process environment native backend for Linux and other POSIX hosts.
+//  Every returned char* is owned by the caller and must be released with
+//  mylis_io_free_string.
 
 use std::ffi::{CStr, CString};
 use std::io::Read;

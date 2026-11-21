@@ -10,9 +10,64 @@ use std::os::raw::c_char;
 use std::time::Duration;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawSocket;
 
 fn errno(e: std::io::Error) -> i64 {
-    -(e.raw_os_error().unwrap_or(5) as i64)
+    #[cfg(windows)]
+    {
+        let raw = e.raw_os_error().unwrap_or(5);
+        let posix = match raw {
+            2 | 3 => 2,
+            5 | 32 | 33 => 13,
+            80 | 183 => 17,
+            87 | 123 | 206 => 22,
+            10035 => 11,
+            10060 | 1460 => 110,
+            10054 | 109 | 232 => 9,
+            10061 => 111,
+            10065 => 113,
+            _ => 5,
+        };
+        -(posix as i64)
+    }
+    #[cfg(not(windows))]
+    {
+        -(e.raw_os_error().unwrap_or(5) as i64)
+    }
+}
+
+fn socket_fd<T: SocketFd>(socket: &T) -> i64 {
+    socket.raw_fd()
+}
+
+trait SocketFd {
+    fn raw_fd(&self) -> i64;
+}
+
+#[cfg(unix)]
+impl SocketFd for TcpListener {
+    fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
+}
+#[cfg(unix)]
+impl SocketFd for TcpStream {
+    fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
+}
+#[cfg(unix)]
+impl SocketFd for UdpSocket {
+    fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
+}
+#[cfg(windows)]
+impl SocketFd for TcpListener {
+    fn raw_fd(&self) -> i64 { self.as_raw_socket() as i64 }
+}
+#[cfg(windows)]
+impl SocketFd for TcpStream {
+    fn raw_fd(&self) -> i64 { self.as_raw_socket() as i64 }
+}
+#[cfg(windows)]
+impl SocketFd for UdpSocket {
+    fn raw_fd(&self) -> i64 { self.as_raw_socket() as i64 }
 }
 
 fn array_len(data: *const u8) -> Option<usize> {
@@ -183,17 +238,12 @@ pub extern "C" fn mylis_udp_set_nonblocking(handle: i64, enabled: i32) -> i64 {
     }
 }
 
-#[cfg(unix)]
 #[no_mangle]
-pub extern "C" fn mylis_udp_fd(handle: i64) -> i32 {
+pub extern "C" fn mylis_udp_fd(handle: i64) -> i64 {
     if handle == 0 { return -1; }
     let s = unsafe { &*(handle as *const UdpSocket) };
-    s.as_raw_fd()
+    socket_fd(s)
 }
-
-#[cfg(not(unix))]
-#[no_mangle]
-pub extern "C" fn mylis_udp_fd(_handle: i64) -> i32 { -1 }
 
 #[no_mangle]
 pub extern "C" fn mylis_udp_close(handle: i64) -> i64 {
@@ -202,29 +252,19 @@ pub extern "C" fn mylis_udp_close(handle: i64) -> i64 {
     0
 }
 
-#[cfg(unix)]
 #[no_mangle]
-pub extern "C" fn mylis_tcp_stream_fd(handle: i64) -> i32 {
+pub extern "C" fn mylis_tcp_stream_fd(handle: i64) -> i64 {
     if handle == 0 { return -1; }
     let s = unsafe { &*(handle as *const TcpStream) };
-    s.as_raw_fd()
+    socket_fd(s)
 }
 
-#[cfg(not(unix))]
 #[no_mangle]
-pub extern "C" fn mylis_tcp_stream_fd(_handle: i64) -> i32 { -1 }
-
-#[cfg(unix)]
-#[no_mangle]
-pub extern "C" fn mylis_tcp_listener_fd(handle: i64) -> i32 {
+pub extern "C" fn mylis_tcp_listener_fd(handle: i64) -> i64 {
     if handle == 0 { return -1; }
     let l = unsafe { &*(handle as *const TcpListener) };
-    l.as_raw_fd()
+    socket_fd(l)
 }
-
-#[cfg(not(unix))]
-#[no_mangle]
-pub extern "C" fn mylis_tcp_listener_fd(_handle: i64) -> i32 { -1 }
 
 #[no_mangle]
 pub extern "C" fn mylis_tcp_stream_close(handle: i64) -> i64 {

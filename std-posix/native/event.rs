@@ -2,18 +2,18 @@
 // Linux: epoll；其他 POSIX: poll 后备；Windows: ENOSYS 占位。
 // 只等待 fd 就绪并返回 fd + revents；不执行 Mylis 回调。
 
-fn len_i32(data: *const i32) -> Option<usize> {
+fn len_i64(data: *const i64) -> Option<usize> {
     if data.is_null() { return None; }
     Some(unsafe { *(data as *const u64) } as usize)
 }
 
-fn fill_output(data: *mut i32, index: usize, value: i32) {
-    unsafe { *(data.add(2 + index)) = value; } // i32[] 数据区从 +8 开始
+fn fill_output(data: *mut i64, index: usize, value: i64) {
+    unsafe { *(data.add(1 + index)) = value; } // i64[] 数据区从 +8 开始
 }
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{fill_output, len_i32};
+    use super::{fill_output, len_i64};
     use std::io::Error;
 
     const EPOLL_CTL_ADD: i32 = 1;
@@ -48,30 +48,30 @@ mod linux {
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_add(handle: i64, fd: i32) -> i64 {
+    pub extern "C" fn mylis_event_add(handle: i64, fd: i64) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
         let mut ev = EpollEvent { events: EPOLLIN, data: fd as u64 };
-        let rc = unsafe { epoll_ctl(handle as i32, EPOLL_CTL_ADD, fd, &mut ev) };
+        let rc = unsafe { epoll_ctl(handle as i32, EPOLL_CTL_ADD, fd as i32, &mut ev) };
         if rc < 0 { return errno(); }
         0
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_modify(handle: i64, fd: i32, write_enabled: i32) -> i64 {
+    pub extern "C" fn mylis_event_modify(handle: i64, fd: i64, write_enabled: i32) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
         let mut ev = EpollEvent {
             events: if write_enabled != 0 { EPOLLIN | 0x004 } else { EPOLLIN },
             data: fd as u64,
         };
-        let rc = unsafe { epoll_ctl(handle as i32, 3, fd, &mut ev) }; // EPOLL_CTL_MOD
+        let rc = unsafe { epoll_ctl(handle as i32, 3, fd as i32, &mut ev) }; // EPOLL_CTL_MOD
         if rc < 0 { return errno(); }
         0
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_remove(handle: i64, fd: i32) -> i64 {
+    pub extern "C" fn mylis_event_remove(handle: i64, fd: i64) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
-        let rc = unsafe { epoll_ctl(handle as i32, EPOLL_CTL_DEL, fd, std::ptr::null_mut()) };
+        let rc = unsafe { epoll_ctl(handle as i32, EPOLL_CTL_DEL, fd as i32, std::ptr::null_mut()) };
         if rc < 0 { return errno(); }
         0
     }
@@ -80,14 +80,14 @@ mod linux {
     pub extern "C" fn mylis_event_wait(
         handle: i64,
         timeout_ms: i32,
-        fds: *mut i32,
-        revents: *mut i32,
+        fds: *mut i64,
+        revents: *mut i64,
         max: i32,
     ) -> i32 {
         if handle <= 0 || max < 0 || fds.is_null() || revents.is_null() { return -22; }
         let n = max as usize;
-        let flen = match len_i32(fds) { Some(v) => v, None => return -22 };
-        let rlen = match len_i32(revents) { Some(v) => v, None => return -22 };
+        let flen = match len_i64(fds) { Some(v) => v, None => return -22 };
+        let rlen = match len_i64(revents) { Some(v) => v, None => return -22 };
         if n > flen || n > rlen { return -22; }
         if n == 0 { return 0; }
         let mut events: Vec<EpollEvent> = Vec::with_capacity(n);
@@ -95,7 +95,7 @@ mod linux {
         let rc = unsafe { epoll_wait(handle as i32, events.as_mut_ptr(), n as i32, timeout_ms) };
         if rc < 0 { return -(Error::last_os_error().raw_os_error().unwrap_or(5) as i32); }
         for i in 0..(rc as usize) {
-            let fd = events[i].data as i32;
+            let fd = events[i].data as i64;
             let ev = events[i].events;
             let mut mask = 0i32;
             if (ev & EPOLLIN) != 0 { mask |= 1; }
@@ -103,7 +103,7 @@ mod linux {
             if (ev & EPOLLERR) != 0 { mask |= 8; }
             if (ev & EPOLLHUP) != 0 { mask |= 16; }
             fill_output(fds, i, fd);
-            fill_output(revents, i, mask);
+            fill_output(revents, i, mask as i64);
         }
         rc
     }
@@ -118,14 +118,14 @@ mod linux {
 
 #[cfg(all(unix, not(target_os = "linux")))]
 mod posix_poll {
-    use super::{fill_output, len_i32};
+    use super::{fill_output, len_i64};
 
     #[repr(C)]
     struct PollFd { fd: i32, events: i16, revents: i16 }
 
     extern "C" { fn poll(fds: *mut PollFd, nfds: u64, timeout: i32) -> i32; }
 
-    struct PollState { fds: Vec<i32>, events: Vec<i32> }
+    struct PollState { fds: Vec<i64>, events: Vec<i32> }
 
     #[no_mangle]
     pub extern "C" fn mylis_event_new() -> i64 {
@@ -133,7 +133,7 @@ mod posix_poll {
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_add(handle: i64, fd: i32) -> i64 {
+    pub extern "C" fn mylis_event_add(handle: i64, fd: i64) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
         let s = unsafe { &mut *(handle as *mut PollState) };
         if !s.fds.contains(&fd) {
@@ -144,19 +144,7 @@ mod posix_poll {
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_modify(handle: i64, fd: i32, write_enabled: i32) -> i64 {
-        if handle <= 0 || fd < 0 { return -22; }
-        let mut ev = EpollEvent {
-            events: if write_enabled != 0 { EPOLLIN | 0x004 } else { EPOLLIN },
-            data: fd as u64,
-        };
-        let rc = unsafe { epoll_ctl(handle as i32, 3, fd, &mut ev) }; // EPOLL_CTL_MOD
-        if rc < 0 { return errno(); }
-        0
-    }
-
-    #[no_mangle]
-    pub extern "C" fn mylis_event_modify(handle: i64, fd: i32, write_enabled: i32) -> i64 {
+    pub extern "C" fn mylis_event_modify(handle: i64, fd: i64, write_enabled: i32) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
         let s = unsafe { &mut *(handle as *mut PollState) };
         let mut i = 0;
@@ -171,7 +159,7 @@ mod posix_poll {
     }
 
     #[no_mangle]
-    pub extern "C" fn mylis_event_remove(handle: i64, fd: i32) -> i64 {
+    pub extern "C" fn mylis_event_remove(handle: i64, fd: i64) -> i64 {
         if handle <= 0 || fd < 0 { return -22; }
         let s = unsafe { &mut *(handle as *mut PollState) };
         let mut i = 0;
@@ -190,26 +178,26 @@ mod posix_poll {
     pub extern "C" fn mylis_event_wait(
         handle: i64,
         timeout_ms: i32,
-        fds: *mut i32,
-        revents: *mut i32,
+        fds: *mut i64,
+        revents: *mut i64,
         max: i32,
     ) -> i32 {
         if handle <= 0 || max < 0 || fds.is_null() || revents.is_null() { return -22; }
         let n = max as usize;
-        let flen = match len_i32(fds) { Some(v) => v, None => return -22 };
-        let rlen = match len_i32(revents) { Some(v) => v, None => return -22 };
+        let flen = match len_i64(fds) { Some(v) => v, None => return -22 };
+        let rlen = match len_i64(revents) { Some(v) => v, None => return -22 };
         if n > flen || n > rlen { return -22; }
         let s = unsafe { &mut *(handle as *mut PollState) };
         let count = if s.fds.len() < n { s.fds.len() } else { n };
         let mut pfds: Vec<PollFd> = Vec::with_capacity(count);
         for i in 0..count {
-            pfds.push(PollFd { fd: s.fds[i], events: s.events[i] as i16, revents: 0 });
+            pfds.push(PollFd { fd: s.fds[i] as i32, events: s.events[i] as i16, revents: 0 });
         }
         let rc = unsafe { poll(pfds.as_mut_ptr(), count as u64, timeout_ms) };
         if rc < 0 { return -(std::io::Error::last_os_error().raw_os_error().unwrap_or(5) as i32); }
         for i in 0..(rc as usize) {
-            fill_output(fds, i, pfds[i].fd);
-            fill_output(revents, i, pfds[i].revents as i32);
+            fill_output(fds, i, pfds[i].fd as i64);
+            fill_output(revents, i, pfds[i].revents as i64);
         }
         rc
     }
@@ -227,13 +215,13 @@ mod unsupported {
     #[no_mangle]
     pub extern "C" fn mylis_event_new() -> i64 { -38 }
     #[no_mangle]
-    pub extern "C" fn mylis_event_add(_handle: i64, _fd: i32) -> i64 { -38 }
+    pub extern "C" fn mylis_event_add(_handle: i64, _fd: i64) -> i64 { -38 }
     #[no_mangle]
-    pub extern "C" fn mylis_event_modify(_handle: i64, _fd: i32, _write_enabled: i32) -> i64 { -38 }
+    pub extern "C" fn mylis_event_modify(_handle: i64, _fd: i64, _write_enabled: i32) -> i64 { -38 }
     #[no_mangle]
-    pub extern "C" fn mylis_event_remove(_handle: i64, _fd: i32) -> i64 { -38 }
+    pub extern "C" fn mylis_event_remove(_handle: i64, _fd: i64) -> i64 { -38 }
     #[no_mangle]
-    pub extern "C" fn mylis_event_wait(_handle: i64, _timeout_ms: i32, _fds: *mut i32, _revents: *mut i32, _max: i32) -> i32 { -38 }
+    pub extern "C" fn mylis_event_wait(_handle: i64, _timeout_ms: i32, _fds: *mut i64, _revents: *mut i64, _max: i32) -> i32 { -38 }
     #[no_mangle]
     pub extern "C" fn mylis_event_close(_handle: i64) -> i64 { 0 }
 }

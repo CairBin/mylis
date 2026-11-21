@@ -92,6 +92,9 @@ ifeq ($(OS),Windows_NT)
   WIN_RT_LIBS   := ws2_32.lib ntdll.lib userenv.lib advapi32.lib bcrypt.lib ole32.lib oleaut32.lib shell32.lib
   # RT_NO_STD=1 表示 freestanding 运行时，不额外链 Windows 系统库。
   MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
+  STD_WIN_DIR := build/std-win32/native
+  STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,mylis_file.lib mylis_io.lib mylis_time.lib mylis_net.lib mylis_event.lib mylis_process.lib)
+  STD_WIN_STAMP := $(STD_WIN_DIR)/.built
 else
   CC           ?= gcc
   AR           ?= ar
@@ -105,6 +108,9 @@ else
   MYRT_LIB      := build/libmylrt.a
   SIMPLE_LIB    := build/libgc_simple.a
   BOEHM_LIB     := build/libgc_boehm.a
+  STD_POSIX_DIR := build/std-posix/native
+  STD_POSIX_LIBS := $(addprefix $(STD_POSIX_DIR)/,libmylis_file.a libmylis_io.a libmylis_time.a libmylis_net.a libmylis_event.a libmylis_process.a)
+  STD_POSIX_STAMP := $(STD_POSIX_DIR)/.built
   MYLGC_LIB     := build/libmylgc.a
   GC_DEPS       := $(MYLGC_LIB) $(SIMPLE_LIB) $(BOEHM_LIB)
   CFLAGS        := -std=c11 -O2 -Wall -Wextra -fno-strict-aliasing -fPIC -I$(ROOT)/myrt
@@ -145,17 +151,22 @@ ifeq ($(OS),Windows_NT)
   endif
 endif
 
-.PHONY: all bin mylc myls myrt test test-win bootstrap clean dist check-toolchain check-rt FORCE
+.PHONY: all bin mylc myls myrt test test-win bootstrap clean dist check-toolchain check-rt std-native std-native-win FORCE
 
 all: check-toolchain bin
 
-bin: $(BIN_MYLC) $(BIN_MYLS) $(MYRT_LIB) $(GC_DEPS) $(BUILD_MANIFEST)
+bin: $(BIN_MYLC) $(BIN_MYLS) $(MYRT_LIB) $(GC_DEPS) $(BUILD_MANIFEST) $(if $(filter Windows_NT,$(OS)),$(STD_WIN_STAMP),$(STD_POSIX_STAMP))
 	@$(call RMDIR,bin)
 	@$(call MKDIR,bin)
 	@$(call MKDIR,bin/myrt)
 	@$(call MKDIR,bin/core)
 	@$(call MKDIR,bin/std)
 	@$(call MKDIR,bin/build)
+ifeq ($(OS),Windows_NT)
+else
+	@$(call MKDIR,bin/std-posix)
+	@$(call MKDIR,bin/build/std-posix/native)
+endif
 	@$(call MKDIR,bin/gc)
 	@$(call MKDIR,bin/gc/include)
 	@$(call MKDIR,bin/gc/lib)
@@ -165,9 +176,30 @@ bin: $(BIN_MYLC) $(BIN_MYLS) $(MYRT_LIB) $(GC_DEPS) $(BUILD_MANIFEST)
 	@$(call COPYTREE,myrt,bin/myrt)
 	@$(call COPYTREE,core,bin/core)
 	@$(call COPYTREE,std,bin/std)
+ifeq ($(OS),Windows_NT)
+	@$(call MKDIR,bin/std-win32)
+	@$(call COPYTREE,std-win32,bin/std-win32)
+	@$(call MKDIR,bin/build/std-win32/native)
+	@$(call COPY,build/std-win32/native/mylis_file.lib,bin/build/std-win32/native/mylis_file.lib)
+	@$(call COPY,build/std-win32/native/mylis_io.lib,bin/build/std-win32/native/mylis_io.lib)
+	@$(call COPY,build/std-win32/native/mylis_time.lib,bin/build/std-win32/native/mylis_time.lib)
+	@$(call COPY,build/std-win32/native/mylis_net.lib,bin/build/std-win32/native/mylis_net.lib)
+	@$(call COPY,build/std-win32/native/mylis_event.lib,bin/build/std-win32/native/mylis_event.lib)
+	@$(call COPY,build/std-win32/native/mylis_process.lib,bin/build/std-win32/native/mylis_process.lib)
+endif
 	@$(call COPY,$(MYRT_LIB),bin/build/$(notdir $(MYRT_LIB)))
 	@$(call COPY,$(MYLGC_LIB),bin/build/$(notdir $(MYLGC_LIB)))
 	@$(call COPY,$(SIMPLE_LIB),bin/build/$(notdir $(SIMPLE_LIB)))
+ifeq ($(OS),Windows_NT)
+else
+	@$(call COPYTREE,std-posix,bin/std-posix)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_file.a,bin/$(STD_POSIX_DIR)/libmylis_file.a)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_io.a,bin/$(STD_POSIX_DIR)/libmylis_io.a)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_time.a,bin/$(STD_POSIX_DIR)/libmylis_time.a)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_net.a,bin/$(STD_POSIX_DIR)/libmylis_net.a)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_event.a,bin/$(STD_POSIX_DIR)/libmylis_event.a)
+	@$(call COPY,$(STD_POSIX_DIR)/libmylis_process.a,bin/$(STD_POSIX_DIR)/libmylis_process.a)
+endif
 	@$(call COPY,$(BUILD_MANIFEST),bin/mylis-build.json)
 ifeq ($(OS),Windows_NT)
 else
@@ -257,6 +289,24 @@ $(BIN_MYLC): $(wildcard mylc/src/*.rs) $(wildcard mylc/src/*/*.rs) mylc/Cargo.to
 $(BIN_MYLS): $(wildcard mylc/src/*.rs) $(wildcard mylc/src/*/*.rs) mylc/Cargo.toml | build
 	cd mylc && $(CARGO) build --release $(RUSTFLAGS_T)
 	@$(call COPY,mylc/$(RUST_OUT)/myls$(EXE),$@)
+
+# ---- Windows std native 侧车 ----
+ifeq ($(OS),Windows_NT)
+$(STD_WIN_STAMP): $(wildcard std-win32/native/*.rs) $(wildcard std-win32/native/*.h) $(wildcard std-posix/native/*.rs) tools/build_std_native.ps1 | build
+	@powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_std_native.ps1
+	@echo built > "$(call W,$@)"
+
+std-native-win: $(STD_WIN_STAMP)
+std-native: $(STD_WIN_STAMP)
+else
+$(STD_POSIX_STAMP): $(wildcard std-posix/native/*.rs) $(wildcard std-posix/native/*.h) tools/build_std_native.sh | build
+	@bash tools/build_std_native.sh
+	@echo built > "$@"
+
+std-native: $(STD_POSIX_STAMP)
+std-native-win:
+	@echo "std-native-win 需要在 Windows + MSVC 环境执行"
+endif
 
 check-toolchain:
 ifeq ($(OS),Windows_NT)

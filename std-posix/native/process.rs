@@ -1,17 +1,21 @@
-//! Synchronous process backend for POSIX hosts.
-//!
-//! `run` mirrors Lua's `os.execute`: one shell command runs to completion,
-//! its stdout/stderr are captured, and the exit status is reported. `spawn`
-//! returns an opaque handle for pid/wait/kill/close; `popen` exposes a one-way
-//! byte pipe. No Mylis object is shared with the child; all data crossing the
-//! boundary is copied.
+//  Synchronous process backend for POSIX and Windows hosts.
+//
+//  `run` mirrors Lua's `os.execute`: one shell command runs to completion,
+//  its stdout/stderr are captured, and the exit status is reported. `spawn`
+//  returns an opaque handle for pid/wait/kill/close; `popen` exposes a one-way
+//  byte pipe. No Mylis object is shared with the child; all data crossing the
+//  boundary is copied.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::io::{Read, Write};
-use std::time::Instant;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Instant;
+#[cfg(windows)]
+use std::time::Duration;
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 
 struct LastRun {
     exit_code: i64,
@@ -35,6 +39,30 @@ static LAST: Mutex<LastRun> = Mutex::new(LastRun::empty());
 static CHILDREN: Mutex<Vec<Option<Child>>> = Mutex::new(Vec::new());
 static LAST_WAIT_CODE: Mutex<i64> = Mutex::new(-1);
 static LAST_WAIT_SIGNAL: Mutex<i64> = Mutex::new(0);
+
+#[cfg(windows)]
+fn win_error_code(raw: u32) -> i64 {
+    match raw {
+        2 | 3 => 2,
+        5 | 32 | 33 => 13,
+        80 | 183 => 17,
+        87 | 123 | 206 => 22,
+        109 | 232 => 32,
+        995 | 258 => 110,
+        _ => 5,
+    }
+}
+
+fn error_code(error: std::io::Error) -> i64 {
+    #[cfg(windows)]
+    {
+        -win_error_code(error.raw_os_error().unwrap_or(5) as u32)
+    }
+    #[cfg(not(windows))]
+    {
+        -(error.raw_os_error().unwrap_or(22) as i64)
+    }
+}
 
 struct PipeEntry {
     child: Child,
@@ -84,35 +112,95 @@ fn wait_event(fd: i32, events: i16, timeout_ms: i64) -> Result<bool, i64> {
         if error.kind() == std::io::ErrorKind::Interrupted {
             continue;
         }
-        return Err(-(error.raw_os_error().unwrap_or(22) as i64));
+        return Err(error_code(error));
     }
 }
 
 #[cfg(unix)]
-fn wait_readable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
-    wait_event(fd, 1, timeout_ms) // POLLIN
+fn wait_readable(fd: i64, timeout_ms: i64) -> Result<bool, i64> {
+    wait_event(fd as i32, 1, timeout_ms) // POLLIN
 }
 
-#[cfg(unix)]
-fn wait_writable(fd: i32, timeout_ms: i64) -> Result<bool, i64> {
-    wait_event(fd, 4, timeout_ms) // POLLOUT
-}
-
-#[cfg(not(unix))]
-fn wait_readable(_fd: i32, timeout_ms: i64) -> Result<bool, i64> {
-    if timeout_ms >= 0 {
-        return Err(-95); // EOPNOTSUPP: std-posix 的超时依赖 poll
+#[cfg(windows)]
+fn wait_readable(handle: i64, timeout_ms: i64) -> Result<bool, i64> {
+    use std::ffi::c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn PeekNamedPipe(
+            named_pipe: *mut c_void,
+            buffer: *mut c_void,
+            buffer_size: u32,
+            bytes_read: *mut u32,
+            total_bytes_avail: *mut u32,
+            bytes_left: *mut u32,
+        ) -> i32;
+        fn GetLastError() -> u32;
     }
-    Ok(true)
+    if handle <= 0 {
+        return Err(-22);
+    }
+    let start = Instant::now();
+    loop {
+        let mut available = 0u32;
+        let ok = unsafe {
+            PeekNamedPipe(
+                handle as *mut c_void,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                &mut available,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let raw = unsafe { GetLastError() };
+            // ERROR_BROKEN_PIPE / ERROR_PIPE_NOT_CONNECTED: a subsequent read sees EOF.
+            if raw == 109 || raw == 232 {
+                return Ok(true);
+            }
+            return Err(-win_error_code(raw));
+        }
+        if available > 0 {
+            return Ok(true);
+        }
+        if timeout_ms >= 0 && start.elapsed().as_millis() as i64 >= timeout_ms {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
-#[cfg(not(unix))]
-fn wait_writable(_fd: i32, timeout_ms: i64) -> Result<bool, i64> {
+#[cfg(not(any(unix, windows)))]
+fn wait_readable(_fd: i64, timeout_ms: i64) -> Result<bool, i64> {
     if timeout_ms >= 0 {
         return Err(-95);
     }
     Ok(true)
 }
+
+#[cfg(unix)]
+fn wait_writable(fd: i64, timeout_ms: i64) -> Result<bool, i64> {
+    wait_event(fd as i32, 4, timeout_ms) // POLLOUT
+}
+
+#[cfg(not(any(unix, windows)))]
+fn wait_writable(_fd: i64, _timeout_ms: i64) -> Result<bool, i64> {
+    Err(-95)
+}
+
+#[cfg(unix)]
+fn stdout_handle(output: &ChildStdout) -> i64 {
+    use std::os::unix::io::AsRawFd;
+    output.as_raw_fd() as i64
+}
+
+#[cfg(windows)]
+fn stdout_handle(output: &ChildStdout) -> i64 {
+    output.as_raw_handle() as usize as i64
+}
+
+#[cfg(not(any(unix, windows)))]
+fn stdout_handle(_output: &ChildStdout) -> i64 { 0 }
 
 #[cfg(unix)]
 fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> Result<usize, i64> {
@@ -130,7 +218,7 @@ fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> 
             }
             left
         };
-        if !wait_writable(input.as_raw_fd(), remaining)? {
+        if !wait_writable(input.as_raw_fd() as i64, remaining)? {
             return Err(-110);
         }
         // 512 字节不超过 POSIX 保证的 PIPE_BUF，poll 报可写后不会阻塞在 write。
@@ -139,20 +227,98 @@ fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> 
             Ok(0) => return Err(-32), // EPIPE
             Ok(n) => written += n,
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(-(error.raw_os_error().unwrap_or(22) as i64)),
+            Err(error) => return Err(error_code(error)),
         }
     }
     Ok(written)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], timeout_ms: i64) -> Result<usize, i64> {
-    if timeout_ms >= 0 {
-        return Err(-95);
+    use std::ffi::c_void;
+    use std::sync::mpsc;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentProcess() -> *mut c_void;
+        fn DuplicateHandle(
+            source_process: *mut c_void,
+            source: *mut c_void,
+            target_process: *mut c_void,
+            target: *mut *mut c_void,
+            desired_access: u32,
+            inherit: i32,
+            options: u32,
+        ) -> i32;
+        fn WriteFile(
+            file: *mut c_void,
+            buffer: *const c_void,
+            bytes_to_write: u32,
+            bytes_written: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+        fn GetLastError() -> u32;
     }
+    if timeout_ms < 0 {
+        return match input.write_all(bytes) {
+            Ok(()) => Ok(bytes.len()),
+            Err(error) => Err(error_code(error)),
+        };
+    }
+    if bytes.len() > u32::MAX as usize {
+        return Err(-22);
+    }
+    let source = input.as_raw_handle() as *mut c_void;
+    let mut duplicate: *mut c_void = std::ptr::null_mut();
+    let ok = unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            source,
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            0,
+            2, // DUPLICATE_SAME_ACCESS
+        )
+    };
+    if ok == 0 {
+        return Err(-win_error_code(unsafe { GetLastError() }));
+    }
+    let data = bytes.to_vec();
+    let duplicate_value = duplicate as usize;
+    let (sender, receiver) = mpsc::channel::<Result<usize, i64>>();
+    std::thread::spawn(move || {
+        let handle = duplicate_value as *mut c_void;
+        let mut written = 0u32;
+        let result = unsafe {
+            WriteFile(
+                handle,
+                data.as_ptr() as *const c_void,
+                data.len() as u32,
+                &mut written,
+                std::ptr::null_mut(),
+            )
+        };
+        let outcome = if result != 0 {
+            Ok(written as usize)
+        } else {
+            Err(-win_error_code(unsafe { GetLastError() }))
+        };
+        let _ = sender.send(outcome);
+        unsafe { CloseHandle(handle) };
+    });
+    match receiver.recv_timeout(Duration::from_millis(timeout_ms as u64)) {
+        Ok(outcome) => outcome,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(-110),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(-32),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn write_with_timeout(input: &mut ChildStdin, bytes: &[u8], _timeout_ms: i64) -> Result<usize, i64> {
     match input.write_all(bytes) {
         Ok(()) => Ok(bytes.len()),
-        Err(error) => Err(-(error.raw_os_error().unwrap_or(22) as i64)),
+        Err(error) => Err(error_code(error)),
     }
 }
 
@@ -190,16 +356,8 @@ fn read_line_from(
             if remaining <= 0 {
                 return Ok(LineOutcome::Timeout);
             }
-            #[cfg(unix)]
-            {
-                use std::os::unix::io::AsRawFd;
-                if !wait_readable(output.as_raw_fd(), remaining)? {
-                    return Ok(LineOutcome::Timeout);
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = wait_readable(0, remaining)?;
+            if !wait_readable(stdout_handle(output), remaining)? {
+                return Ok(LineOutcome::Timeout);
             }
         }
         let mut chunk = [0u8; 4096];
@@ -217,7 +375,13 @@ fn read_line_from(
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(-(error.raw_os_error().unwrap_or(22) as i64)),
+            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {
+                if buffer.is_empty() {
+                    return Ok(LineOutcome::Eof);
+                }
+                return Ok(LineOutcome::Line(std::mem::take(buffer)));
+            }
+            Err(error) => return Err(error_code(error)),
         }
     }
 }
@@ -336,7 +500,7 @@ pub extern "C" fn mylis_process_run(command: *const c_char) -> i64 {
             last.signal = 0;
             last.stdout.clear();
             last.stderr.clear();
-            -(error.raw_os_error().unwrap_or(22) as i64)
+            error_code(error)
         }
     }
 }
@@ -369,7 +533,7 @@ pub extern "C" fn mylis_process_popen(command: *const c_char, mode: *const c_cha
     };
     let mut child = match cmd.spawn() {
         Ok(child) => child,
-        Err(error) => return -(error.raw_os_error().unwrap_or(22) as i64),
+        Err(error) => return error_code(error),
     };
     let input = child.stdin.take();
     let output = child.stdout.take();
@@ -473,7 +637,7 @@ pub extern "C" fn mylis_process_pipe_read_all(handle: i64) -> i64 {
             entry.last_read = buffer;
             entry.last_read.len() as i64
         }
-        Err(error) => -(error.raw_os_error().unwrap_or(22) as i64),
+        Err(error) => error_code(error),
     }
 }
 
@@ -603,7 +767,7 @@ fn pipe_finish(handle: i64, force: bool) -> i64 {
         Err(error) => {
             *lock_last_wait_code() = -1;
             *lock_last_wait_signal() = 0;
-            return -(error.raw_os_error().unwrap_or(22) as i64);
+            return error_code(error);
         }
     };
     let code = status.code().unwrap_or(-1) as i64;
@@ -644,7 +808,7 @@ pub extern "C" fn mylis_process_popen2(command: *const c_char) -> i64 {
         .stderr(Stdio::inherit());
     let mut child = match cmd.spawn() {
         Ok(child) => child,
-        Err(error) => return -(error.raw_os_error().unwrap_or(22) as i64),
+        Err(error) => return error_code(error),
     };
     let input = child.stdin.take();
     let output = child.stdout.take();
@@ -681,7 +845,7 @@ pub extern "C" fn mylis_process_spawn(command: *const c_char) -> i64 {
         .stderr(Stdio::inherit());
     let child = match cmd.spawn() {
         Ok(child) => child,
-        Err(error) => return -(error.raw_os_error().unwrap_or(22) as i64),
+        Err(error) => return error_code(error),
     };
     let mut table = lock_children();
     if let Some(index) = table.iter().position(|slot| slot.is_none()) {
@@ -718,7 +882,7 @@ pub extern "C" fn mylis_process_wait(handle: i64) -> i64 {
         Err(error) => {
             *lock_last_wait_code() = -1;
             *lock_last_wait_signal() = 0;
-            return -(error.raw_os_error().unwrap_or(22) as i64);
+            return error_code(error);
         }
     };
     let code = status.code().unwrap_or(-1) as i64;
@@ -754,7 +918,7 @@ pub extern "C" fn mylis_process_kill(handle: i64) -> i64 {
     match table.get_mut(index).and_then(|slot| slot.as_mut()) {
         Some(child) => match child.kill() {
             Ok(()) => 0,
-            Err(error) => -(error.raw_os_error().unwrap_or(22) as i64),
+            Err(error) => error_code(error),
         },
         None => -9,
     }

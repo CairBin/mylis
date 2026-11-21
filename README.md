@@ -19,9 +19,11 @@ bin/
 ├── myls          # 语言服务器
 ├── core/         # 语言 core：GC/格式化/字符串/数学/ToString/panic+assert
 ├── std/          # 独立 std 包（Io 等），通过包依赖显式使用
+├── std-posix/    # POSIX 的 std native 侧车（Linux/macOS）
+├── std-win32/    # Windows MSVC 的 std native 侧车（头文件 + 源码说明）
 ├── myrt/         # 运行时头文件与源码（mylrt.h / mylrt_gc.h ...）
 ├── gc/           # 可选 Boehm GC 的 include + lib
-└── build/        # libmylrt.a / libmylgc.a（Windows MSVC 为 .lib）
+└── build/        # libmylrt.a / libmylgc.a（Windows MSVC 为 .lib；Windows 下还有 std-win32/native/mylis_*.lib）
 ```
 
 **拷贝 `bin/` 这一个目录就能用**（Linux/macOS 需要 GCC 兼容 C 编译器；Windows 用 MSVC `cl.exe`；默认 LLVM 后端需要 LLVM 15+ 的 `clang`）：
@@ -189,7 +191,7 @@ pub fn main() -> i32 {
 - **不安全边界**：裸指针、C FFI（`*_bind.myl` 里的无体 `pub unsafe fn`）只在 `unsafe` 域内可用；
 - **注解（生效的四个）**：`@export("c_name")`、`@header("x.h")`、`@deprecated`、`@inline`，拼错给 `MYLW01`。
 
-`string` 是 **UTF-8 字节串**（`len()` 是字节数；`==`/`<` 按字节比较，对 UTF-8 等价于码点序）。目前没有字符级 API；容器由泛型标准库提供：`Vec<T>`、`Map<K: Eq, V>`（含 `keys` / `values`）、`HashMap<K: Hash + Eq, V>`、`BTreeMap<K: Ord, V>`（B 树，稳定的 O(log n) 查找/插入/删除）、`BTreeSet<T: Ord>`、`Set<T: Eq>`（含 `toVec`）与 `Algorithms`（`contains` / `index_of` / `sort` / `extend` / `binary_search` / `is_sorted`）；`Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`。`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。所有容器在编译期单态化，不做 `Any` 装箱混存。std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`HashMap`、`BTreeMap` / `BTreeSet`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell）、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `EventLoop`，其第一版 native 后端是 `std-posix/native/io.rs`、`file.rs`、`process.rs`、`time.rs`、`net.rs` 与 `event.rs`（Rust staticlib），需要显式链接，不进入 `core` 或 GC。
+`string` 是 **UTF-8 字节串**（`len()` 是字节数；`==`/`<` 按字节比较，对 UTF-8 等价于码点序）。目前没有字符级 API；容器由泛型标准库提供：`Vec<T>`、`Map<K: Eq, V>`（含 `keys` / `values`）、`HashMap<K: Hash + Eq, V>`、`BTreeMap<K: Ord, V>`（B 树，稳定的 O(log n) 查找/插入/删除）、`BTreeSet<T: Ord>`、`Set<T: Eq>`（含 `toVec`）与 `Algorithms`（`contains` / `index_of` / `sort` / `extend` / `binary_search` / `is_sorted`）；`Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`。`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。所有容器在编译期单态化，不做 `Any` 装箱混存。std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`HashMap`、`BTreeMap` / `BTreeSet`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell）、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `EventLoop`，其第一版 native 后端是 POSIX 的 `std-posix/native/io.rs`、`file.rs`、`process.rs`、`time.rs`、`net.rs`、`event.rs` 与 Windows MSVC 的 `std-win32/native` 同名侧车（Rust staticlib；Windows 事件循环用 Winsock `WSAPoll`），需要显式链接，不进入 `core` 或 GC。
 
 ---
 
@@ -568,7 +570,7 @@ mylc test        # 只跑 tests/ 下的 .expected 比对
 mylc/src/       编译器（main/cli/driver/i18n/toolchain/lexer/ast/parser/program/sema/codegen//lsp/diag）
 myrt/           C ABI 头文件（mylrt.h / mylrt_gc.h）
 mylrt-rs/       Rust 运行时（Runtime / Gc trait + 实现）
-core/, std/     core 层与独立 std 包；std-posix/native 放 Rust/C ABI native 后端
+core/, std/     core 层与独立 std 包；std-posix/native、std-win32/native 放 Rust/C ABI native 后端
 tests/          positive / negative / lib / emit / test_lsp.py
 tools/          bootstrap_gc.sh、package_windows.sh、package_win7.sh
 docs/           Mylis 语言规范

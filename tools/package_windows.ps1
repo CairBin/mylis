@@ -11,7 +11,7 @@ $Out = "target\$Target\release"
 Set-Location $Root
 Write-Host "== 1/5 准备目录"
 if (Test-Path (Join-Path $Root "dist")) { Remove-Item -Recurse -Force (Join-Path $Root "dist") }
-foreach ($d in @("build","core","std","myrt","gc\lib","gc\include","editors","docs","tests","tools","toolchains","mylc","mylgc","mylrt-rs")) {
+foreach ($d in @("build","core","std","std-win32","myrt","gc\lib","gc\include","editors","docs","tests","tools","toolchains","mylc","mylgc","mylrt-rs","build\std-win32\native")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Dist $d) | Out-Null
 }
 
@@ -45,9 +45,14 @@ if ($LASTEXITCODE -ne 0) { throw "mylgc 构建失败" }
 Pop-Location
 Copy-Item (Join-Path $Root "mylgc\$Out\mylgc.lib") (Join-Path $Root "build\mylgc.lib") -Force
 
+Write-Host "== 3c/5 std native 侧车（Rust staticlib，MSVC）"
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "tools\build_std_native.ps1")
+if ($LASTEXITCODE -ne 0) { throw "构建 std native 失败" }
+
 Write-Host "== 4/5 收集文件"
 Copy-Item -Recurse -Force (Join-Path $Root "core\*") (Join-Path $Dist "core")
 Copy-Item -Recurse -Force (Join-Path $Root "std\*") (Join-Path $Dist "std")
+Copy-Item -Recurse -Force (Join-Path $Root "std-win32\*") (Join-Path $Dist "std-win32")
 Copy-Item -Recurse -Force (Join-Path $Root "myrt\*") (Join-Path $Dist "myrt")
 Copy-Item -Recurse -Force (Join-Path $Root "docs\*") (Join-Path $Dist "docs")
 Copy-Item -Recurse -Force (Join-Path $Root "tests\*") (Join-Path $Dist "tests")
@@ -64,6 +69,9 @@ Copy-Item (Join-Path $Root "README.md"),(Join-Path $Root "Makefile"),(Join-Path 
 Copy-Item (Join-Path $Root "build\mylrt.lib") (Join-Path $Dist "build")
 Copy-Item (Join-Path $Root "build\mylgc.lib") (Join-Path $Dist "build")
 Copy-Item (Join-Path $Root "build\gc_simple.lib") (Join-Path $Dist "build")
+foreach ($name in @("mylis_file","mylis_io","mylis_time","mylis_net","mylis_event","mylis_process")) {
+    Copy-Item (Join-Path $Root "build\std-win32\native\$name.lib") (Join-Path $Dist "build\std-win32\native")
+}
 
 $json = '{"family":"msvc","cc":"cl.exe","ar":"lib.exe"}'
 Set-Content -Path (Join-Path $Dist "mylis-toolchain.json") -Value $json -Encoding ascii

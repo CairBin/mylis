@@ -154,7 +154,7 @@ class EventLoop {
 
 - Linux：第一版已实现 `epoll`；其他 POSIX 暂用 `poll` 后备。
 - macOS / BSD：`kqueue` 待补。
-- Windows：`WSAPoll` 待补；当前 `event.rs` 返回 `ENOSYS`。
+- Windows：Winsock `WSAPoll`，实现在 `std-win32/native/event.rs`。
 - Rust 侧优先 `mio` / `polling`，不直接依赖完整 Tokio。
 - 所有后端只产出事件，不执行 Mylis 回调。
 - 默认只注册读就绪；显式 `EventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
@@ -278,12 +278,14 @@ native_abi = "gnu"
 - `std/mylis.toml` 指向 `src/lib.myl`；
 - 依赖 `core = { path = "../core" }`；
 - `make bin` 把整个 `std/` 目录复制到 `bin/std/`；
-- Windows 打包脚本把 `std/` 复制到发布目录；
+- Windows 打包脚本把 `std/` 与 `std-win32/` 复制到发布目录，并构建 `build/std-win32/native/mylis_*.lib`；
 - 测试/示例通过 `MYLIS_PATH` 定位 `std/src`；
 - 当前 `std` 直接用 `@header("mylrt.h")` 绑定运行时，例如 `std/src/Io_bind.myl`；
 - File / TCP 的 native 后端在 `std-posix/native/file.rs` / `net.rs`（Rust staticlib），头文件在 `std-posix/native/`，需要 `-I std-posix/native` 和显式 `--link`。
 
-因此当前分发的本质是：**跟着编译器发布包一起分发源码目录**，没有独立的 `std.mylib`，也没有平台 native 包。
+因此当前分发的本质是：**跟着编译器发布包一起分发源码目录**，没有独立的 `std.mylib`，也没有完整拆分的平台包。
+
+当前已经落地的平台侧车是 POSIX 的 `std-posix/native` 和 Windows MSVC 的 `std-win32/native`：两者都是非嵌入 Rust staticlib，`--std` 会按编译器目标选择对应头文件目录和库。Windows GNU（MinGW）与独立平台 `.mylib` 仍未实现。
 
 ### 8.2 约定目标
 
@@ -302,7 +304,7 @@ std-win32-gnu           # Windows GNU/MinGW native backend
 - `std-posix` / `std-win32-*` 平台包可以带 native 载荷；带 native 时按目标 ABI 分发，不跨 ABI 共享。
 - 平台包优先用 `.mylib` 携带 API 声明 + native 静态库；Mylis 包装层放公共 `std`，不要和 native 载荷塞进同一个 `.mylib`，否则 `has_native()` 会跳过 MIR。
 - native 部分作为 `.mylib` 载荷，不散落到 `mylrt-core`。
-- 应用只依赖 `std`；构建目标选择 `std-posix` 或 `std-win32-msvc` / `std-win32-gnu`。
+- 应用只依赖 `std`；当前构建目标选择 `std-posix`（POSIX）或 `std-win32`（Windows MSVC 侧车）；`std-win32-gnu` 尚未实现。
 - 发布包必须携带对应平台的 native 库和 `mylis-build.json`；不能只带 Mylis 源码却声称支持该平台。
 - 纯 MIR 的 `std` 包可以只发布源码或纯 MIR `.mylib`；一旦带 native，就必须记录 `target` / `abi`。
 
