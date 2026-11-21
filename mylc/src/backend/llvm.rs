@@ -2336,6 +2336,7 @@ fn emit(ir: &MirProgram, executable: bool, native_externs: bool, prog: Option<&P
     out.push('\n');
     // 运行时声明
     let mut decls = String::new();
+    let mut declared = HashSet::new();
     for (name, (r, ps)) in [
         ("myrt_init", ("void", vec![])),
         ("myrt_gc_collect", ("void", vec![])),
@@ -2399,6 +2400,7 @@ fn emit(ir: &MirProgram, executable: bool, native_externs: bool, prog: Option<&P
         ("mylrt_panic_msg", ("void", vec!["ptr"])),
     ] {
         let _ = writeln!(decls, "declare {} @{}({})", r, name, ps.join(", "));
+        declared.insert(name.to_string());
     }
     out.push_str(&decls);
     // 源码里的 `@header` unsafe 声明本身就是外部符号，不依赖 --link/--cc；
@@ -2411,7 +2413,6 @@ fn emit(ir: &MirProgram, executable: bool, native_externs: bool, prog: Option<&P
     } else {
         HashMap::new()
     };
-    let mut declared = HashSet::new();
     for ext in externs.values() {
         if !declared.insert(ext.symbol.clone()) { continue; }
         let r = llty(&ext.ret)?;

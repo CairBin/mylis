@@ -452,8 +452,8 @@ fn fmt_c_elem(ty: &Type, x: &str, p: &MirProgram) -> Option<String> {
         Type::Iface(id) => {
             let field = iface_str_field(*id, p);
             format!(
-                "((MyStr*)((struct I_{}){}).vt->{}(((struct I_{}){}).obj))",
-                id, x, field, id, x
+                "((MyStr*)({}).vt->{}(({}).obj))",
+                x, field, x
             )
         },
         Type::Class(id) | Type::Enum(id) => {
@@ -484,9 +484,10 @@ fn fmt_value(
         Type::Bool => format!("(({}) ? mylrt_str_lit(\"true\", 4) : mylrt_str_lit(\"false\", 5))", opt(o)),
         Type::Iface(id) => {
             let field = iface_str_field(*id, p);
+            let value = opt(o);
             format!(
-                "((MyStr*)((struct I_{}){}).vt->{}(((struct I_{}){}).obj))",
-                id, opt(o), field, id, opt(o)
+                "((MyStr*)({}).vt->{}(({}).obj))",
+                value, field, value
             )
         },
         Type::Class(id) | Type::Enum(id) => {
@@ -1708,11 +1709,10 @@ fn emit_inst(
                         Type::Enum(eid) => iface_wrap(eid, iid, opt(*recv)),
                         _ => opt(*recv),
                     };
-                    let mut a = vec![format!("((struct I_{}){}).obj", iid, r)];
+                    let mut a = vec![format!("({}).obj", r)];
                     a.extend(args.iter().map(|x| opt(*x)));
                     let call = format!(
-                        "((struct I_{}){}).vt->fn_{}({})",
-                        iid,
+                        "({}).vt->fn_{}({})",
                         r,
                         mname,
                         a.join(", ")
@@ -1720,8 +1720,7 @@ fn emit_inst(
                     if dst.is_empty() {
                         out.push_str(&format!("  {};\n", call));
                     } else {
-                        let rt = cty(&i.ty).unwrap_or_else(|| "void*".into());
-                        out.push_str(&format!("  {}({})({});\n", dst, rt, call));
+                        out.push_str(&format!("  {}{};\n", dst, call));
                     }
                     return;
                 }
