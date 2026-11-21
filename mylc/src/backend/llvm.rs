@@ -88,6 +88,18 @@ fn type_key(t: &Type) -> String {
     }
 }
 
+// 以单个 GC 指针表示、可直接做写屏障的类型；Iface 是 {obj, vt} 双字 struct，
+// Enum 是 { tag, [payload x i64] } 聚合值，二者都不能整体当 ptr 做屏障。
+fn is_gc_pointer(t: &Type) -> bool {
+    matches!(t, Type::Str | Type::Class(_) | Type::Array(_))
+}
+
+// 内联聚合值（Option/Result/Enum）不是单指针；保守地把槽地址同时作为
+// owner/value 登记，后续 minor GC 扫 owner 载荷即可覆盖内部引用。
+fn is_gc_aggregate(t: &Type) -> bool {
+    matches!(t, Type::Option(_) | Type::Result(_, _) | Type::Enum(_))
+}
+
 fn llty(t: &Type) -> Result<String, String> {
     Ok(match t {
         Type::I8 | Type::U8 => "i8".into(),
@@ -1352,8 +1364,14 @@ impl<'a> FnGen<'a> {
                         let p = self.tmp("fp");
                         let _ = writeln!(self.out, "  {} = getelementptr inbounds %C_{}, ptr {}, i32 0, i32 {}", p, cid, obj, fi);
                         let _ = writeln!(self.out, "  store {} {}, ptr {}", llty(&fld.ty)?, v, p);
-                        if matches!(fld.ty, Type::Str | Type::Class(_)) {
+                        if is_gc_pointer(&fld.ty) {
                             let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, v);
+                        } else if matches!(fld.ty, Type::Iface(_)) {
+                            let obj = self.tmp("ifobj");
+                            let _ = writeln!(self.out, "  {} = extractvalue {} {}, 0", obj, llty(&fld.ty)?, v);
+                            let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, obj);
+                        } else if is_gc_aggregate(&fld.ty) {
+                            let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, p);
                         }
                     }
                 }
@@ -1394,8 +1412,14 @@ impl<'a> FnGen<'a> {
                 let p = self.tmp("sfld");
                 let _ = writeln!(self.out, "  {} = getelementptr inbounds %C_{}, ptr {}, i32 0, i32 {}", p, cid, b, idx);
                 let _ = writeln!(self.out, "  store {} {}, ptr {}", llty(&ft)?, v, p);
-                if matches!(ft, Type::Str | Type::Class(_)) {
+                if is_gc_pointer(&ft) {
                     let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, v);
+                } else if matches!(ft, Type::Iface(_)) {
+                    let obj = self.tmp("ifobj");
+                    let _ = writeln!(self.out, "  {} = extractvalue {} {}, 0", obj, llty(&ft)?, v);
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, obj);
+                } else if is_gc_aggregate(&ft) {
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, p);
                 }
                 Ok(())
             }
@@ -1513,8 +1537,14 @@ impl<'a> FnGen<'a> {
                     .and_then(|c| c.fields.get(idx)).map(|f| f.ty.clone())
                     .ok_or_else(|| format!("LLVM 后端缺少静态字段元数据 {}.{}", cid, idx))?;
                 let _ = writeln!(self.out, "  store {} {}, ptr @S_{}_{}", llty(&ft)?, v, cid, idx);
-                if matches!(ft, Type::Str | Type::Class(_)) {
+                if is_gc_pointer(&ft) {
                     let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr @S_{}_{}, ptr {})", cid, idx, v);
+                } else if matches!(ft, Type::Iface(_)) {
+                    let obj = self.tmp("ifobj");
+                    let _ = writeln!(self.out, "  {} = extractvalue {} {}, 0", obj, llty(&ft)?, v);
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr @S_{}_{}, ptr {})", cid, idx, obj);
+                } else if is_gc_aggregate(&ft) {
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr @S_{}_{}, ptr @S_{}_{})", cid, idx, cid, idx);
                 }
                 Ok(())
             }
@@ -1545,8 +1575,14 @@ impl<'a> FnGen<'a> {
                     let p = self.tmp("ae");
                     let _ = writeln!(self.out, "  {} = getelementptr i8, ptr {}, i64 {}", p, a, off);
                     let _ = writeln!(self.out, "  store {} {}, ptr {}", llty(&elem)?, x, p);
-                    if matches!(elem, Type::Str | Type::Class(_) | Type::Array(_)) {
+                    if is_gc_pointer(&elem) {
                         let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, x);
+                    } else if matches!(elem, Type::Iface(_)) {
+                        let obj = self.tmp("aeobj");
+                        let _ = writeln!(self.out, "  {} = extractvalue {} {}, 0", obj, llty(&elem)?, x);
+                        let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, obj);
+                    } else if is_gc_aggregate(&elem) {
+                        let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, p);
                     }
                 }
                 self.store_slot(dst, &a)
@@ -1594,35 +1630,45 @@ impl<'a> FnGen<'a> {
                 let q = self.tmp("ae");
                 let _ = writeln!(self.out, "  {} = getelementptr {}, ptr {}, i64 {}", q, llty(&elem)?, p, chk);
                 let _ = writeln!(self.out, "  store {} {}, ptr {}", llty(&elem)?, v, q);
-                if matches!(elem, Type::Str | Type::Class(_) | Type::Array(_)) {
+                if is_gc_pointer(&elem) {
                     let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", q, v);
+                } else if matches!(elem, Type::Iface(_)) {
+                    let obj = self.tmp("aeobj");
+                    let _ = writeln!(self.out, "  {} = extractvalue {} {}, 0", obj, llty(&elem)?, v);
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", q, obj);
+                } else if is_gc_aggregate(&elem) {
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", q, q);
                 }
                 Ok(())
             }
             MirInstKind::Safepoint { roots } => {
                 if let (Some(fid), Some(rf)) = (self.frame_id.clone(), self.root_frame.clone()) {
                     let n = self.root_n;
+                    // 根描述表必须按当前 safepoint 的根连续填充；全局并集下标只用于
+                    // 查槽和尺寸，不能直接当描述表下标，否则 count 与下标会错位。
+                    let mut ri = 0usize;
                     for r in roots {
-                        let (idx, slot, size) = match r {
+                        let (slot, size) = match r {
                             MirOperand::Local(l) => {
                                 let idx = *self.root_local_idx.get(l).ok_or_else(|| format!("safepoint 根 $%{} 未在根表中", l))?;
-                                (idx, format!("l_{}", l), self.root_sizes[idx])
+                                (format!("l_{}", l), self.root_sizes[idx])
                             }
                             MirOperand::Value(v) => {
                                 let idx = *self.root_value_idx.get(v).ok_or_else(|| format!("safepoint 根 %{} 未在根表中", v))?;
-                                (idx, format!("v_{}", v), self.root_sizes[idx])
+                                (format!("v_{}", v), self.root_sizes[idx])
                             }
                         };
                         let d = self.tmp("rd");
-                        let _ = writeln!(self.out, "  {} = getelementptr [{} x %MylRootDesc], ptr %{}, i64 0, i64 {}", d, n, rf, idx);
+                        let _ = writeln!(self.out, "  {} = getelementptr [{} x %MylRootDesc], ptr %{}, i64 0, i64 {}", d, n, rf, ri);
                         let f0 = self.tmp("rd0");
                         let _ = writeln!(self.out, "  {} = getelementptr %MylRootDesc, ptr {}, i32 0, i32 0", f0, d);
                         let _ = writeln!(self.out, "  store ptr %{}, ptr {}", slot, f0);
                         let f1 = self.tmp("rd1");
                         let _ = writeln!(self.out, "  {} = getelementptr %MylRootDesc, ptr {}, i32 0, i32 1", f1, d);
                         let _ = writeln!(self.out, "  store i64 {}, ptr {}", size, f1);
+                        ri += 1;
                     }
-                    let _ = writeln!(self.out, "  call void @myrt_gc_frame_set_roots(i64 {}, ptr %{}, i64 {})", fid, rf, roots.len());
+                    let _ = writeln!(self.out, "  call void @myrt_gc_frame_set_roots(i64 {}, ptr %{}, i64 {})", fid, rf, ri);
                 }
                 let _ = writeln!(self.out, "  call void @myrt_gc_safepoint()");
                 Ok(())
@@ -1632,8 +1678,10 @@ impl<'a> FnGen<'a> {
                 let (v, vt) = self.load(value)?;
                 let lt = self.ty(&vt)?;
                 let _ = writeln!(self.out, "  store {} {}, ptr {}", lt, v, p);
-                if matches!(vt, Type::Str | Type::Class(_) | Type::Array(_)) {
+                if is_gc_pointer(&vt) {
                     let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, v);
+                } else if is_gc_aggregate(&vt) {
+                    let _ = writeln!(self.out, "  call void @myrt_gc_write_barrier_owner(ptr {}, ptr {})", p, p);
                 } else if let Type::Iface(_) = &vt {
                     let it = self.ty(&vt)?;
                     let obj = self.tmp("ifobj");

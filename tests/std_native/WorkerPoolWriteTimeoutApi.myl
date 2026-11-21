@@ -9,9 +9,11 @@ fn main() -> i32 {
     Result<WorkerPool, IoError> spawned = WorkerPool::Spawn("sleep 10", 1);
     match (spawned) {
         Ok(pool) => {
-            string payload = Str::repeat("x", 1048576);
+            string payload1 = Str::repeat("x", 131072);
+            string payload2 = Str::repeat("y", 131072);
             Vec<string> tasks = new Vec<string>();
-            tasks.push(payload);
+            tasks.push(payload1);
+            tasks.push(payload2);
             Result<Vec<WorkerTaskResult>, IoError> results = pool.callAllResults(tasks, 20);
             match (results) {
                 Ok(values) => {

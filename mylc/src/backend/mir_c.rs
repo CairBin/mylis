@@ -254,6 +254,18 @@ fn is_ref(t: &Type) -> bool {
     }
 }
 
+// 真正以单个 GC 指针表示的类型；Iface 是双字 struct，单独处理。
+fn is_gc_pointer(t: &Type) -> bool {
+    matches!(t, Type::Str | Type::Class(_) | Type::Array(_) | Type::Enum(_))
+}
+
+// 内联在字段/数组元素里的聚合引用（Option/Result）。C 里不是单指针，
+// 不能整体强转成 void*；保守做法是把整个槽登记为 owner，后续 minor
+// 会扫描该对象载荷，从而覆盖聚合内部的 obj/ok/err。
+fn is_gc_aggregate(t: &Type) -> bool {
+    matches!(t, Type::Option(_) | Type::Result(_, _))
+}
+
 fn static_const(t: &Type, c: &MirConst) -> String {
     match c {
         MirConst::Int(v) => format!("(({}){})", cty(t).unwrap_or_else(|| "myrt_i64".into()), v),
@@ -1045,17 +1057,13 @@ fn emit_fn(
         }
     }
     let mut roots: Vec<String> = Vec::new();
-    let mut root_local_idx: HashMap<u32, usize> = HashMap::new();
-    let mut root_value_idx: HashMap<u32, usize> = HashMap::new();
     for (i, l) in f.locals.iter().enumerate() {
         if live_locals.contains(&(i as u32)) && is_ref(&l.ty) {
-            root_local_idx.insert(i as u32, roots.len());
             roots.push(format!("l{}", i));
         }
     }
     for (v, ty) in &vtypes {
         if live_values.contains(v) && is_ref(ty) {
-            root_value_idx.insert(*v, roots.len());
             roots.push(format!("v{}", v));
         }
     }
@@ -1088,27 +1096,19 @@ fn emit_fn(
         for i in &b.insts {
             if let MirInstKind::Safepoint { roots } = &i.kind {
                 if has_frame {
+                    // 当前 safepoint 的根必须连续填在 myl_roots[0..n)，不能沿用
+                    // “整个函数的并集下标”；否则 count 与下标错位，GC 会读到未初始化槽。
+                    let mut ri = 0usize;
                     for r in roots {
-                        let (idx, slot) = match r {
-                            MirOperand::Local(l) => match root_local_idx.get(l) {
-                                Some(idx) => (*idx, format!("l{}", l)),
-                                None => {
-                                    errors.push(format!("safepoint 根 $%{} 未在 MIR-C 根表中", l));
-                                    continue;
-                                }
-                            },
-                            MirOperand::Value(v) => match root_value_idx.get(v) {
-                                Some(idx) => (*idx, format!("v{}", v)),
-                                None => {
-                                    errors.push(format!("safepoint 根 %{} 未在 MIR-C 根表中", v));
-                                    continue;
-                                }
-                            },
+                        let slot = match r {
+                            MirOperand::Local(l) => format!("l{}", l),
+                            MirOperand::Value(v) => format!("v{}", v),
                         };
-                        out.push_str(&format!("  myl_roots[{}].start = (void*)&{};\n", idx, slot));
-                        out.push_str(&format!("  myl_roots[{}].bytes = sizeof({});\n", idx, slot));
+                        out.push_str(&format!("  myl_roots[{}].start = (void*)&{};\n", ri, slot));
+                        out.push_str(&format!("  myl_roots[{}].bytes = sizeof({});\n", ri, slot));
+                        ri += 1;
                     }
-                    out.push_str(&format!("  myrt_gc_frame_set_roots(myl_fid, myl_roots, {});\n", roots.len()));
+                    out.push_str(&format!("  myrt_gc_frame_set_roots(myl_fid, myl_roots, {});\n", ri));
                 }
                 out.push_str("  myrt_gc_safepoint();\n");
                 continue;
@@ -1448,7 +1448,18 @@ fn emit_inst(
                     return;
                 }
             };
+            let ft = p.classes.iter().find(|c| c.decl_id == cid)
+                .and_then(|c| c.fields.get(idx)).map(|f| f.ty.clone());
             out.push_str(&format!("  ((struct C_{}*){})->f{} = {};\n", cid, opt(*base), idx, opt(*value)));
+            if let Some(t) = &ft {
+                if is_gc_pointer(t) {
+                    out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}, (void*)(((struct C_{}*){})->f{}));\n", cid, opt(*base), idx, cid, opt(*base), idx));
+                } else if matches!(t, Type::Iface(_)) {
+                    out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}.obj, (void*)(((struct C_{}*){})->f{}.obj));\n", cid, opt(*base), idx, cid, opt(*base), idx));
+                } else if is_gc_aggregate(t) {
+                    out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}, (void*)&((struct C_{}*){})->f{});\n", cid, opt(*base), idx, cid, opt(*base), idx));
+                }
+            }
         }
         MirInstKind::New { class, args } => {
             let cid = match &i.res {
@@ -1482,8 +1493,12 @@ fn emit_inst(
                     if let Some(init) = &fld.init {
                         let e = static_const(&fld.ty, init);
                         out.push_str(&format!("  ((struct C_{}*){})->f{} = {};\n", cid, tmp, fi, e));
-                        if is_ref(&fld.ty) {
+                        if is_gc_pointer(&fld.ty) {
                             out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}, (void*)(((struct C_{}*){})->f{}));\n", cid, tmp, fi, cid, tmp, fi));
+                        } else if matches!(fld.ty, Type::Iface(_)) {
+                            out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}.obj, (void*)(((struct C_{}*){})->f{}.obj));\n", cid, tmp, fi, cid, tmp, fi));
+                        } else if is_gc_aggregate(&fld.ty) {
+                            out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct C_{}*){})->f{}, (void*)&((struct C_{}*){})->f{});\n", cid, tmp, fi, cid, tmp, fi));
                         }
                     }
                 }
@@ -1766,9 +1781,19 @@ fn emit_inst(
                     "  ((struct MylA_{}*){})->items[{}] = {};\n",
                     key, var, idx, opt(*v)
                 ));
-                if matches!(el, Type::Str | Type::Class(_) | Type::Iface(_) | Type::Array(_)) {
+                if is_gc_pointer(&el) {
                     out.push_str(&format!(
                         "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[{}], (void*)(((struct MylA_{}*){})->items[{}]));\n",
+                        key, var, idx, key, var, idx
+                    ));
+                } else if matches!(el, Type::Iface(_)) {
+                    out.push_str(&format!(
+                        "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[{}].obj, (void*)(((struct MylA_{}*){})->items[{}].obj));\n",
+                        key, var, idx, key, var, idx
+                    ));
+                } else if is_gc_aggregate(&el) {
+                    out.push_str(&format!(
+                        "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[{}], (void*)&((struct MylA_{}*){})->items[{}]);\n",
                         key, var, idx, key, var, idx
                     ));
                 }
@@ -1791,9 +1816,19 @@ fn emit_inst(
                 "  ((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))] = {};\n",
                 key, opt(*base), key, opt(*base), opt(*index), opt(*value)
             ));
-            if matches!(el, Type::Str | Type::Class(_) | Type::Iface(_) | Type::Array(_)) {
+            if is_gc_pointer(&el) {
                 out.push_str(&format!(
                     "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))], (void*)(((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))]));\n",
+                    key, opt(*base), key, opt(*base), opt(*index), key, opt(*base), key, opt(*base), opt(*index)
+                ));
+            } else if matches!(el, Type::Iface(_)) {
+                out.push_str(&format!(
+                    "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))].obj, (void*)(((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))].obj));\n",
+                    key, opt(*base), key, opt(*base), opt(*index), key, opt(*base), key, opt(*base), opt(*index)
+                ));
+            } else if is_gc_aggregate(&el) {
+                out.push_str(&format!(
+                    "  myrt_gc_write_barrier_owner((void*)&((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))], (void*)&((struct MylA_{}*){})->items[mylrt_arr_index(((struct MylA_{}*){})->len, (myrt_i64)({}))]);\n",
                     key, opt(*base), key, opt(*base), opt(*index), key, opt(*base), key, opt(*base), opt(*index)
                 ));
             }
@@ -1909,6 +1944,13 @@ fn emit_inst(
             let t = operand_ty(*value, f, vtys);
             let c = cty(&t).unwrap_or_else(|| "myrt_i64".into());
             out.push_str(&format!("  *(({}*)({})) = {};\n", c, opt(*ptr), opt(*value)));
+            if is_gc_pointer(&t) {
+                out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)({}), (void*)({}));\n", opt(*ptr), opt(*value)));
+            } else if let Type::Iface(iid) = &t {
+                out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&((struct I_{}*)({}))->obj, (void*)(((struct I_{}*)({}))->obj));\n", iid, opt(*ptr), iid, opt(*ptr)));
+            } else if is_gc_aggregate(&t) {
+                out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)({}), (void*)({}));\n", opt(*ptr), opt(*ptr)));
+            }
         }
         MirInstKind::StoreStatic { value, .. } => {
             if let Res::StaticField(cid, idx) = &i.res {
@@ -1916,8 +1958,12 @@ fn emit_inst(
                     .and_then(|c| c.fields.get(*idx))
                     .map(|f| f.ty.clone());
                 out.push_str(&format!("  {} = {};\n", static_name(*cid, *idx), opt(*value)));
-                if ft.as_ref().map(is_ref).unwrap_or(false) {
+                if ft.as_ref().map(is_gc_pointer).unwrap_or(false) {
                     out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&{}, (void*)({}));\n", static_name(*cid, *idx), static_name(*cid, *idx)));
+                } else if ft.as_ref().map(|t| matches!(t, Type::Iface(_))).unwrap_or(false) {
+                    out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&{}.obj, (void*)({}.obj));\n", static_name(*cid, *idx), static_name(*cid, *idx)));
+                } else if ft.as_ref().map(is_gc_aggregate).unwrap_or(false) {
+                    out.push_str(&format!("  myrt_gc_write_barrier_owner((void*)&{}, (void*)&{});\n", static_name(*cid, *idx), static_name(*cid, *idx)));
                 }
             } else {
                 errors.push(format!("{}: static store without field res", f.name));

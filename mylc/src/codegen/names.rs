@@ -113,6 +113,9 @@ impl<'a> Codegen<'a> {
             self.line(&format!("myrt_gc_write_barrier_owner((void*)({}), (void*)({}));", slot, value));
         } else if matches!(t, Type::Iface(_)) {
             self.line(&format!("myrt_gc_write_barrier_owner((void*)({}), (void*)(({}).obj));", slot, value));
+        } else if matches!(t, Type::Option(_) | Type::Result(_, _)) {
+            // 内联聚合值：不能整体强转成指针，登记 owner 槽让 minor 扫描聚合载荷。
+            self.line(&format!("myrt_gc_write_barrier_owner((void*)({}), (void*)({}));", slot, slot));
         }
     }
 
