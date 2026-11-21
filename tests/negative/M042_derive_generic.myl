@@ -1,0 +1,8 @@
+@derive(ToString)
+class Box<T> {
+    pub T value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

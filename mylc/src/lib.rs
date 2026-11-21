@@ -5,6 +5,7 @@
 pub mod ast;
 pub mod backend;
 pub mod codegen;
+pub mod derive;
 pub mod diag;
 pub mod generics;
 pub mod json;

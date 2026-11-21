@@ -1,0 +1,12 @@
+@derive(ToString)
+class Item {
+    pub i64 id;
+
+    pub fn toString() -> string {
+        return "custom";
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

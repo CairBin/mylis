@@ -312,12 +312,13 @@ impl<'a> Parser<'a> {
                             }
                             Tok::Float => args.push(AnnotArg::Float(t.fval)),
                             Tok::StrLit => args.push(AnnotArg::Str(t.text.clone())),
+                            Tok::Ident => args.push(AnnotArg::Ident(t.text.clone())),
                             Tok::KwTrue => args.push(AnnotArg::Bool(true)),
                             Tok::KwFalse => args.push(AnnotArg::Bool(false)),
                             _ => self.error(
                                 t.line,
                                 t.col,
-                                "注解参数只允许常量字面量（int/float/string/bool）",
+                                "注解参数只允许常量字面量或标识符（int/float/string/bool/name）",
                             ),
                         }
                         if self.eat(Tok::Comma) {

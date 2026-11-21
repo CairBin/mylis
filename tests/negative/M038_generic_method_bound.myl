@@ -1,0 +1,20 @@
+interface Show {
+    fn show() -> string;
+}
+
+class Bad {
+    pub fn other() -> string { return "bad"; }
+}
+
+class Box {
+    pub fn showIt<U: Show>(U u) -> string {
+        return u.show();
+    }
+}
+
+fn main() -> i32 {
+    Box b = new Box();
+    Bad value = new Bad();
+    b.showIt<Bad>(value);
+    return 0;
+}

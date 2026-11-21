@@ -490,7 +490,7 @@ impl<'a> Loader<'a> {
                     continue;
                 }
             };
-            let tkey = target.to_string_lossy().to_string();
+            let tkey = Self::path_key(&target);
             match self.index.get(&tkey).copied() {
                 Some(tid) => {
                     if self.prog.modules[tid].state == 1 {
@@ -551,6 +551,8 @@ impl<'a> Loader<'a> {
 
     fn push_decl(&mut self, mut d: Decl, mod_id: usize) -> usize {
         d.mod_id = mod_id;
+        let module_path = self.prog.modules[mod_id].path.clone();
+        crate::derive::expand(&mut d, &module_path, self.diags);
         let mut mids = Vec::new();
         let member_asts: Vec<Decl> = d.member_asts.drain(..).collect();
         for mut m in member_asts {

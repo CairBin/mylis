@@ -219,6 +219,8 @@ pub enum AnnotArg {
     Float(f64),
     Str(String),
     Bool(bool),
+    /// 不带引号的标识符，供 `@derive(ToString)` 这类内置派生使用。
+    Ident(String),
 }
 
 #[derive(Clone, Debug)]

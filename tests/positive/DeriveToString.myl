@@ -1,0 +1,44 @@
+import { println } from "Io.myl";
+
+@derive(ToString)
+class Point {
+    pub i64 x;
+    pub i64 y;
+
+    pub fn init(i64 x, i64 y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+@derive(ToString)
+class Named {
+    pub string name;
+    pub bool ok;
+
+    pub fn init(string name, bool ok) {
+        this.name = name;
+        this.ok = ok;
+    }
+}
+
+@derive(ToString)
+class Segment {
+    pub Point from;
+    pub Point to;
+
+    pub fn init(Point from, Point to) {
+        this.from = from;
+        this.to = to;
+    }
+}
+
+fn main() -> i32 {
+    Point p = new Point(1, 2);
+    Named n = new Named("mylis", true);
+    Segment s = new Segment(p, new Point(3, 4));
+    println("{p}");
+    println("{n}");
+    println("{s}");
+    return 0;
+}

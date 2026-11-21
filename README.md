@@ -592,7 +592,7 @@ mylc test        # 只跑 tests/ 下的 .expected 比对
 ```
 
 ```
-mylc/src/       编译器（main/cli/driver/i18n/toolchain/lexer/ast/parser/program/sema/codegen//lsp/diag）
+mylc/src/       编译器（main/cli/driver/i18n/toolchain/lexer/ast/parser/program/derive/sema/codegen/lsp/diag）
 myrt/           C ABI 头文件（mylrt.h / mylrt_gc.h）
 mylrt-rs/       Rust 运行时（Runtime / Gc trait + 实现）
 core/, std/     core 层与独立 std 包；std-posix/native、std-win32/native 放 Rust/C ABI native 后端
@@ -603,4 +603,4 @@ docs/           Mylis 语言规范
 
 ### 明确不做
 
-`Vec<T>` 由标准库以泛型类提供，覆盖泛型类/函数/方法/接口/枚举，并支持接口 bound（`T: Show`）与简单类型实参推断；泛型模板源码（含函数/方法体）和原模块 `import` 可随 `.mylib` 导出，消费端据此实例化；库内已产生的具体实例同时进入 MIR 段；设计见 [`docs/泛型设计.md`](docs/泛型设计.md)。宏 / 反射 / `#[derive]` 式代码生成、继承、隐式类型转换、`let` 语法不做；包管理只覆盖本地 path / Git / 本地与 HTTP `.mylib` / 本地 registry，不做远程 registry 与 workspace 子包。
+`Vec<T>` 由标准库以泛型类提供，覆盖泛型类/函数/方法/接口/枚举，并支持接口 bound（`T: Show`）与简单类型实参推断；泛型模板源码（含函数/方法体）和原模块 `import` 可随 `.mylib` 导出，消费端据此实例化；库内已产生的具体实例同时进入 MIR 段；设计见 [`docs/泛型设计.md`](docs/泛型设计.md)。通用宏、运行时反射、通用的 `#[derive]` 式代码生成、继承、隐式类型转换、`let` 语法不做；仅内置 `@derive(ToString)` 编译期派生（读取 class 实例字段生成 `toString`，不保留运行时类型表），见语言规范 §17.7。包管理只覆盖本地 path / Git / 本地与 HTTP `.mylib` / 本地 registry，不做远程 registry 与 workspace 子包。

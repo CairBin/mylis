@@ -1,0 +1,22 @@
+import { println } from "Io.myl";
+
+interface Show {
+    fn show() -> string;
+}
+
+class Good {
+    pub fn show() -> string { return "good"; }
+}
+
+class Box {
+    pub fn showIt<U: Show>(U u) -> string {
+        return u.show();
+    }
+}
+
+fn main() -> i32 {
+    Box b = new Box();
+    Good g = new Good();
+    println(b.showIt<Good>(g));
+    return 0;
+}

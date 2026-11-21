@@ -253,7 +253,7 @@ pub fn analyze(prog: &mut Program, diags: &mut Diag) {
     }
 
     // 未知注解告警（防拼错导致静默失效，如 @exprot）
-    const KNOWN_ANNOTS: &[&str] = &["export", "header", "deprecated", "inline"];
+    const KNOWN_ANNOTS: &[&str] = &["export", "header", "deprecated", "inline", "derive"];
     fn annot_suggest(name: &str) -> Option<&'static str> {
         let mut best: Option<(usize, &'static str)> = None;
         for k in KNOWN_ANNOTS {

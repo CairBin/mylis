@@ -525,7 +525,7 @@ pub class Users {
 
 - 任意未内置的注解全部由用户自定义；
 - **编译器默认忽略，仅存元数据**（不参与语义检查，不影响代码生成）；
-- 没有 `#[derive]` 式的代码生成，也没有运行时反射（见 §17.6 与 §19）。
+- 例外是内置 `@derive(ToString)`：编译器在编译期读取 class 字段并生成 `toString` 方法（见 §17.7），不生成运行时类型表，也没有通用宏或运行时反射。
 
 ---
 
@@ -1612,6 +1612,45 @@ static void myl_init_statics(void) {
   反向用例，命中 `MYL102`；
 - `bash tests/run_tests.sh` 共 **62 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
 
+### 17.7 编译期派生 `@derive(ToString)`
+
+`@derive(ToString)` 是本版唯一的编译期反射能力，只接受 class：
+
+```mylis
+@derive(ToString)
+class Point {
+    pub i64 x;
+    pub i64 y;
+
+    pub fn init(i64 x, i64 y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+```
+
+编译器读取 class 的**实例字段**（static 字段跳过），生成等价的：
+
+```mylis
+pub fn toString() -> string {
+    return "Point { x: {this.x}, y: {this.y} }";
+}
+```
+
+规则：
+
+- 生成发生在编译期，运行时不保留字段名、偏移或类型表，也不存在按名字查字段的 API；
+- 除检查已有 `toString` / `to_string` 冲突外，只对**字段列表**做拼接，不读取方法体、其他注解或继承信息；
+- 字段类型必须能按字符串插值规则输出；直接以类名 / 枚举名声明的 class / enum 字段会生成显式 `this.field.toString()`，因此该字段类型必须实现 `ToString`；
+- 类已有 `toString` 或 `to_string` 时报 `MYL102`，不会覆盖手写方法；
+- 当前版本不支持泛型 class（`class Box<T>`）：字段类型 `T` 的字符串化链路尚未打通，`@derive(ToString)` 会直接报 `MYL102`；
+- 未知派生（如 `@derive(Json)`）、把 `@derive(ToString)` 用在 enum / interface / 函数上报 `MYL102`；
+- 同一 class 可写多个 `@derive(...)`，当前除 `ToString` 外的派生名全部报未实现。
+
+这不是通用的 `#[derive]` 宏系统：编译器不执行用户代码，也不提供字段枚举 / 属性读取 API；新增派生能力必须在编译器内实现。
+
+测试覆盖：`tests/positive/DeriveToString.myl`（primitive / string / bool / 嵌套 class 字段）与 `tests/negative/{M039_derive_unknown,M040_derive_non_class,M041_derive_conflict,M042_derive_generic}.myl`（均命中 `MYL102`）。
+
 ---
 
 ## 17.5 工程结构（`mylis.toml`）
@@ -2076,5 +2115,6 @@ import { Io } from "std/Io";
 `make test` 与两个打包脚本都会先跑它。
 
 **注解系统的边界**（与 Java / Rust 的对照结论）：Mylis 注解只做编译期元数据与少量静态语义
-（`@export` / `@header` / `@deprecated` / `@inline`），不做 `#[derive]` 式代码生成，也没有运行时反射；
-理由是同一条：**拒绝“代码形态取决于第三方宏或构建配置”的隐式行为**。
+（`@export` / `@header` / `@deprecated` / `@inline`），外加一个受限的内置派生 `@derive(ToString)`
+（编译器读取 class 实例字段并生成方法，见 §17.7）；没有通用宏系统，也没有运行时反射。
+理由是同一条：**拒绝“代码形态取决于第三方宏或构建配置”的隐式行为**，派生能力由语言实现内置、可审计。
