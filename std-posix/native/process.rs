@@ -602,11 +602,6 @@ fn direct_command(command: &str) -> Option<Command> {
     Some(Command::new(executable))
 }
 
-#[cfg(not(windows))]
-fn direct_command(_command: &str) -> Option<Command> {
-    None
-}
-
 fn process_command(command: &str) -> Command {
     #[cfg(windows)]
     {
