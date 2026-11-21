@@ -16,9 +16,9 @@
 | 语言名称 | **Mylis** |
 | 寓意 | 古希腊清灵宁芙，极简、纯净、秩序、克制、优雅 |
 | 源文件后缀 | `.myl` |
-| 编译器 | `mylc`（Rust 实现，C11 后端） |
+| 编译器 | `mylc`（Rust 实现；默认 LLVM 后端，MIR-C / AST-C 可回退） |
 | 运行时 | `mylrt-rs`（Rust 实现，默认自研 GC；C ABI 见 `myrt/mylrt.h`） |
-| 可执行产物 | 原生 ELF（由 gcc 编译生成，静态链接 `libmyrt.a` + `libgc.a`） |
+| 可执行产物 | 原生 ELF / PE（默认 LLVM IR → clang；也可 MIR-C/AST-C → C11 → CC），链接运行时与所选 GC 后端 |
 
 **核心定位**：C 级性能 + Rust 安全错误体系 + Java 工程结构 + Go 组合模型 + 纯净可控底层 + 用户可扩展注解。
 
@@ -34,7 +34,7 @@
 | --- | --- | --- |
 | R1 | 无 `let` 变量 | 全程 C 风格类型前置声明 |
 | R2 | 无类型推导 | 所有变量/参数/返回值必须手写类型 |
-| R3 | 无泛型、无模板 | 仅有内置语义类型 `Result` / `Option` |
+| R3 | 无运行时泛型、无类型擦除 | 泛型在 sema 单态化，实例以具体类型进入 MIR；不做 `Any` 装箱，不保留运行期类型参数 |
 | R4 | 无函数重载 | 同文件同名函数直接报错 |
 | R5 | 无默认参数 | 实参数量必须与形参完全一致 |
 | R6 | 无类继承、无多态继承 | 只有组合 + 接口鸭子类型 |
@@ -94,12 +94,12 @@
 
 ### 2.5 内存模型
 
-- **GC：Boehm GC**（`libgc.a`，静态链接）；
+- **GC：默认自研分代 mark-sweep**（`mylgc`，Rust staticlib；`MYLIS_GC=own`）；可选 `boehm` 或 `simple`（不回收），统一走 `myrt_gc_backend_*` C ABI；
 - `new` → GC 堆对象，**引用语义、无拷贝**；
 - 值类型（`i8..u64`、`f32/f64`、`bool`、`Result`、`Option`）→ 栈分配；
 - `string` → GC 托管、不可变、驻留（相同字面量共享同一对象）；
 - C 长期持有 Mylis 对象必须手动 `myrt_register_root`（第 11 章）；
-- GC 扫描栈与静态数据段（Boehm 保守式），无需手工标记引用。
+- GC 默认保守扫描当前线程栈与已注册静态根区间；LLVM/MIR-C 在 `MYLIS_GC_PRECISE=1` 时可只扫描显式根与 safepoint 帧根表。
 
 ### 2.6 安全模型
 
@@ -765,7 +765,7 @@ static C_Counter_Counter* NEW_Counter_Counter(int32_t p_start) {
 }
 ```
 
-`myrt_alloc` 返回 Boehm GC 的已清零内存，因此未显式赋值的字节恒为 0。
+`myrt_alloc` 返回 GC 后端分配并已清零的内存，因此未显式赋值的字节恒为 0。
 
 ---
 
@@ -829,7 +829,7 @@ static E_Shape* NEW_Shape_Circle(double v0) {
 }
 ```
 
-`match` 在枚举上降级为 `tag` 比较 + `data` 指针转换，无虚函数、无额外分配点（每次构造恰好 N+1 次 `myrt_alloc`，由 Boehm GC 回收）。
+`match` 在枚举上降级为 `tag` 比较 + `data` 指针转换，无虚函数、无额外分配点（每次构造恰好 N+1 次 `myrt_alloc`，由 GC 后端回收）。
 
 ## 9. 接口系统（鸭子类型）
 
@@ -1283,16 +1283,17 @@ mylis/
 词法分析    → token 序列（关键字、字面量、运算符；`>>` 在泛型闭合处自动拆分）
 语法分析    → AST（递归下降 + 优先级爬升；声明/表达式歧义用回溯试探）
 语义分析    → 类型解析、12 条检查、Result/Option 实例化表、接口实现表
-代码生成    → C11 源码（声明段 + 辅助函数 + 函数体 + vtable + 构造器 + main）
-后端        → gcc -std=c11 -O2，链接 libmylrt.a + libgc.a + -lm -lpthread -ldl
+MIR 生成    → AST → 函数级 CFG（SSA 值 + 局部槽 + 显式终结指令），safepoint 根表
+后端        → 默认 LLVM：MIR → 文本 LLVM IR → clang → 运行时 + GC
+            → MIR-C：MIR → C11 → CC/AR；AST-C 仅作显式回退
 ```
 
 ### 14.3 test 目标
 
 ```bash
 make test
-# 正向：编译 + 运行 + 输出比对（12 组）
-# 反向：MYL001–MYL012 / MYL101 / MYL102 全部命中（17 组）
+# 正向/反向合计 114 项；MIR-C/AST-C 对拍 76 项
+# 另含 std native、库模式、工具链、MIR、LSP 与裸机验收
 ```
 
 ---
@@ -1632,8 +1633,8 @@ out = "build/myapp"           # 可省略，默认 build/<target 名>
 ```
 
 命令：`mylc build [target]`、`mylc run [target]`、`mylc test`；单文件写法（`mylc app.myl`）不受影响。
-`make all` 默认构建 LLVM 后端 + 自研 GC，把整套（`mylc`、`myls`、`std/`、`myrt/`、`gc/`、`build/libmylrt.a` 或 `.lib`）收进 `bin/`，
-拷贝 `bin/` 即可分发（`bin/` 自身就是 mylc 认定的 root）。
+`make all` 默认构建 LLVM 后端 + 自研 GC，把整套（`mylc`、`myls`、`std/`、`std-posix/` 或 `std-win32/`、`myrt/`、`gc/`、运行时库与六个 std native 库）收进 `bin/`，
+拷贝 `bin/` 即可分发（`bin/` 自身就是 mylc 认定的 root；外部 C/clang 工具链仍需在目标机可用）。
 
 ## 17.6 工具链家族（gcc / clang / msvc，可扩展）
 
@@ -1698,16 +1699,14 @@ mylc --shared mathlib.myl -o libmathlib.so     # Linux/macOS
 mylc --shared mathlib.myl -o mathlib.dll       # Windows
 ```
 
-- 生成 `-shared`（Windows 追加 `-Wl,--export-all-symbols`，非 Windows 追加 `-fPIC`）；
+- Linux/macOS 用 `-shared -fPIC`；Windows MSVC 用 `cl /LD /Fe:<dll>`，并由 `__declspec(dllexport)` 导出；
 - 同样导出 `void <stem>_init(void)`，使用方先调用一次；
-- **默认不把运行时链进动态库**：Boehm 的 `libgc.a` 通常不是 PIC，直接链进 `.so` 会报
-  `relocation R_X86_64_TPOFF32 ... recompile with -fPIC`。因此宿主程序负责提供 `myrt_*`：
-  链接 `libmylrt.a` + `libgc.a` 即可。确需自包含时用 `--embed-runtime`，并要求运行库以 `-fPIC` 构建。
-- Windows 上调 `*.dll` 需要 **import lib**（`libfoo.dll.a` 或 `foo.lib`），不能直接给 `.dll`。
+- **运行时链接默认**：Linux/macOS 构建的 `mylc` 默认不把运行时链进 `.so`，宿主程序负责提供 `myrt_*`；Windows 构建的 `mylc` 默认把运行时链入 DLL（`cfg!(windows)`），`--embed-runtime` 用于在 Linux/macOS 上显式打开自包含。GNU 侧自研 GC 以 PIC 构建；Boehm 的 `libgc.a` 通常不是 PIC，直接链进 `.so` 可能报 `relocation R_X86_64_TPOFF32 ... recompile with -fPIC`。
+- Windows 上调 `*.dll` 需要 **import lib**（`foo.lib` 或 `libfoo.dll.a`），不能直接给 `.dll`。
 
 ### 18.2.2 使用别人的库
 
-| 选项 | 作用 | 透传给 C 后端 |
+| 选项 | 作用 | 透传给链接步骤 |
 | --- | --- | --- |
 | `-l <name>` | 链接名为 name 的库（可多次） | `-lname` |
 | `-L <dir>` | 追加库搜索目录（可多次） | `-Ldir` |
@@ -1727,26 +1726,24 @@ mylc use.myl -L ./libs -l cadddyn -o use_dyn   # 动态库 libcadddyn.so（运�
 
 ### 18.2.3 工具链解析（不写死平台与随包路径）
 
-`mylc` 不再把 `mingw64/bin/*.exe`、8.3 短路径之类的平台细节写死在源码里，CC/AR 与参数按顺序解析：
+`mylc` 不写死平台路径，CC/AR 与参数按以下顺序解析：
 
 | 顺序 | 来源 | 键 |
 | --- | --- | --- |
-| 1 | 环境变量 | `MYLIS_CC` / `MYLIS_AR` / `MYLIS_CFLAGS` / `MYLIS_LDFLAGS` |
-| 2 | 工程配置 `<root>/mylis.toml` | `[toolchain]` 段：`cc` / `ar` / `cflags` / `ldflags` |
-| 3 | 随包描述 `<root>/mylis-toolchain.json` | `{"cc":"mingw64/bin/gcc.exe","ar":"mingw64/bin/ar.exe"}`（相对 root） |
-| 4 | PATH | Linux/macOS：`gcc` / `ar`；Windows：`cl` / `lib` |
+| 1 | 命令行 | `--cc`（`--ar` 未提供时由后续来源决定） |
+| 2 | 环境变量 | `MYLIS_CC` / `MYLIS_AR` / `MYLIS_CFLAGS` / `MYLIS_LDFLAGS` / `MYLIS_FAMILY` |
+| 3 | 工程配置 `<root>/mylis.toml` | `[toolchain]`：`cc` / `ar` / `cflags` / `ldflags` / `family` |
+| 4 | 随包描述 `<root>/mylis-toolchain.json` | `{"family":"msvc","cc":"cl.exe","ar":"lib.exe"}`（相对 root） |
+| 5 | 工具链规格 `toolchains/*.toml` | 规格里的 `cc` / `ar` 默认值 |
+| 6 | PATH | Linux/macOS：`gcc` / `ar`；Windows：`cl` / `lib` |
 
 - 随包工具链由打包脚本生成描述文件，编译器只认描述文件，因此换掉包内目录结构不影响 `mylc`；
-- 传给用户的 `--cc` 会覆盖第 1 项；
-- 安装目录含空格时（如 `C:\Program Files (x86)`），会把工具链前缀与 `myrt/`、`gc/include`、两个 `.a`
-  复制到不含空格的缓存目录（`MYLIS_CACHE` → `LOCALAPPDATA` → `TEMP` → `TMP` → `USERPROFILE` → `SystemDrive`），
-  避免 MinGW 的 `gcc` 把路径原样拼进 `ld` 命令行后按空格拆开；
-- 后端边界：`mylc` 目前生成 C 源码 → 调用 CC/AR。将来接自有 IR 或 LLVM 时替换这一层即可，
-  语义层（lexer/parser/sema）与产物形态不变。
+- 安装目录含空格时，GNU 家族的 `gcc` 可能把路径拼进 `ld` 命令行后按空格拆开；`mylc` 会把工具链前缀与 `myrt/`、`gc/`、运行时 `.a` 复制到无空格缓存（`MYLIS_CACHE` → `LOCALAPPDATA` → `TEMP` → `TMP` → `USERPROFILE` → `SystemDrive`）。Windows 默认 MSVC 不经过这条路径；
+- 后端边界：默认 LLVM 后端生成 LLVM IR → `clang`；MIR-C / AST-C 生成 C11 → `CC`/`AR`。语义层（lexer/parser/sema）与产物形态不受后端切换影响。
 
 ### 18.2.4 GC 后端抽象
 
-运行时不再直接调用 Boehm 的 `GC_*`，而是统一走 `myrt/mylrt_gc.h` 的四个接口：
+运行时统一走 `myrt/mylrt_gc.h` 的四个接口，不直接调用具体 GC 实现：
 
 | 接口 | 语义 |
 | --- | --- |
@@ -1766,24 +1763,25 @@ mylc use.myl -L ./libs -l cadddyn -o use_dyn   # 动态库 libcadddyn.so（运�
 生成的 C 只依赖运行时 ABI 头 `mylrt.h`，基本类型由 `myrt_i8..myrt_u64` 定义，不引入
 C 标准库头；运行时为单线程语义（无 thread/spawn）。
 
-自研 GC 的自动回收由 `MYLIS_GC_THRESHOLD`（字节，默认 8MB，`0` 关闭）控制；运行时为
+自研 GC 的自动回收由 `MYLIS_GC_THRESHOLD`（字节，默认 `524288`，`0` 关闭）控制；运行时为
 **单线程**语义，语言层不提供线程/并发原语。
 
 ```bash
-make GC_BACKEND=simple                 # 构建无回收后端
-MYLIS_GC=simple mylc hello.myl -o hello # 链接时不再需要 libgc.a
+make all                                  # 构建默认自研 GC 与运行库
+MYLIS_GC=simple mylc hello.myl -o hello   # 链接不回收后端，不需要 libgc.a
+MYLIS_GC=boehm mylc hello.myl -o hello    # 需先准备 libgc（make bootstrap）
 ```
 
 `myrt_*` 的 ABI 不因换后端而改变（`myrt_alloc`、`myrt_register_root` 等签名不变）。
 
-### 18.9 编译器的多语言消息
+### 18.3 编译器的多语言消息
 
 `mylc` 驱动与构建消息支持简体中文 / 英文：`--lang zh|en`、`MYLIS_LANG=zh|en`，
 未指定时默认简体中文（系统 locale 仅当明确为 `zh*` 时生效）。生成 C 源码的头部注释固定为
 `/* Generated by mylc -- do not edit. */`，不含任何品牌/宣传文案；诊断码 `MYLnnn` 与语言语义诊断文案
 不随语言切换（后续迁移文案时直接换 `i18n::t` 的键即可，机制已就位）。
 
-### 18.3 `@export("c_name")`：稳定 C ABI
+### 18.4 `@export("c_name")`：稳定 C ABI
 
 Mylis 的符号名默认带模块前缀（如 `F_mathlib_add`），不适合作为库 ABI。给顶层 `pub fn` 加
 `@export` 即固定 C 符号名：
@@ -1823,8 +1821,9 @@ int main(void) {
 ```
 
 ```bash
-gcc -I<mylis>/myrt -I<gc>/include client.c libmathlib.a \
-    <mylis>/build/libmylrt.a <gc>/lib/libgc.a -lm -lpthread -ldl -o client
+gcc -I<mylis>/myrt client.c libmathlib.a \
+    <mylis>/build/libmylrt.a <mylis>/build/libmylgc.a -lm -lpthread -ldl -o client
+# 若显式使用 Boehm，把 libmylgc.a 换成 <gc>/lib/libgc.a + libgc_boehm.a
 ```
 
 规则：
@@ -1834,23 +1833,27 @@ gcc -I<mylis>/myrt -I<gc>/include client.c libmathlib.a \
 - 同名 `@export` 冲突由 C 链接器报错，编译器不替你改名；
 - 不加 `@export` 的 `pub fn` 仍然会被编译进 `.a`（Mylis 内部调用可用），但**不要**在头文件之外依赖其符号名。
 
-### 18.4 库的可见性边界（与 Rust 一致）
+### 18.5 库的可见性边界（与 Rust 一致）
 
 - 库内模块之间：私有 `import` 不传递；要对外暴露子模块用 `pub import`（§7.1）；
 - 库对外：只有 `pub` 声明能被其它库/程序看到；`@export` 进一步把它映射到稳定的 C 符号；
 - 没有 `pub(crate)` 这类中间层级：**只有「文件内私有」与「pub」两级**（第 2 章红线）。
 
-### 18.5 平台支持（Windows 版本下限）
+### 18.6 平台支持
 
-| 产物 | 最低系统 | 依据 |
+当前验证基线：
+
+| 平台 | 状态 | 工具链 / 说明 |
 | --- | --- | --- |
-| `bin/*.exe`（Mylis 编译出的程序） | Windows 7 SP1 x64 | 静态链接 `libmylrt.a` + `libgc.a`，导入表仅 `KERNEL32.dll` / `msvcrt.dll`，且只使用 Win7 时代 API |
-| `mylc.exe`（编译器本体） | Windows 7 SP1 x64 | 用 Rust 1.77.2 构建（Rust std 支持 Win7 的最后版本），导入 `ADVAPI32/bcrypt/KERNEL32/msvcrt/ntdll` |
-| 重新编译所需的 C 工具链 | 取决于所装的 mingw-w64 版本 | 需选用仍支持 Win7 的 mingw-w64 发行（如 WinLibs 的旧版本） |
+| Windows x64 | 已验证 | Windows 10/11；MSVC `cl.exe` / `lib.exe`；Rust `x86_64-pc-windows-msvc`；默认 LLVM 需 LLVM 15+ `clang.exe` |
+| Linux x86_64 | 已验证 | `gcc` + `ar`；默认 LLVM 需 `clang`；POSIX `epoll` / `poll` |
+| macOS / BSD | 按 POSIX 路径实现 | `poll` 后备；`kqueue` 优化尚未实现 |
 
-生成代码本身不引入任何 Win8+ 依赖：运行时只依赖 Boehm GC 与 msvcrt，编译器发射的 C 是纯 C11。
+Windows 当前只支持 **MSVC x64**，不支持 MinGW/GNU target；`make test-win` 会检查 ABI 与工具链，
+并运行原生 std、Worker、写超时与发行包自检。Windows 7 不在当前支持范围；`mylc.exe` 与生成程序均按
+现代 MSVC 运行时和 Windows SDK 构建。
 
-### 18.6 库模式的验证用例
+### 18.7 库模式的验证用例
 
 `tests/lib/` 下有一组可脚本化的验收：
 

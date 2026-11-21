@@ -1,6 +1,6 @@
 # Mylis 库标准
 
-> 状态：`v0.1` 设计基线。**P0 源码包已落地**（清单、包名 import、跨包 `pub`、依赖图与锁文件）；MIR 库与 registry 仍为后续目标。本文区分 **Mylis 原生库**、**Mylis 包/MIR 库** 和 **C FFI 导出库** 三种边界；C FFI 部分由 `mylc --static/--shared` 提供。
+> 状态：`v0.1` 实现基线。**P0 源码包、P1 MIR 库、P2 本地 registry 均已落地**；P2 尚未覆盖远程 HTTP 索引、发布命令与远程缓存。本文区分 **Mylis 原生库**、**Mylis 包/MIR 库** 和 **C FFI 导出库** 三种边界；C FFI 部分由 `mylc --static/--shared` 提供。
 
 ## 1. 目标
 
@@ -209,13 +209,13 @@ Mylis 原生包在编译期合并为一个 `Program`，因此同一包名**只�
 - 跨文件非 `pub` 声明报 `MYL005`，包边界复用同一规则；
 - 首次构建生成 `mylis.lock`（依赖名、版本、路径源、包内容 SHA-256）；已有锁文件不静默改写。
 
-P0 已知限制：
+P0 基线边界：
 
-- 包内函数目前通过 `import` 后**扁平调用**（如 `add(...)`），尚未实现 `mathlib::add` 的模块限定名；
-- 锁文件只做生成，尚无 `--update-lock` / 完整性校验命令；
-- 依赖仅支持本地路径，git / registry 源在 P2；
-- `mylc build` 对只有 `[lib]` 的包会合成一个静态库目标；
-- 路径依赖的校验和覆盖该包全部 `.myl` 与 `mylis.toml`；修改依赖源码后删除 `mylis.lock` 可重新生成。
+- 包内公开函数既可扁平调用，也支持 `mathlib::add` / `pkg::module::fn` 的限定名；跨包 `pub import` 递归导出已实现。
+- 锁文件首次构建生成；`mylc build --update-lock` 显式刷新，源/checksum 不一致会拒绝。
+- P0 只要求本地 `path` 依赖；Git、HTTP `.mylib` 与本地 registry 属于 P2，见后文。
+- `mylc build` 对只有 `[lib]` 的包会合成一个静态库目标。
+- 路径依赖的校验和覆盖该包全部 `.myl` 与 `mylis.toml`；修改依赖源码后用 `--update-lock` 刷新。
 
 ## 5. MIR 库格式（预编译分发）
 
@@ -242,7 +242,7 @@ mathlib-0.1.0.mylib
 └── checksums.toml
 ```
 
-> 实现说明：P1 第一版先落地**单文件文本归档** `MYLIB 1`，用 `--- manifest/--- api/--- mir` 分段；`api.mir`/`impl.mir` 拆成独立文件、压缩归档和反序列化在后续迭代。单文件归档不携带 runtime/GC，符合本节边界。
+> 实现说明：P1 当前实现采用**单文件文本归档** `MYLIB 1`，用 `--- manifest/--- api/--- mir` 分段；`api.mir`/`impl.mir` 拆成独立文件、压缩归档和反序列化仍属后续迭代。单文件归档不携带 runtime/GC，符合本节边界。
 
 泛型声明在 API 段导出模板签名（`pub class Box<T>`、`pub fn identity<T>`），
 在 MIR 段导出库内已实例化的具体声明（`Box__i64`、`identity__i64`）。
@@ -385,7 +385,7 @@ pub fn c_add(i32 a, i32 b) -> i32 { return add(a, b); }  // C FFI
 - `mylis-1` 校验；
 - `--emit-mylib` / `--link-mylib`。
 
-P1 第一版已实现 `--emit-mylib` 和 `--link-mylib`：
+P1 当前实现已提供 `--emit-mylib` 和 `--link-mylib`：
 
 - 归档包含 `mylis-1` ABI、包名/版本、`entry_stem`、`decl_count`、API 声明、MIR 文本、MIR JSON、跨包声明引用表和 SHA-256；`--- refs` 用 `f <id> <限定名>` / `t <id> <限定名>` 记录 MIR 引用到的外部函数与类型，并把本包调用到的外部具体实例（如 std `Map<string, i64>`）按闭包带入归档，消费端按限定名复用或追加，避免 `base + id` 串到别的声明；可选 `--- native-static <文件名>` / `--- native-shared <文件名>` 段保存原生库的 Base64 载荷，checksum 覆盖这些载荷；同一输入重复生成的归档字节一致（`refs` 与 safepoint roots 均按 id 排序）。
 - API 声明支持 `pub fn`、`pub class`、`pub enum`、`pub interface`、`pub type`：类字段、构造器、公开方法、枚举变体、接口方法都会写入归档；API 按模块分为 `--- api lib`、`--- api mathlib::vector`、`--- api mathlib::vector::A` 等段；根包子模块段也带包名前缀，依赖包段用 `dep::...`；
@@ -411,7 +411,7 @@ P1 第一版已实现 `--emit-mylib` 和 `--link-mylib`：
 - 版本解析；
 - 私有 registry。
 
-P2 第一版已实现本地 registry：
+P2 当前实现已提供本地 registry：
 
 - 依赖写法支持 `name = { version = "^0.1.0", registry = "default" }`；
 - 版本约束支持 `*`、`^`、`~`、`=`，按 SemVer 选择满足约束的最高版本；
@@ -444,15 +444,16 @@ P0 完成时：
 - 锁文件可复现构建；
 - 最终程序只有一个 runtime/GC。
 
-P1 完成时：
+P1 当前验收：
 
 - `.mylib` 可被 LLVM 与 MIR-C 两种后端消费；
 - ABI/版本/校验和不匹配时拒绝加载；
 - 加载 MIR 库后不出现第二份 runtime/GC；
 - `@export` 与 `pub` 的边界测试通过。
 
-P2 完成时：
+P2 当前验收：
 
-- 可从 registry 解析依赖；
+- 可从本地 registry 解析依赖；
 - 可复现锁定与校验；
 - 离线构建可用缓存。
+- 尚未覆盖远程 HTTP 索引、发布命令与远程缓存。

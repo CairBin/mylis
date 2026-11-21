@@ -4,7 +4,7 @@
 
 - `native/file.rs`：文件后端，复用跨平台实现，产物 `mylis_file.lib`
 - `native/io.rs`：stdio/argv/env/exit 后端，产物 `mylis_io.lib`
-- `native/process.rs`：`cmd /C` shell 进程后端；Run/Spawn/Popen/Popen2 与 POSIX 同语义，管道读超时用 `PeekNamedPipe`，写超时用复制句柄 + 等待线程，产物 `mylis_process.lib`
+- `native/process.rs`：进程后端；命令为可执行文件路径（无参数）时直接 spawn，否则 `cmd /C`。Run/Spawn/Popen/Popen2 与 POSIX 同语义；读超时用 `PeekNamedPipe` + 分块 `ReadFile`，写超时用复制句柄 + 后台线程 + `CancelSynchronousIo` 回收，`Stdio::Exit` 用 `TerminateProcess`，产物 `mylis_process.lib`
 - `native/time.rs`：wall clock、单调时钟与 sleep，产物 `mylis_time.lib`
 - `native/net.rs`：TCP/UDP；`nativeFd()` 返回 64 位 Windows `SOCKET`，产物 `mylis_net.lib`
 - `native/event.rs`：Winsock `WSAPoll` 事件后端，产物 `mylis_event.lib`

@@ -1,6 +1,6 @@
 # std 平台分包与异步约定
 
-> 状态：约定冻结，后续实现按本文执行。
+> 状态：本文同时记录**当前实现**和**尚未落地的约定**；带“规划 / 未实现”标注的段落不是现状。
 > 适用范围：`std` 的文件、网络、事件循环与平台原生后端。
 > 不适用范围：`mylrt-core`、裸机运行时、GC 根扫描模型、`async/await` 语言语法。
 
@@ -11,27 +11,29 @@
 - `Path` 是无 I/O 的纯 Mylis 工具，不进入平台后端。
 - 平台差异只允许出现在 `std` 的平台包或其原生后端，不进入 `mylrt-core`。
 - Rust 只作为 `std` 的 native backend，不作为运行时核心。
-- 第一版不引入 `async/await` 语法；异步能力由单线程事件循环和完成事件队列提供。
+- 当前不引入 `async/await` 语法；异步能力由单线程事件循环和完成事件队列提供。
 
 ## 2. 分包结构
 
 ```text
-std                 # 公共 Mylis API：File / TcpListener / TcpStream / EventLoop / IoError
-std-posix           # Linux / macOS / BSD：POSIX 实现与对应 native backend
-std-win32           # Windows 公共 Win32 API
-std-win32-msvc      # Windows MSVC ABI native backend
-std-win32-gnu       # Windows GNU/MinGW ABI native backend
+std                    # 公共 Mylis API：File / TcpListener / TcpStream / EventLoop / IoError
+std-posix              # POSIX 侧车包；native/ 下是 POSIX 与跨平台 Rust 实现
+std-posix/native       # file.rs / io.rs / process.rs / time.rs / net.rs / event.rs
+std-win32              # Windows MSVC 侧车包；native/ 下是同名 shim 与 WSAPoll 事件后端
+std-win32/native       # file/io/process/time/net.rs 复用 std-posix 实现；event.rs 独立
 ```
 
-规则：
+当前规则：
 
 - 应用只 import 顶层 `std`，不直接 import 平台包。
 - `std` 公共 API 不出现平台类型：不出现 `pollfd`、`HANDLE`、`sockaddr`、`SOCKET`。
 - 平台包通过构建目标选择，不通过运行时探测。
 - 平台包可以携带自己的 native 静态库/动态库；不得把平台库塞进 `mylrt-core`。
 - 裸机工程不依赖 `std`，因此不会拉到任何 OS 符号。
-- Windows 的 native backend 必须按 ABI 分成 MSVC / GNU 两份，不能共用一个静态库。
+- Windows 当前只支持 **MSVC x64**：`std-win32` 的 shim 复用 `std-posix/native` 的跨平台代码，事件后端单独实现。
 - 纯 Mylis 的 `std` 公共 API 可以共享；带 native 载荷的平台包不能跨 ABI 共享。
+
+**规划（未实现）**：Windows GNU/MinGW 的独立 ABI 侧车、`std-win32-gnu` 包，以及把平台包拆成可独立分发的 `.mylib`。这些不应写进当前构建命令。
 
 ## 3. 公共 API
 
@@ -76,14 +78,14 @@ class File {
 约定：
 
 - `File` 显式 `close`；GC 不负责关闭文件描述符。
-- 文件第一版只做阻塞读写；异步文件不在第一版。
-- TCP 第一版为阻塞/非阻塞 socket；`accept` / `connect` / `read` 在阻塞模式下占住当前线程，非阻塞模式返回 `WouldBlock`。
-- 路径类型先用 `string`，Windows 后端负责 UTF-8 -> UTF-16。
+- 文件只做阻塞读写；异步文件不在当前范围。
+- TCP 为阻塞/非阻塞 socket；`accept` / `connect` / `read` 在阻塞模式下占住当前线程，非阻塞模式返回 `WouldBlock`。
+- 路径类型使用 `string`；Windows 后端负责 UTF-8 -> UTF-16。
 - 二进制内容用 `u8[]`，文本用 UTF-8 `string`。
 - 编译器目前不支持 `Result<void, E>`，所以 `writeAllText` / `flush` 返回 `Result<i64, IoError>`。
-- 第一版 native 实现在 `std-posix/native/file.rs`（Rust staticlib，C ABI）；应用通过 `-I std-posix/native` 找头文件、`--link build/std-posix/native/libmylis_file.a` 链接。非嵌入 native 仍按第 6 节和包约定显式链接。
-- EventLoop 的 POSIX `poll` 实现在 `std-posix/native/event.rs`，需要 `--link build/std-posix/native/libmylis_event.a`。
-- Process 的 POSIX shell 实现在 `std-posix/native/process.rs`，需要 `--link build/std-posix/native/libmylis_process.a`；`Run` 同步捕获输出，`Spawn` 返回句柄并支持 pid/wait/kill/close，`Popen` 提供单向字节管道、`Popen2` 同时提供 stdin/stdout，`ProcessPipe::readLine` / `readLineTimeout` 支持不关闭 stdin 的逐行请求-响应，后者用 `poll` 读取超时；`ProcessPipe::writeTimeout` 用 `poll(POLLOUT)` 给写侧加超时，超时可能部分写入，调用方需重建对端；`ProcessPipe::terminate` 可强制结束不响应的子进程。Worker 基于这套行协议做进程隔离消息层，WorkerPool 在其上做固定进程池，并用 callAllResults 对单任务失败做隔离重启；callAllReplies 把结构化响应接到池级，每个任务用 errorCode 区分进程/传输层失败、用 reply.ok 区分远端业务失败；WorkerServer::RunResult / Worker::callResult 用单行 JSON 区分业务失败与协议失败，但不从 native 线程回调 Mylis。
+- POSIX native 实现在 `std-posix/native/file.rs`；Windows MSVC 的 `std-win32/native/file.rs` 是 shim，复用同一跨平台实现。`--std` 会自动加入对应头文件与 `libmylis_file.a` / `mylis_file.lib`。
+- EventLoop 的 POSIX `epoll`/`poll` 实现在 `std-posix/native/event.rs`，Windows 为 `std-win32/native/event.rs` 的 Winsock `WSAPoll`；`--std` 会自动链接 `libmylis_event.a` / `mylis_event.lib`。
+- Process 的 POSIX 实现在 `std-posix/native/process.rs`，Windows 由 `std-win32/native/process.rs` shim 复用同一份代码；`Run` 同步捕获输出，`Spawn` 返回句柄并支持 pid/wait/kill/close，`Popen` 提供单向字节管道、`Popen2` 同时提供 stdin/stdout，`ProcessPipe::readLine` / `readLineTimeout` 支持不关闭 stdin 的逐行请求-响应。Windows 的读超时用 `PeekNamedPipe` + 分块 `ReadFile`；写超时用复制句柄 + 后台线程，超时后用 `CancelSynchronousIo` 回收。Worker 基于这套行协议做进程隔离消息层，WorkerPool 在其上做固定进程池，并用 `callAllResults` 对单任务失败做隔离重启；`callAllReplies` 把结构化响应接到池级，每个任务用 `errorCode` 区分进程/传输层失败、用 `reply.ok` 区分远端业务失败；`WorkerServer::RunResult` / `Worker::callResult` 用单行 JSON 区分业务失败与协议失败，但不从 native 线程回调 Mylis。
 
 ### 3.3 网络
 
@@ -112,18 +114,18 @@ class TcpStream {
 - 地址先使用 `"host:port"` 字符串。
 - 阻塞 API 与事件循环共用同一套句柄和错误模型。
 - `WouldBlock` 是合法结果，不视为致命错误；事件循环据此重试。
-- UDP 第一版提供 `UdpSocket` 的 `Bind` / `localPort` / `sendTo` / `sendText` / `recv` / `recvFrom` / `close`；`recvFrom` 返回 `UdpPacket(data, from)`。
+- UDP 提供 `UdpSocket` 的 `Bind` / `localPort` / `sendTo` / `sendText` / `recv` / `recvFrom` / `close`；`recvFrom` 返回 `UdpPacket(data, from)`。
 - 当前编译器不支持 `Result<void, E>`，`setNonblocking` / `setTimeout` 返回 `Result<i64, IoError>`。
-- 第一版 native 实现在 `std-posix/native/net.rs`（Rust staticlib），需要 `-I std-posix/native` 和显式 `--link build/std-posix/native/libmylis_net.a`。
+- POSIX native 实现在 `std-posix/native/net.rs`；Windows MSVC 由 `std-win32/native/net.rs` shim 复用同一跨平台实现并走 Winsock。`--std` 会自动链接 `libmylis_net.a` / `mylis_net.lib` 与系统库。
 
 ## 4. 异步模型
 
-### 4.1 第一版：单线程 Reactor + 事件队列
+### 4.1 当前：单线程 Reactor + 事件队列
 
 - 平台后端负责等待 I/O 就绪，产出事件。
 - `std` 的 `EventLoop.run()` 在 Mylis 主线程消费事件并调用 handler。
-- 第一版已落地：`IoHandler` interface + `EventLoop.add/addListener/remove/run/stop/close`；
-  Linux 用 `epoll`，其他 POSIX 用 `poll` 后备；Rust 只返回就绪 fd 与 `revents`，不执行 Mylis 回调。
+- 已落地：`IoHandler` interface + `EventLoop.add/addListener/addUdp/remove/removeListener/removeUdp/run/stop/close`；
+  Linux 用 `epoll`，其他 POSIX 用 `poll` 后备，Windows 用 Winsock `WSAPoll`；Rust 只返回就绪 fd 与 `revents`，不执行 Mylis 回调。
 - Rust 线程不直接调用 Mylis 代码，因此不需要为 Rust 工作线程注册 GC 根。
 - 回调使用 interface，而不是闭包：
 
@@ -152,17 +154,17 @@ class EventLoop {
 
 ### 4.2 平台后端
 
-- Linux：第一版已实现 `epoll`；其他 POSIX 暂用 `poll` 后备。
-- macOS / BSD：`kqueue` 待补。
+- Linux：已实现 `epoll`；其他 POSIX 暂用 `poll` 后备。
+- macOS / BSD：当前走 `poll` 后备，`kqueue` 优化待补。
 - Windows：Winsock `WSAPoll`，实现在 `std-win32/native/event.rs`。
-- Rust 侧优先 `mio` / `polling`，不直接依赖完整 Tokio。
+- Rust 侧只使用标准库和系统 API，不引入 `mio` / Tokio 等第三方运行时。
 - 所有后端只产出事件，不执行 Mylis 回调。
 - 默认只注册读就绪；显式 `EventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
 - `onError` 分发流错误；`onListenerError` 分发监听器错误；`onUdpReadable` 分发 UDP 读就绪。
 
-### 4.3 文件异步
+### 4.3 文件异步（未实现）
 
-第一版不做异步文件。后续若做：
+当前不做异步文件。后续若做：
 
 - Rust 工作线程只执行文件 I/O；
 - 完成结果进入事件队列；
@@ -175,7 +177,7 @@ class EventLoop {
 - 不做多线程 reactor。
 - 不做绿色线程/栈式协程。
 - 不做 GC 线程安全改造。
-- 不做 IOCP / `io_uring` 的第一版实现。
+- 不做 IOCP / `io_uring` 的当前版本实现。
 
 ## 5. Rust native backend 约定
 
@@ -199,7 +201,7 @@ class EventLoop {
 - 头部 `abi = "mylis-1"`
 
 **不包含** native 载荷时，`.mylib` 与编译器的 Rust 构建方式无关。  
-`mylc` 用 Rust-Mingw 还是 Rust-MSVC 构建，不改变 MIR/API 内容；只要消费端使用相同 `mylis-1` ABI 和可用运行时，纯 MIR `.mylib` 可通用。
+`mylc` 自身的 Rust 工具链不改变 MIR/API 内容；只要消费端使用相同 `mylis-1` ABI 和可用运行时，纯 MIR `.mylib` 可通用。当前 Windows 发行只提供 MSVC 构建。
 
 ### 6.2 带 native 载荷的 `.mylib`
 
@@ -244,7 +246,7 @@ native_abi = "gnu"
 - 两个 `mylc` 都走 MIR-LLVM、都使用同一套 Windows MSVC `mylis-build.json` 与运行时：
   - 纯 MIR `.mylib` 通用；
   - 带 native 载荷的 `.mylib` 只要 native 载荷同为 MSVC，也通用。
-- 一个 `mylc` 的构建链是 MinGW，但配置的运行时/清单是 GNU；另一个是 MSVC：
+- 一个 `mylc` 的构建链是 GNU、运行在 GNU 平台；另一个是 MSVC、运行在 Windows：
   - 纯 MIR `.mylib` 仍可读；
   - 带 native 载荷的 `.mylib` 不可混用；
   - 消费端仍必须通过 `mylis-build.json` 的 ABI 校验。
@@ -281,21 +283,23 @@ native_abi = "gnu"
 - Windows 打包脚本把 `std/` 与 `std-win32/` 复制到发布目录，并构建 `build/std-win32/native/mylis_*.lib`；
 - 测试/示例通过 `MYLIS_PATH` 定位 `std/src`；
 - 当前 `std` 直接用 `@header("mylrt.h")` 绑定运行时，例如 `std/src/Io_bind.myl`；
-- File / TCP 的 native 后端在 `std-posix/native/file.rs` / `net.rs`（Rust staticlib），头文件在 `std-posix/native/`，需要 `-I std-posix/native` 和显式 `--link`。
+- File / TCP 的 native 后端在 `std-posix/native/file.rs` / `net.rs`（Rust staticlib），Windows 由 `std-win32/native` 的同名 shim 复用；`--std` 会自动选择当前平台的头文件目录和六个库，手工编译时才需要显式 `-I` / `--link`。
 
 因此当前分发的本质是：**跟着编译器发布包一起分发源码目录**，没有独立的 `std.mylib`，也没有完整拆分的平台包。
 
 当前已经落地的平台侧车是 POSIX 的 `std-posix/native` 和 Windows MSVC 的 `std-win32/native`：两者都是非嵌入 Rust staticlib，`--std` 会按编译器目标选择对应头文件目录和库。Windows GNU（MinGW）与独立平台 `.mylib` 仍未实现。
 
-### 8.2 约定目标
+### 8.2 规划（未实现）：按平台拆成可分发包
 
-后续按平台拆分如下：
+以下内容不是当前构建方式；当前仍使用 `std` 源码包 + `std-posix` / `std-win32` 侧车。
+
+目标布局：
 
 ```text
 std                     # 公共 API 包：纯 Mylis / 纯 MIR，可跨平台共享
 std-posix               # POSIX 平台实现包
-std-win32-msvc          # Windows MSVC native backend
-std-win32-gnu           # Windows GNU/MinGW native backend
+std-win32-msvc          # Windows MSVC native backend（规划名）
+std-win32-gnu           # Windows GNU/MinGW native backend（规划名）
 ```
 
 分发规则：
@@ -304,16 +308,16 @@ std-win32-gnu           # Windows GNU/MinGW native backend
 - `std-posix` / `std-win32-*` 平台包可以带 native 载荷；带 native 时按目标 ABI 分发，不跨 ABI 共享。
 - 平台包优先用 `.mylib` 携带 API 声明 + native 静态库；Mylis 包装层放公共 `std`，不要和 native 载荷塞进同一个 `.mylib`，否则 `has_native()` 会跳过 MIR。
 - native 部分作为 `.mylib` 载荷，不散落到 `mylrt-core`。
-- 应用只依赖 `std`；当前构建目标选择 `std-posix`（POSIX）或 `std-win32`（Windows MSVC 侧车）；`std-win32-gnu` 尚未实现。
+- 应用只依赖 `std`；当前构建目标选择 `std-posix`（POSIX）或 `std-win32`（Windows MSVC 侧车）；规划中的 `std-win32-gnu` 尚未实现。
 - 发布包必须携带对应平台的 native 库和 `mylis-build.json`；不能只带 Mylis 源码却声称支持该平台。
 - 纯 MIR 的 `std` 包可以只发布源码或纯 MIR `.mylib`；一旦带 native，就必须记录 `target` / `abi`。
 
-如果 `std` 后端实现了平台相关操作，则：
+如果未来把 `std` 后端拆成独立平台包，则：
 
 - `std` 不能作为**单一预编译包**跨平台分发。
 - 可以让 `std` 保留一份公共 API 源码，平台实现放在 `std/platform/{posix,win32-msvc,win32-gnu}`。
 - 预编译分发时仍必须按目标拆成不同包或不同 native 载荷。
-- 当前 `mylis.toml` 没有按 target 选择依赖的能力；单包源码可以靠构建脚本选择平台目录，预编译包则必须显式选择 `std-win32-msvc` / `std-win32-gnu`。
+- 当前 `mylis.toml` 没有按 target 选择依赖的能力；单包源码可以靠构建脚本选择平台目录，规划中的预编译包必须显式选择 `std-win32-msvc` / `std-win32-gnu`。
 - 公共 API 不能暴露平台类型；平台句柄保持不透明。
 
 ### 8.3 版本与锁定
@@ -351,7 +355,8 @@ std-win32-gnu           # Windows GNU/MinGW native backend
 
 ```bash
 mylc L.myl --emit-mylib L.mylib --embed-static libfoo.a
-mylc L.myl --emit-mylib L.mylib --embed-shared libfoo.dll
+mylc L.myl --emit-mylib L.mylib --embed-shared libfoo.so
+mylc L.myl --emit-mylib L.mylib --embed-shared foo.lib   # Windows 导入库
 ```
 
 - L.mylib 内含 native 载荷；消费方链接 L 时自动提取并链接，不需要再手动 `--link`。
@@ -359,7 +364,7 @@ mylc L.myl --emit-mylib L.mylib --embed-shared libfoo.dll
 - 当前链接语义是：`has_native()` 为真时**优先使用 native 载荷，不再合并 L 的 MIR**。
 - 因此嵌入只适合“L 是 C 库的 ABI 包装层，公开符号由 native 库实现”的情况。
 - 如果 L 自己还有 Mylis 实现代码，不能只把 C 依赖嵌入 L；否则 L 的 MIR 会被跳过，运行时找不到 L 自己的函数。
-- 这种 `.mylib` 目前缺少 `target` / `abi` 元数据，后续必须补充并在读取/链接时校验。
+- 归档中写入 `native_target` / `native_abi` 元数据并参与 checksum；读取/链接时按消费端 `mylis-build.json` 校验。Windows 只支持与 API 名对应的 `.lib` 导入库，DLL 的运行时部署仍需调用方负责。
 
 ### 8.6 链接参数写在哪里
 
@@ -392,7 +397,7 @@ libs = ["foo", "ws2_32"]
 ### 8.7 std 平台后端的链接责任
 
 - 当前 `std` 通过 `@header("mylrt.h")` 使用 `mylrt`；`mylc` 已经自动链接 `mylrt`，用户不需要额外链接。
-- `std` 公共 API 是纯 MIR，平台后端是独立 native 库时：当前没有自动链接机制，消费方必须 `--link` / `-l`，或由构建脚本代劳。
+- 使用 `--std` 时，`mylc` 会自动加入当前平台的头文件目录和六个 std native 库（POSIX `.a` / Windows `.lib`）；未用 `--std` 的手工编译仍需 `--link` / `-l`，或由构建脚本代劳。
 - 平台包以带 native 载荷的 `.mylib` 分发时：`--link-mylib` / `mylis.toml` 的 `mylib` 依赖会自动提取并链接，不需要用户手写 `-l`。
 - 平台包带 native 时，必须与消费端 ABI 匹配；自动链接不等于跨 ABI 可用。
 - 动态库即使自动链接，运行时仍需能找到 DLL/SO；静态库最省事。
@@ -548,7 +553,7 @@ deps.lock / 依赖清单
 消费方视角：
 
 - 如果 `C.mylib` 已携带完整的传递依赖元数据，消费方只声明 C；`mylc` 递归解析 A 和 a.so。
-- 当前元数据尚未实现时，消费方必须同时提供 C、A、a.so，并写链接参数。
+- 当前只有 `mylib+...` 来源的依赖会按归档元数据递归解析；`path+...` / `registry+...` / `git+...` 仍由包解析器按 `mylis.lock` 处理。非嵌入 native 文件（a.so/a.lib）仍要随包交付或由系统提供，链接参数不会从 `a.so` 自动推导。
 
 运行时只关心 `a.so`；`A.mylib` 是编译期依赖。`C.mylib` 不应把 A 或 a.so 复制进自己。
 

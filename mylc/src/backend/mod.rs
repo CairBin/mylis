@@ -1,7 +1,7 @@
-//! 后端抽象：前端只认识 `Program`，由此层决定产物形态。
+//! 后端抽象：前端只认识 `Program`（以及 MIR），由此层决定产物形态。
 //!
-//! 当前只有 C 后端（`backend::c`，发射 C11 源码，交给外部 cc）。
-//! 将来的自研 IR / LLVM 后端实现同一个 `Backend` trait 即可接入，
+//! 当前有 AST-C（`backend::c`）、MIR-C（`backend::mir_c`）与 LLVM（`backend::llvm`）
+//! 三个后端，默认走 LLVM；新增后端实现同一个 `Backend` trait 即可接入，
 //! `driver` 不需要再增加分支。
 
 mod c;
@@ -14,7 +14,7 @@ pub use ir::IrBackend;
 pub use mir_c::MirCBackend;
 pub use llvm::LlvmBackend;
 
-/// 产物形态。IR 后端会在这里增加 `Ir` / `Object`。
+/// 产物形态：C 源码、自研 IR 文本或 LLVM IR 文本。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArtifactKind {
     CSource,

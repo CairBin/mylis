@@ -1,11 +1,10 @@
 # MIR v0：中间表示与 `--emit-ir`
 
-MIR 是 `mylc` 前端与后端之间的第一层显式 IR。目标是让 sema 之后的程序不再直接交给
-C codegen，而是先降到一层与具体 C 方言无关的函数级 CFG；C 后端和将来的 LLVM 后端
-消费同一份 MIR。
+MIR 是 `mylc` 前端与后端之间的显式 IR。sema 之后不再直接交给 C codegen，而是先降到
+函数级 CFG；默认 LLVM 后端与 MIR-C 后端消费同一份 MIR。
 
-当前状态：**MIR 已定义并可从 AST lowering、可 dump、可结构校验，C 后端仍走原有 AST 路径**。
-也就是说 `--emit-ir` 已经闭环，但“C 后端改为消费 MIR”是下一步，不是本轮。
+当前状态：**MIR 已定义、可从 AST lowering、可 dump、可结构校验；默认 LLVM 走 MIR，
+`--backend mir` 走 MIR-C，`--backend ast` 保留 AST-C 回退**。
 
 ## 1. 管线
 
@@ -13,11 +12,17 @@ C codegen，而是先降到一层与具体 C 方言无关的函数级 CFG；C �
 lexer -> parser -> program(loader) -> sema
                                       |
                                       v
-                                   mir::lower
+                                  mir::lower
                                       |
+                                  mir::verify
                      +----------------+----------------+
                      |                                 |
-                 mir::dump (文本)                (下一步) C / LLVM
+              LlvmBackend（默认）                MirCBackend（--backend mir）
+                     |                                 |
+              LLVM IR -> clang                    C11 -> CC/AR
+
+另：mir::dump（--emit-ir）只导出 MIR 文本
+    CBackend（--backend ast）直接消费 AST，保留为回退路径
 ```
 
 `--emit-ir` 不检测 C 工具链、不依赖 GC，sema 通过即可产出：
@@ -214,14 +219,14 @@ fn @app::main() -> i32 {
 - 原生指针：`T*` → `void*`，`load`/`store` 生成解引用；外部 C 声明
   直接使用源码符号名（如 `strlen`）。
 
-当前 `tests/positive` 下的程序已全部能在 MIR-C 下生成、编译并与 AST 后端
-输出一致；59 项正向/反向用例在 boehm/own/simple 三种 GC 下均通过。
+当前 `tests/positive` 下的程序已全部能在 MIR-C 下生成、编译并与 AST 后端输出一致；
+`make test` 的 114 项正向/反向用例全部通过，MIR-C/AST-C 对拍 76 项通过。
 AST-C 也已补齐 `Any` 装箱、接口 cast、`Option<Iface>`、`Result<Iface>` 和
 `Option`/`Result` 的 `?` 传播；对拍不再跳过这些用例。接口→接口适配器按
 “所有具体类型 × 所有接口”生成，不依赖源码里是否显式发生过转换。
 库模式（`--static` / `--shared`）也由 MIR-C 生成：按 `@export` 生成导出
 包装函数、`<stem>_init()`、头文件与 MSVC 的 `__declspec(dllexport)`。
-遇到这些结构会生成 `#error`，不会静默产出错误代码。
+遇到不支持的结构会生成 `#error`，不会静默产出错误代码。
 
 ```bash
 mylc --backend mir --emit-c out.c app.myl
@@ -235,35 +240,26 @@ AST-C 编译，比较 stdout 与退出码。
 枚举/接口/变体载荷/match/数组插值、静态字段/方法、Result/Option/`?`、
 接口组合、原生指针、外部 C 符号。
 
-## 8. 下一步
+## 8. 落地状态与后续
 
-1. **补 MIR 语义信息**（已完成）：`Expr.res` / `coerce`、类字段下标、方法/构造器 id 已进 MIR；
-2. **扩展 MIR-C**：对象/字符串/数组/方法/接口，覆盖全部正向程序；
-3. **切换默认后端**：默认走 LLVM；`--backend mir` 走 MIR-C，`--backend ast` 保留回退；
-4. **库模式迁到 MIR-C**：已完成（静态库、动态库、头文件、DLL 导出）；
-5. **长期**：MIR-C/AST-C 作为显式可选路径保留，默认稳定在 LLVM；
-2. **match lowering**：tag 测试、绑定槽、臂作用域、穷尽性交给 sema；
-3. **MIR pass 框架**：`mir/pass.rs` 已做入口可达性分析、删除不可达块、
-   整数/布尔/`f64` 常量折叠、纯指令 DCE，以及小函数内联（单函数 ≤4 块/24 指令、
-   标量 ABI、非递归）；内联生成 `copy` 指令承接返回值；
-4. **GC safepoint 标注、精确根与活跃性分析**（已完成）：调用点与分配点生成
-   `safepoint roots=[...]`；反向活跃性分析裁剪 roots；LLVM 与 MIR-C 生成逐
-   safepoint 帧根表，支持 `MYLIS_GC_PRECISE=1`；
-5. **LLVM 后端**：`backend/llvm.rs` 直接消费 MIR，不再碰 AST。
-   已支持标量类型、局部槽、算术/比较/分支、直接函数调用、数字转换、字符串字面量/
-   拼接/相等/插值、类与对象（字段、实例/静态方法、静态字段 `@S_*`）、数组
-   （`ArrayNew`/`ArrayLit`/索引读写/`len`/格式化）、Option/Result 的构造、`?`、
-   `unwrap`/`unwrap_or`/`is_ok`/`is_err`/`is_some`/`is_none`，enum 的 tag+payload
-   聚合、变体构造/方法、模式测试与绑定，接口值 `{obj, vtable}`、class/enum 装箱、
-   接口方法动态派发、接口格式化、接口到接口适配，以及标量/字符串装箱与 `as`/`as?`
-   拆箱，`Option<Iface>`/`Result<Iface>`，以及 Result/Option 模式测试与绑定；`--emit-llvm` 输出 `.ll`，`--backend llvm` 交给 clang
-   （LLVM 15+，opaque pointers）链接 myrt 产出可执行。
-   泛型在 sema 阶段完成单态化，后端只消费具体声明，没有运行时泛型 lowering 需求；库模式已生成 `_init` 与导出包装函数，
-   遇到会明确报错，不回退 C。
-   验收脚本 `tests/test_llvm.sh` 覆盖 Arith、Loops、Basics、Print、GcAuto、Objects、
-   Arrays、Const、Ctor2、Account、Registry、Results、NestedOption、Match、Enums、Enum 与 `.ll` 解析。
+已落地：
 
-## 9. MIR 库 `.mylib`（P1 第一版）
+1. **MIR 语义信息**：`Expr.res` / `coerce`、类字段下标、方法/构造器 id 已进 MIR。
+2. **MIR-C**：对象、字符串、数组、方法、接口覆盖全部正向程序。
+3. **默认后端**：默认 LLVM；`--backend mir` 走 MIR-C，`--backend ast` 保留回退。
+4. **库模式**：静态库、动态库、头文件、DLL 导出已由 MIR-C 生成。
+5. **match lowering**：tag 测试、绑定槽、臂作用域已 lower；穷尽性由 sema 检查。
+6. **MIR pass 框架**：`mir/pass.rs` 已做入口可达性分析、删除不可达块、整数/布尔/`f64` 常量折叠、纯指令 DCE，以及小函数内联（单函数 ≤4 块/24 指令、标量 ABI、非递归）；内联生成 `copy` 指令承接返回值。
+7. **GC safepoint、精确根与活跃性分析**：调用点与分配点生成 `safepoint roots=[...]`；反向活跃性分析裁剪 roots；LLVM 与 MIR-C 生成逐 safepoint 帧根表，支持 `MYLIS_GC_PRECISE=1`。
+8. **LLVM 后端**：`backend/llvm.rs` 直接消费 MIR，支持标量、局部槽、分支、调用、字符串、类/数组/Option/Result、枚举、接口、装箱与 `as/as?`；`--emit-llvm` 输出 `.ll`，`--backend llvm` 交给 clang（LLVM 15+，opaque pointers）链接 myrt 产出可执行。泛型在 sema 阶段完成单态化，后端只消费具体声明；库模式生成 `_init` 与导出包装，遇到不支持结构明确报错，不回退 C。验收脚本 `tests/test_llvm.sh` 覆盖 Arith、Loops、Basics、Print、GcAuto、Objects、Arrays、Const、Ctor2、Account、Registry、Results、NestedOption、Match、Enums、Enum 与 `.ll` 解析。
+
+后续：
+
+- 补 TypeId 表、别名分析与更强的优化 pass；
+- AST-C 仅作为显式回退，不再扩功能；
+- 纯 MIR `.mylib` 要作为 `--static/--shared` 的链接输入，仍需原生载荷或新的导出路径。
+
+## 9. MIR 库 `.mylib`（P1 当前实现）
 
 `mylc --emit-mylib <path>` 生成单文件文本归档：
 

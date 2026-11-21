@@ -3,6 +3,17 @@
 一门**自建语言**：C 风格语法、原生 `MIR → LLVM IR` 后端（默认）与 C 后端，引用语义对象由可替换 GC 托管（默认自研 GC），编译产物是原生可执行文件 / 静态库 / 动态库。
 编译器 `mylc` 用 Rust 写成，零第三方依赖；配套语言服务器 `myls`（VS Code / Neovim 可用）。
 
+## 文档导航
+
+| 想了解 | 先读 |
+| --- | --- |
+| 安装、命令行、工程、std API | [`docs/使用手册.md`](docs/使用手册.md) |
+| 语法与语义 | [`docs/Mylis语言规范.md`](docs/Mylis语言规范.md) |
+| 编译器结构、扩展点、测试 | [`docs/开发者指南.md`](docs/开发者指南.md) |
+| MIR、后端与 GC | [`docs/MIR.md`](docs/MIR.md)、[`docs/后端与GC路线.md`](docs/后端与GC路线.md) |
+| std 平台侧车与异步模型 | [`docs/std平台与异步约定.md`](docs/std平台与异步约定.md) |
+| 库格式、依赖、目录布局 | [`docs/Mylis库标准.md`](docs/Mylis库标准.md)、[`docs/包获取与目录结构.md`](docs/包获取与目录结构.md) |
+
 ---
 
 ## 1. 快速开始
@@ -20,7 +31,7 @@ bin/
 ├── core/         # 语言 core：GC/格式化/字符串/数学/ToString/panic+assert
 ├── std/          # 独立 std 包（Io 等），通过包依赖显式使用
 ├── std-posix/    # POSIX 的 std native 侧车（Linux/macOS）
-├── std-win32/    # Windows MSVC 的 std native 侧车（头文件 + 源码说明）
+├── std-win32/    # Windows MSVC 的 std native 侧车（shim + 头文件）
 ├── myrt/         # 运行时头文件与源码（mylrt.h / mylrt_gc.h ...）
 ├── gc/           # 可选 Boehm GC 的 include + lib
 └── build/        # libmylrt.a / libmylgc.a（Windows MSVC 为 .lib；Windows 下还有 std-win32/native/mylis_*.lib）
@@ -37,7 +48,8 @@ bin/mylc hello.myl --run
 
 ```bash
 make bootstrap                 # 下载并编译 Boehm GC（可选）
-make all GC_BACKEND=boehm
+make all
+MYLIS_GC=boehm mylc app.myl -o app
 ```
 
 ---
@@ -89,16 +101,14 @@ mylc --lang en app.myl          # mylc 自身的消息用英文（默认简体�
 | `MYLIS_CFLAGS` / `MYLIS_LDFLAGS` | 覆盖编译/链接参数（整体替换默认值） |
 | `MYLIS_PATH` | 追加模块搜索路径（Windows 用 `;`，其他用 `:`） |
 | `MYLIS_GC_ROOT` | 覆盖 Boehm GC 安装前缀 |
-| `MYLIS_GC=own` | **默认**：自研分代 mark-sweep GC（`mylgc/`，Rust staticlib；GNU 用 `libmylgc.a`，MSVC 用 `mylgc.lib`） |
-| `MYLIS_GC=simple` | 改用「malloc 不回收」后端（无需 libgc，调试用） |
-| `MYLIS_GC=boehm` | 改用 Boehm GC（需要 `libgc`，Makefile 用 `GC_BACKEND=boehm`） |
-| `MYLIS_GC_THRESHOLD` | 自研 GC 自动回收阈值（字节，默认 `8388608`，`0` 关闭；仍可显式 `myrt_gc_collect()`） | `1048576` |
+| `MYLIS_GC` | GC 后端：默认 `own`（自研分代 mark-sweep，GNU `libmylgc.a` / MSVC `mylgc.lib`）；`boehm`（需 `libgc`，先 `make bootstrap`）；`simple`（malloc 不回收，调试用） |
+| `MYLIS_GC_THRESHOLD` | 自研 GC 自动回收阈值（字节，默认 `524288`，`0` 关闭；仍可显式 `myrt_gc_collect()`） |
 | `MYLIS_SERVER` | 编辑器查找 `myls` 的额外位置 |
 | `MYLIS_LANG=zh\|en` | 消息语言 |
 
 ---
 
-## 3. 工程结构（无包管理器）
+## 3. 工程结构与包管理
 
 一个目录 + 一份 `mylis.toml` 就是一个工程。基础单文件编译不需要包管理；包依赖支持本地 `path`、Git、本地/HTTP `.mylib` 与本地 registry，并通过 `mylis.lock` 锁定来源、版本和 checksum。
 
@@ -191,7 +201,13 @@ pub fn main() -> i32 {
 - **不安全边界**：裸指针、C FFI（`*_bind.myl` 里的无体 `pub unsafe fn`）只在 `unsafe` 域内可用；
 - **注解（生效的四个）**：`@export("c_name")`、`@header("x.h")`、`@deprecated`、`@inline`，拼错给 `MYLW01`。
 
-`string` 是 **UTF-8 字节串**（`len()` 是字节数；`==`/`<` 按字节比较，对 UTF-8 等价于码点序）。目前没有字符级 API；容器由泛型标准库提供：`Vec<T>`、`Map<K: Eq, V>`（含 `keys` / `values`）、`HashMap<K: Hash + Eq, V>`、`BTreeMap<K: Ord, V>`（B 树，稳定的 O(log n) 查找/插入/删除）、`BTreeSet<T: Ord>`、`Set<T: Eq>`（含 `toVec`）与 `Algorithms`（`contains` / `index_of` / `sort` / `extend` / `binary_search` / `is_sorted`）；`Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`。`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。所有容器在编译期单态化，不做 `Any` 装箱混存。std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`HashMap`、`BTreeMap` / `BTreeSet`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell）、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `EventLoop`，其第一版 native 后端是 POSIX 的 `std-posix/native/io.rs`、`file.rs`、`process.rs`、`time.rs`、`net.rs`、`event.rs` 与 Windows MSVC 的 `std-win32/native` 同名侧车（Rust staticlib；Windows 事件循环用 Winsock `WSAPoll`），需要显式链接，不进入 `core` 或 GC。
+`string` 是 **UTF-8 字节串**。内建 `s.len()` 返回字节数；`Str::len(s)` 按 Unicode 码点计数，`Str::ByteLen(s)` 返回字节数；`==` / `<` 按字节比较（对合法 UTF-8 等价于码点序）。字符级操作由 core 的 `Str::CharAt` / `CharCodeAt` 提供，`Str::Bytes` / `Str::FromBytes` 负责字节视图。
+
+容器与算法由泛型标准库提供：`Vec<T>`、`Map<K: Eq, V>`（线性表，含 `keys` / `values`）、`HashMap<K: Hash + Eq, V>`、`BTreeMap<K: Ord, V>`（B 树，O(log n) 查找/插入/删除）、`BTreeSet<T: Ord>`、`Set<T: Eq>`（含 `toVec`）与 `Algorithms`（`contains` / `index_of` / `sort` / `extend` / `binary_search` / `is_sorted`）。所有容器在编译期单态化，不做 `Any` 装箱混存。
+
+`Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`；`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。
+
+std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell）、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `EventLoop`。这些 hosted 接口由 `std-posix/native` 与 Windows MSVC 的 `std-win32/native` 侧车提供（Rust staticlib，C ABI；Windows 事件循环为 Winsock `WSAPoll`），不进入 `core` 或 GC；`--std` 会自动加入头文件路径和六个 native 库。
 
 ---
 
@@ -218,8 +234,8 @@ myrt/gc_simple.c   ← 可选：malloc 不回收（调试）
 
 ```bash
 make all                         # 默认自研 GC
-make all GC_BACKEND=simple       # 不回收，调试用
-make all GC_BACKEND=boehm        # 需要 libgc
+MYLIS_GC=simple mylc app.myl -o app   # 不回收，调试用
+make bootstrap && make all            # 可选：准备 Boehm
 MYLIS_GC=boehm mylc app.myl -o app
 ```
 
@@ -257,7 +273,7 @@ core 当前对外 API（`core/lib.myl` 统一导出）：
 
 | 家族 | 典型编译器 | 参数风格 |
 | --- | --- | --- |
-| `gcc`（gnu） | gcc、MinGW gcc、cc | `-std=c11 -O2 -I<dir> -o out -c -shared -L<dir> -lname` |
+| `gcc`（gnu） | gcc、cc（Unix；Windows 不支持 MinGW 构建） | `-std=c11 -O2 -I<dir> -o out -c -shared -L<dir> -lname` |
 | `clang`（gnu） | clang、llvm-ar | 同上 |
 | `msvc` | cl.exe、lib.exe | `/std:c11 /O2 /I <dir> /Fe:out /Fo<obj> /link /LIBPATH:<dir> name.lib` |
 
@@ -333,7 +349,7 @@ mylc hello.myl -o hello.exe
 | `MYLIS_TOOLCHAINS` | 额外规格目录（多个用 `;`/`:` 分隔） | `D:/ci/toolchains` |
 | `MYLIS_ROOT` | 覆盖安装根（找 `std/`、`myrt/`、`gc/`） | `D:/mylis/bin` |
 | `MYLIS_PATH` | 追加模块搜索根（同 `import` 路径） | `D:/shared/lib` |
-| `MYLIS_GC` | GC 后端：`boehm`（默认）/ `own`（自研 Rust GC）/ `simple`（不回收） | `own` |
+| `MYLIS_GC` | GC 后端：`own`（默认，自研 Rust GC）/ `boehm` / `simple`（不回收） | `own` |
 | `MYLIS_GC_ROOT` | 覆盖 GC 目录（含 `include/gc.h`、`lib/libgc.a`） | `D:/gc` |
 | `MYLIS_CACHE` | 含空格路径时工具链/运行时的缓存目录 | `D:/tmp` |
 | `MYLIS_LANG` | 驱动消息语言：`zh` / `en` | `en` |
@@ -343,10 +359,10 @@ mylc hello.myl -o hello.exe
 
 ### 6.5 安装路径含空格
 
-MinGW 的 `gcc` 会把 exec prefix 拼进 ld 命令行，空格会被 ld 拆成多个参数（`cannot find C:/Program`）。
+GNU 家族的 `gcc` 会把 exec prefix 拼进 ld 命令行，空格会被 ld 拆成多个参数（`cannot find C:/Program`）。
 因此路径含空格时，`mylc` 会把工具链前缀与 `myrt/`、`gc/`、两个 `.a` 复制到无空格缓存
 （`MYLIS_CACHE` → `LOCALAPPDATA` → `TEMP` → `TMP` → `USERPROFILE` → `SystemDrive`）。
-MSVC 家族不需要这一步（`cl` 自己处理引号）。
+Windows 默认的 MSVC 家族不经过这条路径（`cl` 自己处理引号）。
 
 ### 6.6 运行时实现（Rust trait）
 
@@ -426,11 +442,13 @@ mylc.exe
 myls.exe
 core/               # 隐式 core 模块；mylc 运行必需
 std/
+std-win32/          # Windows MSVC native 侧车源码与头文件
 myrt/
 gc/                 # 可选 Boehm；默认自研 GC 不需要
 build/mylrt.lib
 build/mylgc.lib
 build/gc_simple.lib
+build/std-win32/native/   # 六个 std native 库
 docs/ mylc/src/ tests/ editors/
 mylis-toolchain.json   # {"family":"msvc"}；cl.exe/lib.exe 从 PATH 解析
 mylis-build.json       # 本套产物的 ABI/target/库路径，mylc 启动时校验
@@ -439,7 +457,9 @@ mylis-build.json       # 本套产物的 ABI/target/库路径，mylc 启动时�
 ### 在 Windows 上从源码构建
 
 ```bat
-:: 前提：Rust（含 x86_64-pc-windows-msvc target）、Visual Studio Build Tools（cl.exe/lib.exe）、GNU make
+:: 前提：Windows 10/11 x64；Rust（含 x86_64-pc-windows-msvc target）、
+:: Visual Studio Build Tools（cl.exe/lib.exe）、GNU Make 4.x；
+:: 默认 LLVM 后端还需要 LLVM 15+ 的 clang.exe
 rustup target add x86_64-pc-windows-msvc
 cd mylis
 set CC=cl
@@ -457,14 +477,15 @@ Windows 分支不需要 gcc。GNU Make 需要 4.x；GnuWin32 的 3.81 在 cmd �
 `make all` 默认：
 
 - 后端：`BACKEND=llvm`
-- GC：`GC_BACKEND=own`（自研 GC）
+- GC 标签：`GC_BACKEND=own`（仅构建提示；实际选择见 `MYLIS_GC`）
 - 编译器：`CC=cl`、`AR=lib`、Rust target `x86_64-pc-windows-msvc`
 - 构建族：`TOOLCHAIN_FAMILY=msvc`
 
 可覆盖：
 
 ```bat
-make all GC_BACKEND=simple
+set MYLIS_GC=simple
+mylc app.myl -o app
 make all CC=clang-cl
 make all CARGO_TARGET=x86_64-pc-windows-msvc
 ```
@@ -499,7 +520,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\test_windows.ps1
 - 构建 `bin/`；
 - 编译并运行 hello、`u64` 模式、`FmtSpec`，分别测试默认 LLVM、MIR-C、AST-C；
 - 生成并消费一个本地 `.mylib`；
-- 运行 Windows 原生 std 测试：File、Process、TCP、UDP、EventLoop（LLVM/MIR/AST）、Worker/WorkerPool/WorkerReply 协议、WorkerFlaky 时序回归，以及进程与 Worker 写超时；写超时用 MSVC 现场编译一个不读 stdin 的 sleeper 子进程；
+- 运行 Windows 原生 std 测试：`WindowsStdApi`；File；Windows Process；TCP / EventLoop（LLVM、MIR、AST）；UDP（MIR、AST）；Worker、WorkerPool、WorkerReply、WorkerReplyInvalid、WorkerPoolReply 协议；`WorkerFlakyApi` 重复 5 次；进程与 Worker 写超时（`WindowsWriteTimeoutApi`、`WindowsWorkerWriteTimeoutApi`）。写超时用 MSVC 现场编译一个不读 stdin 的 sleeper 子进程；
 - 执行 `make dist`，解开 zip 后用包内 `mylc.exe` 再跑一次，验证 `core/`、`std/src/`、`build/mylrt.lib`、`build/mylgc.lib` 和 `build/std-win32/native/` 六个 std 库都在。
 
 常用参数：
@@ -516,7 +537,8 @@ powershell -File tools\test_windows.ps1 -SkipPackage
 ```bash
 make all                 # CC=gcc / AR=ar，默认自研 GC + LLVM 后端
 make all CC=clang        # 显式指定 C 编译器
-make all GC_BACKEND=boehm
+make bootstrap           # 可选：准备 Boehm
+MYLIS_GC=boehm mylc app.myl -o app
 ```
 
 ### 用 mylc 编译 .myl 的默认后端
@@ -552,20 +574,19 @@ ar = "lib.exe"
 | 开发者指南 | [`docs/开发者指南.md`](docs/开发者指南.md) | 编译器架构、扩展点、测试约定与 LLVM ABI |
 | Mylis 库标准 | [`docs/Mylis库标准.md`](docs/Mylis库标准.md) | 原生包 / MIR 库 / C FFI 三层边界与版本规则；P0 源码包 + P1 函数/类型 .mylib + P2 本地 registry + Git + .mylib 依赖已实现 |
 | 包获取与目录结构 | [`docs/包获取与目录结构.md`](docs/包获取与目录结构.md) | 本地/Git/HTTP `.mylib`/registry 的拉取、缓存、锁文件、工程与产物目录 |
-| 外部工具链 | `toolchain.rs` + `toolchains/*.toml` | gnu/msvc，数据驱动插件 |
+| 外部工具链 | `toolchain.rs` + `toolchains/*.toml` | gnu / clang / msvc，数据驱动插件 |
 
-`driver` 已改为只调 `Backend`，不再直接依赖 `codegen` 的 `generate*`；新增后端只需实现
-`emit_exe / emit_lib / header` 三个方法。MIR 设计与 `--emit-ir` 见
+`driver` 已改为只调 `Backend`，不再直接依赖 `codegen` 的 `generate*`；新增后端只需实现 `Backend` 的 `name / emit_exe / emit_lib / header`，需要消费 MIR 库时再实现 `emit_exe_mir`。MIR 设计与 `--emit-ir` 见
 [`docs/MIR.md`](docs/MIR.md)。MIR v0 已能 lower/dump/校验；默认 `mylc` 已走原生 LLVM，`--backend mir` 走 MIR-C，
 覆盖当前全部正向程序，并与 AST 后端输出逐字一致。`--backend ast` 保留为回退路径。
 
 ## 10. 测试与目录
 
 ```bash
-make test        # 正向/反向用例 + 后端对拍 + LLVM（含泛型） + 告警/库模式/MIR/LSP 验收
+make test        # 正向/反向 114 项 + 后端对拍 76 项 + std native/库模式/工具链/MIR/LSP/裸机验收
 bash tests/run_package_tests.sh  # 嵌套模块、std 包依赖（含复制到项目 lib/）、导入可见性、原生载荷 LLVM 声明/真实链接、mixed native/MIR、泛型 .mylib（需 clang 15+）
 bash tools/check_std.sh         # std 包自洽检查
-bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop + Rust staticlib 真实读写（MIR/AST/LLVM 声明）
+bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Process/Worker，MIR/AST/LLVM 声明
 MYLIS_BACKEND=ast bash tests/run_tests.sh  # 同一套正向/反向用例跑 AST-C 回退后端
 mylc test        # 只跑 tests/ 下的 .expected 比对
 ```
@@ -576,10 +597,10 @@ myrt/           C ABI 头文件（mylrt.h / mylrt_gc.h）
 mylrt-rs/       Rust 运行时（Runtime / Gc trait + 实现）
 core/, std/     core 层与独立 std 包；std-posix/native、std-win32/native 放 Rust/C ABI native 后端
 tests/          positive / negative / lib / emit / test_lsp.py
-tools/          bootstrap_gc.sh、package_windows.sh、package_win7.sh
+tools/          bootstrap_gc.sh、build_std_native.{sh,ps1}、package_windows.{sh,ps1}、test_windows.ps1、write_manifest.{sh,ps1} 等构建/打包/测试脚本
 docs/           Mylis 语言规范
 ```
 
 ### 明确不做
 
-`Vec<T>` 由标准库以泛型类提供，覆盖泛型类/函数/方法/接口/枚举，并支持接口 bound（`T: Show`）与简单类型实参推断；泛型模板源码（含函数/方法体）和原模块 `import` 可随 `.mylib` 导出，消费端据此实例化；库内已产生的具体实例同时进入 MIR 段；设计见 [`docs/泛型设计.md`](docs/泛型设计.md)。宏 / 反射 / `#[derive]` 式代码生成、包管理器、继承、隐式类型转换、`let` 语法不做。
+`Vec<T>` 由标准库以泛型类提供，覆盖泛型类/函数/方法/接口/枚举，并支持接口 bound（`T: Show`）与简单类型实参推断；泛型模板源码（含函数/方法体）和原模块 `import` 可随 `.mylib` 导出，消费端据此实例化；库内已产生的具体实例同时进入 MIR 段；设计见 [`docs/泛型设计.md`](docs/泛型设计.md)。宏 / 反射 / `#[derive]` 式代码生成、继承、隐式类型转换、`let` 语法不做；包管理只覆盖本地 path / Git / 本地与 HTTP `.mylib` / 本地 registry，不做远程 registry 与 workspace 子包。

@@ -4,7 +4,7 @@
 
 - `file.rs`：Rust `staticlib`，导出 C ABI `mylis_file_*`；包含文件读写、目录枚举、目录创建/删除、元数据大小、seek/tell
 - `io.rs`：stdin、argv、环境变量与进程退出，导出 C ABI `mylis_io_*`
-- `process.rs`：shell 命令执行（`/bin/sh -c`，Windows 为 `cmd /C`）；`run` 同步捕获 stdout/stderr，`spawn` 返回子进程句柄并支持 pid/wait/kill/close，`popen` 提供单向字节管道，`popen2` 提供 stdin/stdout 双向管道；`pipe_read_line` 按行读取（1 读到一行、0 EOF、负数 `-errno`），`pipe_read_line_timeout` 增加毫秒超时（超时 `-110`），`pipe_write_timeout` 增加毫秒写超时（超时 `-110`，可能部分写入），`pipe_terminate` 强制结束并回收子进程；导出 C ABI `mylis_process_*`；不做异步回调
+- `process.rs`：shell 命令执行（POSIX 用 `/bin/sh -c`；Windows 下可执行文件路径直接 spawn，否则 `cmd /C`）；`run` 同步捕获 stdout/stderr，`spawn` 返回子进程句柄并支持 pid/wait/kill/close，`popen` 提供单向字节管道，`popen2` 提供 stdin/stdout 双向管道；`pipe_read_line` 按行读取（1 读到一行、0 EOF、负数 `-errno`），`pipe_read_line_timeout` 增加毫秒超时（超时 `-110`），`pipe_write_timeout` 增加毫秒写超时（超时 `-110`，可能部分写入），`pipe_terminate` 强制结束并回收子进程；导出 C ABI `mylis_process_*`；不做异步回调。Windows 读侧用 `PeekNamedPipe` + 分块 `ReadFile`，写超时用复制句柄 + 后台线程 + `CancelSynchronousIo` 回收，`Stdio::Exit` 用 `TerminateProcess` 绕开 teardown 死锁
 - `time.rs`：wall clock、单调时钟与 sleep，导出 C ABI `mylis_time_*`
 - `net.rs`：Rust `staticlib`，导出 C ABI：`mylis_tcp_*` / `mylis_udp_*`
 - `event.rs`：事件后端；Linux `epoll`，其他 POSIX `poll`，导出 `mylis_event_new/add/remove/wait/close`
@@ -16,5 +16,5 @@
 `mylis_io_last_status()` 给出（1 成功、0 EOF、负数错误）。`mylis_io_env_get` 对不存在的变量返回空串，
 是否存在的准确判断用 `mylis_io_env_exists()`。
 
-这不是嵌入 `.mylib` 的 native 载荷；按包约定，最终链接者必须显式提供非嵌入 native。
-当前在 Linux/POSIX 上验证；Windows MSVC 侧车在 `std-win32/native/`，使用 Winsock `WSAPoll` 与 Windows 进程管道实现。
+这不是嵌入 `.mylib` 的 native 载荷；非嵌入 native 不随源码包/`.mylib` 自动传播。使用 `--std` 时会自动加入当前平台的头文件与六个库，手工编译才需要显式 `--link`。
+Linux/POSIX 与 Windows MSVC 侧车均已验证（Windows 共用 `file/io/process/time/net.rs`，`event.rs` 独立 WSAPoll）。
