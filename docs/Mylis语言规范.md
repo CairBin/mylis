@@ -1292,7 +1292,7 @@ MIR 生成    → AST → 函数级 CFG（SSA 值 + 局部槽 + 显式终结指�
 
 ```bash
 make test
-# 正向/反向合计 114 项；MIR-C/AST-C 对拍 76 项
+# 正向/反向合计 121 项；MIR-C/AST-C 对拍 78 项
 # 另含 std native、库模式、工具链、MIR、LSP 与裸机验收
 ```
 
@@ -1610,7 +1610,7 @@ static void myl_init_statics(void) {
 - `tests/positive/{Arrays,Interp,Match,Registry}.myl`：四特性正向用例；
 - `tests/negative/{M014_interp_tostring,M015_match_exhaustive,M016_static_instance,M017_array_eq}.myl`：
   反向用例，命中 `MYL102`；
-- `bash tests/run_tests.sh` 共 **62 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
+- `bash tests/run_tests.sh` 共 **121 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
 
 ### 17.7 编译期派生 `@derive(ToString)`
 
