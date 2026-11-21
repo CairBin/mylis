@@ -99,7 +99,12 @@ pub trait Runtime: Sync {
     fn arr_alloc(&self, elem_size: usize, len: usize) -> *mut u8 {
         let total = core::mem::size_of::<u64>() + elem_size.saturating_mul(len);
         let p = self.alloc(total);
-        unsafe { *(p as *mut u64) = len as u64; }
+        unsafe {
+            *(p as *mut u64) = len as u64;
+            // `new T[n]` 的元素按语言规范必须全部零初始化，不能依赖分配器行为。
+            let payload = elem_size.saturating_mul(len);
+            core::ptr::write_bytes(p.add(core::mem::size_of::<u64>()), 0, payload);
+        }
         p
     }
 

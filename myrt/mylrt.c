@@ -525,6 +525,8 @@ void* mylrt_arr_alloc(myrt_u64 elem_size, myrt_u64 len) {
         abort();
     }
     *(myrt_u64*)p = len;
+    /* 语言规范要求 new T[n] 的元素全部零初始化；不能依赖分配器的偶然行为。 */
+    memset(p + sizeof(myrt_u64), 0, (size_t)(elem_size * len));
     return (void*)p;
 }
 
