@@ -1,4 +1,4 @@
-# 构建 std 的 Windows MSVC native 侧车（六个 Rust staticlib）。
+﻿# 构建 std 的 Windows MSVC native 侧车（六个 Rust staticlib）。
 # 运行环境：Windows + Visual Studio Build Tools + Rust x86_64-pc-windows-msvc target。
 param(
     [string]$Target = "x86_64-pc-windows-msvc",

@@ -291,9 +291,10 @@ $(BIN_MYLS): $(wildcard mylc/src/*.rs) $(wildcard mylc/src/*/*.rs) mylc/Cargo.to
 	@$(call COPY,mylc/$(RUST_OUT)/myls$(EXE),$@)
 
 # ---- Windows std native 侧车 ----
+# PowerShell 5.1 在 rustc 子进程结束后可能不自动退出；用 -Command 显式收尾，并保留失败退出码。
 ifeq ($(OS),Windows_NT)
 $(STD_WIN_STAMP): $(wildcard std-win32/native/*.rs) $(wildcard std-win32/native/*.h) $(wildcard std-posix/native/*.rs) tools/build_std_native.ps1 | build
-	@powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_std_native.ps1
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/build_std_native.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
 	@echo built > "$(call W,$@)"
 
 std-native-win: $(STD_WIN_STAMP)
@@ -358,14 +359,14 @@ bootstrap:
 
 test-win:
 ifeq ($(OS),Windows_NT)
-	powershell -NoProfile -ExecutionPolicy Bypass -File tools/test_windows.ps1
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/test_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
 else
 	@echo "test-win 需要在 Windows + MSVC 环境执行：powershell -File tools/test_windows.ps1"
 endif
 
 dist:
 ifeq ($(OS),Windows_NT)
-	powershell -NoProfile -ExecutionPolicy Bypass -File tools/package_windows.ps1
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/package_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
 else
 	@echo "dist 目标需要在 Windows + MSVC 环境执行（或使用 tools/package_windows.ps1）"
 endif
