@@ -279,6 +279,7 @@ extern "system" {
     fn bind(s: usize, name: *const u8, namelen: i32) -> i32;
     fn listen(s: usize, backlog: i32) -> i32;
     fn closesocket(s: usize) -> i32;
+    fn WSAStartup(version: u16, data: *mut u8) -> i32;
 }
 
 #[cfg(windows)]
@@ -299,6 +300,9 @@ fn bind_reuse_windows(address: &str) -> i64 {
         },
         Err(e) => return errno(e),
     };
+    let mut wsa = [0u8; 512];
+    let started = unsafe { WSAStartup(0x0202, wsa.as_mut_ptr()) };
+    if started != 0 { return errno(std::io::Error::from_raw_os_error(started)); }
     let fd = unsafe { socket(2, 1, 0) };
     if fd == 0 { return errno(std::io::Error::last_os_error()); }
     let value: i32 = 1;
