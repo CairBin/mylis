@@ -23,7 +23,7 @@ pub class TcpListener {
     }
 
     // 在 bind 前设置 SO_REUSEADDR，适合需要快速重启/多进程复用的监听器。
-    // Windows 当前退回普通 Bind（std 不暴露预绑定 socket 设置入口）。
+    // Windows 在 bind 前设置 SO_REUSEADDR。
     pub static fn BindReuse(string address) -> Result<TcpListener, IoError> {
         i64 h = 0;
         unsafe {

@@ -14,7 +14,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(windows)]
-use std::os::windows::io::AsRawSocket;
+use std::os::windows::io::{AsRawSocket, FromRawSocket};
 
 fn errno(e: std::io::Error) -> i64 {
     #[cfg(windows)]
@@ -272,6 +272,72 @@ fn bind_reuse_unix(address: &str) -> i64 {
     Box::into_raw(Box::new(listener)) as i64
 }
 
+#[cfg(windows)]
+#[link(name = "ws2_32")]
+extern "system" {
+    fn socket(domain: i32, socket_type: i32, protocol: i32) -> usize;
+    fn bind(s: usize, name: *const u8, namelen: i32) -> i32;
+    fn listen(s: usize, backlog: i32) -> i32;
+    fn closesocket(s: usize) -> i32;
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct WinSockAddrIn {
+    family: u16,
+    port: u16,
+    address: u32,
+    zero: [u8; 8],
+}
+
+#[cfg(windows)]
+fn bind_reuse_windows(address: &str) -> i64 {
+    let parsed = match address.to_socket_addrs() {
+        Ok(mut values) => match values.next() {
+            Some(std::net::SocketAddr::V4(v4)) => v4,
+            _ => return -22,
+        },
+        Err(e) => return errno(e),
+    };
+    let fd = unsafe { socket(2, 1, 0) };
+    if fd == 0 { return errno(std::io::Error::last_os_error()); }
+    let value: i32 = 1;
+    let opt = unsafe {
+        setsockopt(
+            fd,
+            sol_socket(),
+            so_reuseaddr(),
+            &value as *const i32 as *const u8,
+            std::mem::size_of::<i32>() as i32,
+        )
+    };
+    if opt != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { closesocket(fd); }
+        return code;
+    }
+    let addr = WinSockAddrIn {
+        family: 2,
+        port: parsed.port().to_be(),
+        address: u32::from(*parsed.ip()).to_be(),
+        zero: [0; 8],
+    };
+    let rc = unsafe { bind(fd, &addr as *const WinSockAddrIn as *const u8, std::mem::size_of::<WinSockAddrIn>() as i32) };
+    if rc != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { closesocket(fd); }
+        return code;
+    }
+    let rc = unsafe { listen(fd, 128) };
+    if rc != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { closesocket(fd); }
+        return code;
+    }
+    let listener = unsafe { TcpListener::from_raw_socket(fd as u64) };
+    Box::into_raw(Box::new(listener)) as i64
+}
+
 #[no_mangle]
 pub extern "C" fn mylis_tcp_bind_reuse(address: *const c_char) -> i64 {
     let a = match cstr(address) { Some(v) => v, None => return -22 };
@@ -279,9 +345,12 @@ pub extern "C" fn mylis_tcp_bind_reuse(address: *const c_char) -> i64 {
     {
         return bind_reuse_unix(a);
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        // Windows 的 std 没有预绑定 socket 设置入口；退回普通绑定。
+        return bind_reuse_windows(a);
+    }
+    #[cfg(all(not(unix), not(windows)))]
+    {
         let _ = a;
         return mylis_tcp_bind(address);
     }
