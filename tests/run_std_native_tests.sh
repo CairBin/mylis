@@ -6,6 +6,7 @@ export PATH="${HOME}/.cargo/bin:${PATH}"
 export MYLIS_PATH="${MYLIS_PATH:-$ROOT:$ROOT/std/src}"
 OUT="$ROOT/build/std-posix/native-tests"
 mkdir -p "$OUT"
+mkdir -p "$ROOT/build/tests"
 rm -f "$ROOT/build/tests/file_api.txt" "$OUT/FileApi.actual"
 
 bash tools/build_std_native.sh >/dev/null
@@ -435,6 +436,26 @@ run_platform_case() {
   echo "  ok   PlatformApi（$backend）"
 }
 
+run_async_file_case() {
+  local backend=$1
+  local exe="$OUT/AsyncFileApi_$backend"
+  if ! "$ROOT/build/mylc" --std --backend "$backend" tests/std_native/AsyncFileApi.myl -o "$exe" >"$OUT/async-file-$backend.build.log" 2>&1; then
+    echo "FAIL AsyncFileApi（$backend 编译失败）"
+    sed -n '1,20p' "$OUT/async-file-$backend.build.log"
+    return 1
+  fi
+  if ! timeout 30 "$exe" >"$OUT/AsyncFileApi.actual" 2>"$OUT/async-file-$backend.err"; then
+    echo "FAIL AsyncFileApi（$backend 运行失败）"
+    sed -n '1,10p' "$OUT/async-file-$backend.err"
+    return 1
+  fi
+  if ! diff -u tests/std_native/AsyncFileApi.expected "$OUT/AsyncFileApi.actual"; then
+    echo "FAIL AsyncFileApi（$backend 输出不一致）"
+    return 1
+  fi
+  echo "  ok   AsyncFileApi（$backend）"
+}
+
 run_case mir
 run_case ast
 run_std_flag_case
@@ -524,7 +545,7 @@ run_udp_loop_case() {
   if ! "$ROOT/build/mylc" tests/std_native/UdpLoopApi.myl \
       --backend "$backend" \
       -I "$ROOT/std/src" -I "$ROOT/std-posix/native" \
-      --link "$NET" --link "$EVENT" -o "$exe" >"$OUT/udploop-$backend.build.log" 2>&1; then
+      --link "$LIB" --link "$NET" --link "$EVENT" -o "$exe" >"$OUT/udploop-$backend.build.log" 2>&1; then
     echo "FAIL UdpLoopApi（$backend 编译失败）"
     sed -n '1,20p' "$OUT/udploop-$backend.build.log"
     return 1
@@ -669,5 +690,7 @@ else
   sed -n '1,12p' "$OUT/process-popen2-llvm.emit.log"
   exit 1
 fi
+run_async_file_case mir
+run_async_file_case ast
 
 echo "std native 测试通过"

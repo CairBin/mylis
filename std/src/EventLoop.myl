@@ -1,11 +1,14 @@
 // 单线程 EventLoop：事件后端等待就绪 -> Mylis 主线程分发 handler。
 // Linux 使用 epoll，其他 POSIX 使用 poll 后备，Windows 使用 Winsock WSAPoll；Rust 后端不执行 Mylis 回调。
+// 异步文件任务也在这里由主线程泵入完成回调；Rust 工作线程只写完成队列。
 import { IoHandler } from "IoHandler.myl";
 import { TcpListener } from "TcpListener.myl";
 import { TcpStream } from "TcpStream.myl";
 import { UdpSocket } from "UdpSocket.myl";
 import { IoError } from "IoError.myl";
+import { FileTask } from "FileTask.myl";
 import { mylis_event_new, mylis_event_add, mylis_event_modify, mylis_event_remove, mylis_event_wait, mylis_event_close } from "Event_bind.myl";
+import { mylis_file_async_poll, mylis_file_async_take } from "File_bind.myl";
 
 class EventEntry {
     i64 handle;
@@ -26,12 +29,18 @@ pub class EventLoop {
     i64 eventHandle;
     i32 count;
     i32 capacity;
+    FileTask[] fileTasks;
+    i32 fileCount;
+    i32 fileCapacity;
     bool stopped;
 
     pub fn init() -> void {
         this.capacity = 8;
         this.entries = new EventEntry[this.capacity];
         this.count = 0;
+        this.fileCapacity = 8;
+        this.fileTasks = new FileTask[this.fileCapacity];
+        this.fileCount = 0;
         this.stopped = false;
         unsafe {
             this.eventHandle = mylis_event_new();
@@ -47,6 +56,37 @@ pub class EventLoop {
             i = i + 1;
         }
         this.entries = ne;
+    }
+
+    fn growFiles() -> void {
+        this.fileCapacity = this.fileCapacity * 2;
+        FileTask[] nf = new FileTask[this.fileCapacity];
+        i32 i = 0;
+        while (i < this.fileCount) {
+            nf[i] = this.fileTasks[i];
+            i = i + 1;
+        }
+        this.fileTasks = nf;
+    }
+
+    fn findFile(i64 id) -> i32 {
+        i32 i = 0;
+        while (i < this.fileCount) {
+            if (this.fileTasks[i].id == id) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn removeFileAt(i32 idx) -> void {
+        i32 j = idx;
+        while (j + 1 < this.fileCount) {
+            this.fileTasks[j] = this.fileTasks[j + 1];
+            j = j + 1;
+        }
+        this.fileCount = this.fileCount - 1;
     }
 
     fn findHandle(i64 handle) -> i32 {
@@ -141,16 +181,78 @@ pub class EventLoop {
         this.removeHandle(socket.nativeHandle());
     }
 
+    // 注册异步文件任务；完成回调由 run() 在主线程分发。
+    pub fn addFile(FileTask task) -> void {
+        if (this.fileCount >= this.fileCapacity) {
+            this.growFiles();
+        }
+        this.fileTasks[this.fileCount] = task;
+        this.fileCount = this.fileCount + 1;
+    }
+
+    fn drainFiles() -> void {
+        i64[] meta = new i64[4];
+        while (true) {
+            i64 rc = 0;
+            unsafe {
+                rc = mylis_file_async_poll(meta);
+            }
+            if (rc <= 0) {
+                return;
+            }
+            i64 id = meta[0];
+            i32 kind = meta[1] as i32;
+            i64 status = meta[2];
+            i64 len = meta[3];
+            i32 idx = this.findFile(id);
+            if (idx < 0) {
+                u8[] discard = new u8[0];
+                unsafe {
+                    mylis_file_async_take(id, discard);
+                }
+                continue;
+            }
+            FileTask task = this.fileTasks[idx];
+            this.removeFileAt(idx);
+            if (status < 0) {
+                u8[] empty = new u8[0];
+                unsafe {
+                    mylis_file_async_take(id, empty);
+                }
+                IoError error = new IoError((-status) as i32);
+                if (kind == 1) {
+                    task.handler.onReadDone(id, Err(error));
+                } else {
+                    task.handler.onWriteDone(id, Err(error));
+                }
+            } else {
+                u8[] data = new u8[len];
+                unsafe {
+                    mylis_file_async_take(id, data);
+                }
+                if (kind == 1) {
+                    task.handler.onReadDone(id, Ok(data));
+                } else {
+                    task.handler.onWriteDone(id, Ok(len));
+                }
+            }
+        }
+    }
+
     pub fn run() -> void {
         if (this.eventHandle < 0) {
             this.stopped = true;
             return;
         }
         this.stopped = false;
-        while (!this.stopped && this.count > 0) {
+        while (!this.stopped && (this.count > 0 || this.fileCount > 0)) {
             i32 n = this.count;
-            i64[] fds = new i64[n];
-            i64[] revents = new i64[n];
+            i32 cap = n;
+            if (cap == 0) {
+                cap = 1;
+            }
+            i64[] fds = new i64[cap];
+            i64[] revents = new i64[cap];
             i32 rc = 0;
             unsafe {
                 rc = mylis_event_wait(this.eventHandle, 100, fds, revents, n);
@@ -188,6 +290,7 @@ pub class EventLoop {
                 }
                 i = i + 1;
             }
+            this.drainFiles();
         }
     }
 
@@ -197,6 +300,10 @@ pub class EventLoop {
 
     pub fn close() -> void {
         this.stopped = true;
+        while (this.fileCount > 0) {
+            this.fileTasks[this.fileCount - 1].cancel();
+            this.fileCount = this.fileCount - 1;
+        }
         if (this.eventHandle > 0) {
             unsafe {
                 mylis_event_close(this.eventHandle);

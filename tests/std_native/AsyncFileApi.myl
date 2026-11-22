@@ -1,0 +1,131 @@
+import { File } from "File.myl";
+import { FileTask } from "FileTask.myl";
+import { FileHandler } from "FileHandler.myl";
+import { EventLoop } from "EventLoop.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64 } from "Io.myl";
+
+class FileDoneHandler {
+    EventLoop loop;
+    i32 pending;
+
+    pub fn init(EventLoop value) -> void {
+        this.loop = value;
+        this.pending = 1;
+    }
+
+    pub fn setPending(i32 count) -> void {
+        this.pending = count;
+    }
+
+    pub fn onReadDone(i64 taskId, Result<u8[], IoError> result) -> void {
+        match (result) {
+            Ok(data) => {
+                println("read");
+                println_i64(data.len() as i64);
+                println_i64(data[0] as i64);
+            }
+            Err(error) => {
+                println("error");
+                println_i64(error.code as i64);
+            }
+        }
+        this.pending = this.pending - 1;
+        if (this.pending == 0) {
+            this.loop.stop();
+        }
+    }
+
+    pub fn onWriteDone(i64 taskId, Result<i64, IoError> result) -> void {
+        match (result) {
+            Ok(written) => {
+                println("write");
+                println_i64(written);
+            }
+            Err(error) => {
+                println("error");
+                println_i64(error.code as i64);
+            }
+        }
+        this.pending = this.pending - 1;
+        if (this.pending == 0) {
+            this.loop.stop();
+        }
+    }
+}
+
+fn main() -> i32 {
+    string path = "build/tests/async_file_api.txt";
+    string outPath = "build/tests/async_file_api_out.txt";
+    string missing = "build/tests/async_file_api_missing.txt";
+
+    Result<File, IoError> created = File::Create(path);
+    match (created) {
+        Ok(file) => {
+            Result<i64, IoError> wrote = file.writeAllText("hello");
+            match (wrote) {
+                Ok(written) => { println_i64(written); }
+                Err(writeError) => { println_i64(writeError.code as i64); }
+            }
+            file.close();
+        }
+        Err(createError) => { println_i64(createError.code as i64); }
+    }
+
+    EventLoop loop = new EventLoop();
+    FileDoneHandler done = new FileDoneHandler(loop);
+    FileHandler handler = done;
+
+    Result<FileTask, IoError> readTask = File::ReadAllBytesAsync(path, handler);
+    match (readTask) {
+        Ok(readTaskValue) => {
+            loop.addFile(readTaskValue);
+            loop.run();
+            println("read-done");
+        }
+        Err(readSubmitError) => { println_i64(readSubmitError.code as i64); }
+    }
+
+    done.setPending(2);
+    Result<FileTask, IoError> readTaskOne = File::ReadAllBytesAsync(path, handler);
+    Result<FileTask, IoError> readTaskTwo = File::ReadAllBytesAsync(path, handler);
+    match (readTaskOne) {
+        Ok(firstTask) => {
+            match (readTaskTwo) {
+                Ok(secondTask) => {
+                    loop.addFile(firstTask);
+                    loop.addFile(secondTask);
+                    loop.run();
+                    println("multi-done");
+                }
+                Err(secondSubmitError) => { println_i64(secondSubmitError.code as i64); }
+            }
+        }
+        Err(firstSubmitError) => { println_i64(firstSubmitError.code as i64); }
+    }
+    done.setPending(1);
+
+    u8[] payload = [1, 2, 3];
+    Result<FileTask, IoError> writeTask = File::WriteAllBytesAsync(outPath, payload, handler);
+    match (writeTask) {
+        Ok(writeTaskValue) => {
+            loop.addFile(writeTaskValue);
+            loop.run();
+            println("write-done");
+        }
+        Err(writeSubmitError) => { println_i64(writeSubmitError.code as i64); }
+    }
+
+    Result<FileTask, IoError> missingTask = File::ReadAllBytesAsync(missing, handler);
+    match (missingTask) {
+        Ok(missingTaskValue) => {
+            loop.addFile(missingTaskValue);
+            loop.run();
+            println("error-done");
+        }
+        Err(missingSubmitError) => { println_i64(missingSubmitError.code as i64); }
+    }
+
+    loop.close();
+    return 0;
+}

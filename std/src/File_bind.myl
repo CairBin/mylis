@@ -59,3 +59,19 @@ pub unsafe fn mylis_file_free_string(i8* text) -> void;
 
 @header("mylis_file.h")
 pub unsafe fn mylis_file_tell(i64 handle) -> i64;
+
+// 异步文件任务；meta 是 i64[4]：id、kind、status、len。
+@header("mylis_file.h")
+pub unsafe fn mylis_file_read_all_bytes_async(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_write_all_bytes_async(i8* path, u8[] data) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_async_cancel(i64 id) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_async_poll(i64[] meta) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_async_take(i64 id, u8[] data) -> i64;

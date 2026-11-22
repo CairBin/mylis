@@ -66,6 +66,8 @@ class IoError {
 class File {
     pub static fn Open(string path) -> Result<File, IoError>;
     pub static fn Create(string path) -> Result<File, IoError>;
+    pub static fn ReadAllBytesAsync(string path, FileHandler handler) -> Result<FileTask, IoError>;
+    pub static fn WriteAllBytesAsync(string path, u8[] data, FileHandler handler) -> Result<FileTask, IoError>;
     pub fn readAllBytes() -> Result<u8[], IoError>;
     pub fn writeAllBytes(u8[] data) -> Result<i64, IoError>;
     pub fn readAllText() -> Result<string, IoError>;
@@ -73,12 +75,25 @@ class File {
     pub fn flush() -> Result<i64, IoError>;
     pub fn close() -> void;
 }
+
+interface FileHandler {
+    fn onReadDone(i64 taskId, Result<u8[], IoError> result) -> void;
+    fn onWriteDone(i64 taskId, Result<i64, IoError> result) -> void;
+}
+
+class FileTask {
+    pub i64 id;
+    pub i32 kind;
+    pub fn cancel() -> bool;
+}
 ```
 
 约定：
 
 - `File` 显式 `close`；GC 不负责关闭文件描述符。
-- 文件只做阻塞读写；异步文件不在当前范围。
+- 同步 API 仍是阻塞读写；异步 API 当前只有 `ReadAllBytesAsync` / `WriteAllBytesAsync` 两个入口。
+- 异步任务返回 `FileTask`，必须 `EventLoop.addFile(task)` 注册；`FileHandler.onReadDone` / `onWriteDone` 在主线程执行。`task.cancel()` 是尽力取消，已进入阻塞 I/O 的任务可能仍完成，并以 `IoError(125)` 返回。
+- 异步文件后端是固定 Rust 工作线程池（默认 2 个，`MYLIS_ASYNC_FILE_THREADS` 可配置 1～8）；完成结果只放在 Rust 堆，主线程再拷入 `u8[]`，工作线程不接触 Mylis GC。
 - TCP 为阻塞/非阻塞 socket；`accept` / `connect` / `read` 在阻塞模式下占住当前线程，非阻塞模式返回 `WouldBlock`。
 - 路径类型使用 `string`；Windows 后端负责 UTF-8 -> UTF-16。
 - 二进制内容用 `u8[]`，文本用 UTF-8 `string`。
@@ -146,6 +161,7 @@ class EventLoop {
     pub fn remove(TcpStream stream) -> void;
     pub fn removeListener(TcpListener listener) -> void;
     pub fn removeUdp(UdpSocket socket) -> void;
+    pub fn addFile(FileTask task) -> void;
     pub fn run() -> void;
     pub fn stop() -> void;
     pub fn close() -> void;
@@ -162,14 +178,13 @@ class EventLoop {
 - 默认只注册读就绪；显式 `EventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
 - `onError` 分发流错误；`onListenerError` 分发监听器错误；`onUdpReadable` 分发 UDP 读就绪。
 
-### 4.3 文件异步（未实现）
+### 4.3 文件异步（当前最小实现）
 
-当前不做异步文件。后续若做：
-
-- Rust 工作线程只执行文件 I/O；
-- 完成结果进入事件队列；
-- Mylis 回调仍在主线程执行；
-- 工作线程不得分配或访问 Mylis GC 对象。
+- Rust 固定工作线程池只执行文件 I/O；完成结果进入 native 完成队列，Mylis 主线程通过 `EventLoop.run()` 泵入并分发回调。
+- 当前完成延迟最多约 100ms（沿用事件等待的超时）；暂不做 `eventfd`/本地 socket 唤醒。
+- 工作线程不得分配或访问 Mylis GC 对象；读结果先放在 Rust `Vec<u8>`，主线程 `take` 时拷入 `u8[]`。
+- 当前入口只有 `File.ReadAllBytesAsync` / `File.WriteAllBytesAsync`；不做异步 open/seek/append，也不做 IOCP / `io_uring`。
+- 因为 `EventLoop` 现在带文件完成泵，手工链接 EventLoop 的程序也需要同时链接 `libmylis_file.a` / `mylis_file.lib`；`--std` 会自动包含。
 
 ### 4.4 明确不做
 

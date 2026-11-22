@@ -1,0 +1,7 @@
+// 异步文件完成回调接口：所有回调都在 Mylis 主线程执行，不在 Rust 工作线程执行。
+import { IoError } from "IoError.myl";
+
+pub interface FileHandler {
+    fn onReadDone(i64 taskId, Result<u8[], IoError> result) -> void;
+    fn onWriteDone(i64 taskId, Result<i64, IoError> result) -> void;
+}

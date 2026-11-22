@@ -2,7 +2,7 @@
 
 当前有 File、stdio、Process、TCP/UDP 与事件后端：
 
-- `file.rs`：Rust `staticlib`，导出 C ABI `mylis_file_*`；包含文件读写、目录枚举、目录创建/删除、元数据大小、seek/tell
+- `file.rs`：Rust `staticlib`，导出 C ABI `mylis_file_*`；包含文件读写、目录枚举、目录创建/删除、元数据大小、seek/tell，以及 `ReadAllBytesAsync` / `WriteAllBytesAsync` 的固定工作线程池与完成队列
 - `io.rs`：stdin、argv、环境变量与进程退出，导出 C ABI `mylis_io_*`
 - `process.rs`：shell 命令执行（POSIX 用 `/bin/sh -c`；Windows 下可执行文件路径直接 spawn，否则 `cmd /C`）；`run` 同步捕获 stdout/stderr，`spawn` 返回子进程句柄并支持 pid/wait/kill/close，`popen` 提供单向字节管道，`popen2` 提供 stdin/stdout 双向管道；`pipe_read_line` 按行读取（1 读到一行、0 EOF、负数 `-errno`），`pipe_read_line_timeout` 增加毫秒超时（超时 `-110`），`pipe_write_timeout` 增加毫秒写超时（超时 `-110`，可能部分写入），`pipe_terminate` 强制结束并回收子进程；导出 C ABI `mylis_process_*`；不做异步回调。Windows 读侧用 `PeekNamedPipe` + 分块 `ReadFile`，写超时用复制句柄 + 后台线程 + `CancelSynchronousIo` 回收，`Stdio::Exit` 用 `TerminateProcess` 绕开 teardown 死锁
 - `time.rs`：wall clock、单调时钟与 sleep，导出 C ABI `mylis_time_*`

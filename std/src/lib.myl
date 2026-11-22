@@ -35,6 +35,8 @@ pub import "Set.myl";
 pub import "IoErrorKind.myl";
 pub import "IoError.myl";
 pub import "File.myl";
+pub import "FileTask.myl";
+pub import "FileHandler.myl";
 pub import "Stdio.myl";
 pub import "Process.myl";
 pub import "ProcessOutput.myl";

@@ -1,9 +1,12 @@
-// std 文件 API：阻塞文本/二进制读写。第一版不做异步文件，也不自动关闭句柄。
+// std 文件 API：阻塞文本/二进制读写；以及两个最小异步入口（读/写全部字节）。
+// 异步任务通过 EventLoop.addFile 注册，回调在主线程执行；File 句柄本身仍由调用方关闭。
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
 import { Str } from "core/Str";
 import { myrt_str_ptr, myrt_str_cstr } from "core/Mylrt_bind";
-import { mylis_file_open, mylis_file_close, mylis_file_size, mylis_file_exists, mylis_file_remove, mylis_file_rename, mylis_file_read, mylis_file_write, mylis_file_seek, mylis_file_flush, mylis_file_is_dir, mylis_file_mkdir, mylis_file_mkdir_all, mylis_file_remove_dir, mylis_file_remove_dir_all, mylis_file_metadata_size, mylis_file_read_dir_count, mylis_file_read_dir_entry, mylis_file_free_string, mylis_file_tell } from "File_bind.myl";
+import { FileTask } from "FileTask.myl";
+import { FileHandler } from "FileHandler.myl";
+import { mylis_file_open, mylis_file_close, mylis_file_size, mylis_file_exists, mylis_file_remove, mylis_file_rename, mylis_file_read, mylis_file_write, mylis_file_seek, mylis_file_flush, mylis_file_is_dir, mylis_file_mkdir, mylis_file_mkdir_all, mylis_file_remove_dir, mylis_file_remove_dir_all, mylis_file_metadata_size, mylis_file_read_dir_count, mylis_file_read_dir_entry, mylis_file_free_string, mylis_file_tell, mylis_file_read_all_bytes_async, mylis_file_write_all_bytes_async } from "File_bind.myl";
 
 pub class File {
     i64 handle;
@@ -43,6 +46,30 @@ pub class File {
             return Err(new IoError((-h) as i32));
         }
         return Ok(new File(h));
+    }
+
+    // 异步读取全部字节；任务提交后必须用 EventLoop.addFile 注册回调。
+    pub static fn ReadAllBytesAsync(string path, FileHandler handler) -> Result<FileTask, IoError> {
+        i64 id = 0;
+        unsafe {
+            id = mylis_file_read_all_bytes_async(myrt_str_ptr(path));
+        }
+        if (id < 0) {
+            return Err(new IoError((-id) as i32));
+        }
+        return Ok(new FileTask(id, 1, handler));
+    }
+
+    // 异步写入全部字节；data 在提交时同步拷贝到 Rust 堆，调用返回后可释放。
+    pub static fn WriteAllBytesAsync(string path, u8[] data, FileHandler handler) -> Result<FileTask, IoError> {
+        i64 id = 0;
+        unsafe {
+            id = mylis_file_write_all_bytes_async(myrt_str_ptr(path), data);
+        }
+        if (id < 0) {
+            return Err(new IoError((-id) as i32));
+        }
+        return Ok(new FileTask(id, 2, handler));
     }
 
     pub static fn Exists(string path) -> bool {

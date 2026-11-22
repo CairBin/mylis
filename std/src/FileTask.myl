@@ -1,0 +1,26 @@
+// 异步文件任务：由 File.ReadAllBytesAsync / WriteAllBytesAsync 返回。
+// 必须通过 EventLoop.addFile 注册后，完成回调才会在主线程分发。
+import { FileHandler } from "FileHandler.myl";
+import { mylis_file_async_cancel } from "File_bind.myl";
+
+pub class FileTask {
+    pub i64 id;
+    pub i32 kind;
+    pub FileHandler handler;
+
+    pub fn init(i64 taskId, i32 taskKind, FileHandler taskHandler) -> void {
+        this.id = taskId;
+        this.kind = taskKind;
+        this.handler = taskHandler;
+    }
+
+    // 尽力取消：任务尚未开始时不会再执行；已经阻塞在 I/O 中时仍可能完成，
+    // 完成结果会以 IoError(125) 返回。
+    pub fn cancel() -> bool {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_async_cancel(this.id);
+        }
+        return rc == 0;
+    }
+}

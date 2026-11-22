@@ -89,7 +89,12 @@ mod linux {
         let flen = match len_i64(fds) { Some(v) => v, None => return -22 };
         let rlen = match len_i64(revents) { Some(v) => v, None => return -22 };
         if n > flen || n > rlen { return -22; }
-        if n == 0 { return 0; }
+        if n == 0 {
+            if timeout_ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(timeout_ms as u64));
+            }
+            return 0;
+        }
         let mut events: Vec<EpollEvent> = Vec::with_capacity(n);
         for _ in 0..n { events.push(EpollEvent { events: 0, data: 0 }); }
         let rc = unsafe { epoll_wait(handle as i32, events.as_mut_ptr(), n as i32, timeout_ms) };
