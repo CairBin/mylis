@@ -1,0 +1,10 @@
+import { Map } from "Map.myl";
+
+@derive(Json)
+class BadMap {
+    pub Map<i64, i64> values;
+}
+
+fn main() -> i32 {
+    return 0;
+}

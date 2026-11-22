@@ -220,7 +220,7 @@ fn @app::main() -> i32 {
   直接使用源码符号名（如 `strlen`）。
 
 当前 `tests/positive` 下的程序已全部能在 MIR-C 下生成、编译并与 AST 后端输出一致；
-`make test` 的 127 项正向/反向用例全部通过，MIR-C/AST-C 对拍 80 项通过。
+`make test` 的 128 项正向/反向用例全部通过，MIR-C/AST-C 对拍 80 项通过。
 AST-C 也已补齐 `Any` 装箱、接口 cast、`Option<Iface>`、`Result<Iface>` 和
 `Option`/`Result` 的 `?` 传播；对拍不再跳过这些用例。接口→接口适配器按
 “所有具体类型 × 所有接口”生成，不依赖源码里是否显式发生过转换。

@@ -2,3 +2,4 @@
 {"value":null}
 {}
 {"x":9}
+{"some_vec":[{"x":1,"y":2}],"maybe_points":[{"x":3,"y":4},null],"deep":{"x":14,"y":15},"some_numbers":[5,6],"matrix":[[7,8],[9]],"named":{"a":{"x":10,"y":11},"b":{"x":12,"y":13}},"groups":{"left":[7,8],"right":[9]},"optional_map":{"present":{"x":16,"y":17},"missing":null},"optional_named":{"answer":42}}

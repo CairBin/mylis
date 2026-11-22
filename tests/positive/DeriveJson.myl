@@ -1,6 +1,7 @@
 import { println } from "Io.myl";
 import { Json } from "Json.myl";
 import { Vec } from "Vec.myl";
+import { Map } from "Map.myl";
 
 @derive(ToString, Json)
 class Point {
@@ -57,6 +58,31 @@ class StaticBox {
     }
 }
 
+@derive(Json)
+class Nested {
+    pub Option<Vec<Point>> some_vec;
+    pub Vec<Option<Point>> maybe_points;
+    pub Option<Option<Point>> deep;
+    pub Option<Vec<i64>> some_numbers;
+    pub Vec<Vec<i64>> matrix;
+    pub Map<string, Point> named;
+    pub Map<string, Vec<i64>> groups;
+    pub Map<string, Option<Point>> optional_map;
+    pub Option<Map<string, i64>> optional_named;
+
+    pub fn init() {
+        this.some_vec = None;
+        this.maybe_points = new Vec<Option<Point>>();
+        this.deep = None;
+        this.some_numbers = None;
+        this.matrix = new Vec<Vec<i64>>();
+        this.named = new Map<string, Point>();
+        this.groups = new Map<string, Vec<i64>>();
+        this.optional_map = new Map<string, Option<Point>>();
+        this.optional_named = None;
+    }
+}
+
 fn main() -> i32 {
     Vec<Point> points = new Vec<Point>();
     points.push(new Point(5, 6));
@@ -72,9 +98,50 @@ fn main() -> i32 {
     Maybe maybe = new Maybe(None);
     Empty empty = new Empty();
     StaticBox boxed = new StaticBox(9);
+
+    Vec<Point> point_vec = new Vec<Point>();
+    point_vec.push(new Point(1, 2));
+    Vec<Option<Point>> maybe_points = new Vec<Option<Point>>();
+    maybe_points.push(Some(new Point(3, 4)));
+    maybe_points.push(None);
+    Vec<i64> nums = new Vec<i64>();
+    nums.push(5);
+    nums.push(6);
+    Vec<i64> row1 = new Vec<i64>();
+    row1.push(7);
+    row1.push(8);
+    Vec<i64> row2 = new Vec<i64>();
+    row2.push(9);
+    Vec<Vec<i64>> matrix = new Vec<Vec<i64>>();
+    matrix.push(row1);
+    matrix.push(row2);
+    Map<string, Point> named = new Map<string, Point>();
+    named.set("a", new Point(10, 11));
+    named.set("b", new Point(12, 13));
+    Map<string, Vec<i64>> groups = new Map<string, Vec<i64>>();
+    groups.set("left", row1);
+    groups.set("right", row2);
+    Map<string, Option<Point>> optional_map = new Map<string, Option<Point>>();
+    optional_map.set("present", Some(new Point(16, 17)));
+    optional_map.set("missing", None);
+    Map<string, i64> small_map = new Map<string, i64>();
+    small_map.set("answer", 42);
+
+    Nested nested = new Nested();
+    nested.some_vec = Some(point_vec);
+    nested.maybe_points = maybe_points;
+    nested.deep = Some(Some(new Point(14, 15)));
+    nested.some_numbers = Some(nums);
+    nested.matrix = matrix;
+    nested.named = named;
+    nested.groups = groups;
+    nested.optional_map = optional_map;
+    nested.optional_named = Some(small_map);
+
     println(Json::Stringify(record.toJson()));
     println(Json::Stringify(maybe.toJson()));
     println(Json::Stringify(empty.toJson()));
     println(Json::Stringify(boxed.toJson()));
+    println(Json::Stringify(nested.toJson()));
     return 0;
 }

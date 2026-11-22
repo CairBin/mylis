@@ -174,6 +174,10 @@ fn parse_generated_method(
 }
 
 /// 生成 `toJson`：对象字段顺序与 class 声明顺序一致，值通过 `std/Json` 构造。
+///
+/// JSON 值生成是递归的：`Option` 生成 null/内层值，`Vec`/数组逐元素生成，
+/// `Map<string, T>` 逐键生成。每个容器使用独立的临时变量，因此任意层嵌套
+/// 都不会共享循环变量。
 fn derive_json(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut Diag) {
     if d.kind != DeclKind::Class {
         diags.err(E_GENERAL, path, line, col, "`@derive(Json)` 只能用于 class");
@@ -205,22 +209,29 @@ fn derive_json(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut Diag) 
 
     let fields: Vec<&crate::ast::Field> = d.fields.iter().filter(|f| !f.is_static).collect();
     let mut body = String::new();
+    let mut counter = 0usize;
     body.push_str("        Json __mylis_obj = Json::Null();\n");
     body.push_str("        __mylis_obj.kind = 6;\n");
-    for (i, f) in fields.iter().enumerate() {
-        if !emit_json_field(&f.ty, &f.name, "__mylis_obj", i, &mut body) {
+    for f in fields.iter() {
+        let out = fresh_name("v", &mut counter);
+        body.push_str(&format!("        Json {out} = Json::Null();\n"));
+        if !emit_json_value(&f.ty, &format!("this.{}", f.name), &out, &mut counter, 8, &mut body) {
             diags.err(
                 E_GENERAL,
                 path,
                 line,
                 col,
                 format!(
-                    "`@derive(Json)` 暂不支持字段 `{}` 的类型（当前支持 primitive / string / class / 数组 / 一层 Option / Vec）",
+                    "`@derive(Json)` 暂不支持字段 `{}` 的类型（当前支持 primitive / string / class / 数组 / Option / Vec / Map<string, T>，容器可嵌套）",
                     f.name
                 ),
             );
             return;
         }
+        body.push_str(&format!(
+            "        __mylis_obj.objectValue.set(\"{}\", {out});\n",
+            f.name
+        ));
     }
     body.push_str("        return __mylis_obj;\n");
 
@@ -232,6 +243,16 @@ fn derive_json(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut Diag) 
     m.line = line;
     m.col = col;
     d.member_asts.push(m);
+}
+
+fn fresh_name(prefix: &str, counter: &mut usize) -> String {
+    let id = *counter;
+    *counter += 1;
+    format!("__mylis_{prefix}_{id}")
+}
+
+fn is_string_type(ty: &Type) -> bool {
+    matches!(ty, Type::Str) || matches!(ty, Type::Named(name) if name == "string")
 }
 
 fn json_scalar_expr(ty: &Type, expr: &str) -> Option<String> {
@@ -258,87 +279,133 @@ fn json_scalar_expr(ty: &Type, expr: &str) -> Option<String> {
     Some(out)
 }
 
-fn emit_json_field(
+/// 生成把 `expr` 转成 `out`（一个 Json 临时变量）的语句。
+/// `indent` 是当前语句块的缩进宽度；返回 false 表示类型不受支持。
+fn emit_json_value(
     ty: &Type,
-    field: &str,
-    object: &str,
-    index: usize,
+    expr: &str,
+    out: &str,
+    counter: &mut usize,
+    indent: usize,
     body: &mut String,
 ) -> bool {
-    let key = field;
-    if let Some(expr) = json_scalar_expr(ty, &format!("this.{field}")) {
-        body.push_str(&format!(
-            "        {object}.objectValue.set(\"{key}\", {expr});\n"
-        ));
+    let pad = " ".repeat(indent);
+    if let Some(scalar) = json_scalar_expr(ty, expr) {
+        body.push_str(&format!("{pad}{out} = {scalar};\n"));
         return true;
     }
+
     match ty {
         Type::Option(inner) => {
-            let Some(expr) = json_scalar_expr(inner, &format!("this.{field}.unwrap()")) else {
+            body.push_str(&format!("{pad}if ({expr}.is_some()) {{\n"));
+            if !emit_json_value(
+                inner,
+                &format!("{expr}.unwrap()"),
+                out,
+                counter,
+                indent + 4,
+                body,
+            ) {
                 return false;
-            };
-            body.push_str(&format!("        if (this.{field}.is_some()) {{\n"));
-            body.push_str(&format!(
-                "            {object}.objectValue.set(\"{key}\", {expr});\n"
-            ));
-            body.push_str("        } else {\n");
-            body.push_str(&format!(
-                "            {object}.objectValue.set(\"{key}\", Json::Null());\n"
-            ));
-            body.push_str("        }\n");
+            }
+            body.push_str(&format!("{pad}}} else {{\n"));
+            body.push_str(&format!("{pad}    {out} = Json::Null();\n"));
+            body.push_str(&format!("{pad}}}\n"));
             true
         }
         Type::Array(inner) => {
-            let Some(element) = json_scalar_expr(inner, &format!("this.{field}[__mylis_i_{index}]"))
-            else {
+            let idx = fresh_name("i", counter);
+            let elem = fresh_name("v", counter);
+            body.push_str(&format!("{pad}{out}.kind = 5;\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
+            body.push_str(&format!(
+                "{pad}while ({idx} < ({expr}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "{pad}    Json {elem} = Json::Null();\n"
+            ));
+            if !emit_json_value(
+                inner,
+                &format!("{expr}[{idx}]"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            ) {
                 return false;
-            };
+            }
             body.push_str(&format!(
-                "        Json __mylis_j_{index} = Json::Null();\n"
+                "{pad}    {out}.arrayValue.push({elem});\n"
             ));
-            body.push_str(&format!("        __mylis_j_{index}.kind = 5;\n"));
-            body.push_str(&format!("        i64 __mylis_i_{index} = 0;\n"));
-            body.push_str(&format!(
-                "        while (__mylis_i_{index} < (this.{field}.len() as i64)) {{\n"
-            ));
-            body.push_str(&format!(
-                "            __mylis_j_{index}.arrayValue.push({element});\n"
-            ));
-            body.push_str(&format!(
-                "            __mylis_i_{index} = __mylis_i_{index} + 1;\n"
-            ));
-            body.push_str("        }\n");
-            body.push_str(&format!(
-                "        {object}.objectValue.set(\"{key}\", __mylis_j_{index});\n"
-            ));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
             true
         }
         Type::Generic(name, args)
             if name.rsplit("::").next() == Some("Vec") && args.len() == 1 =>
         {
-            let Some(element) =
-                json_scalar_expr(&args[0], &format!("this.{field}.get(__mylis_i_{index})"))
-            else {
+            let idx = fresh_name("i", counter);
+            let elem = fresh_name("v", counter);
+            body.push_str(&format!("{pad}{out}.kind = 5;\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
+            body.push_str(&format!(
+                "{pad}while ({idx} < ({expr}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "{pad}    Json {elem} = Json::Null();\n"
+            ));
+            if !emit_json_value(
+                &args[0],
+                &format!("{expr}.get({idx})"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            ) {
                 return false;
-            };
+            }
             body.push_str(&format!(
-                "        Json __mylis_j_{index} = Json::Null();\n"
+                "{pad}    {out}.arrayValue.push({elem});\n"
             ));
-            body.push_str(&format!("        __mylis_j_{index}.kind = 5;\n"));
-            body.push_str(&format!("        i64 __mylis_i_{index} = 0;\n"));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
+            true
+        }
+        Type::Generic(name, args)
+            if name.rsplit("::").next() == Some("Map") && args.len() == 2 =>
+        {
+            if !is_string_type(&args[0]) {
+                return false;
+            }
+            let idx = fresh_name("i", counter);
+            let key = fresh_name("k", counter);
+            let elem = fresh_name("v", counter);
+            body.push_str(&format!("{pad}{out}.kind = 6;\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
             body.push_str(&format!(
-                "        while (__mylis_i_{index} < (this.{field}.len() as i64)) {{\n"
+                "{pad}while ({idx} < {expr}.count) {{\n"
             ));
             body.push_str(&format!(
-                "            __mylis_j_{index}.arrayValue.push({element});\n"
+                "{pad}    string {key} = {expr}.keys[{idx}];\n"
             ));
             body.push_str(&format!(
-                "            __mylis_i_{index} = __mylis_i_{index} + 1;\n"
+                "{pad}    Json {elem} = Json::Null();\n"
             ));
-            body.push_str("        }\n");
+            if !emit_json_value(
+                &args[1],
+                &format!("{expr}.values[{idx}]"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            ) {
+                return false;
+            }
             body.push_str(&format!(
-                "        {object}.objectValue.set(\"{key}\", __mylis_j_{index});\n"
+                "{pad}    {out}.objectValue.set({key}, {elem});\n"
             ));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
             true
         }
         _ => false,
