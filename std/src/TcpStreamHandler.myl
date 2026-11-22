@@ -1,0 +1,9 @@
+// EventLoop 的 TCP 连接回调：只处理 onReadable / onWritable / onError。
+import { TcpStream } from "TcpStream.myl";
+import { IoError } from "IoError.myl";
+
+pub interface TcpStreamHandler {
+    fn onReadable(TcpStream stream) -> void;
+    fn onWritable(TcpStream stream) -> void;
+    fn onError(TcpStream stream, IoError error) -> void;
+}

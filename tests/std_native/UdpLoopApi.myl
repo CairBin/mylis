@@ -1,36 +1,17 @@
 import { EventLoop } from "EventLoop.myl";
-import { IoHandler } from "IoHandler.myl";
-import { TcpListener } from "TcpListener.myl";
-import { TcpStream } from "TcpStream.myl";
+import { UdpHandler } from "UdpHandler.myl";
 import { UdpSocket } from "UdpSocket.myl";
 import { UdpPacket } from "UdpPacket.myl";
 import { IoError } from "IoError.myl";
-import { println, println_i64, println_bool } from "Io.myl";
+import { println_i64, println_bool } from "Io.myl";
 import { Str } from "core/Str";
 import { fmt_i64 } from "core/Fmt";
 
-class UdpHandler {
+class UdpReadHandler {
     EventLoop loop;
 
     pub fn init(EventLoop l) -> void {
         this.loop = l;
-    }
-
-    pub fn onAccept(TcpListener listener) -> void {
-    }
-
-    pub fn onReadable(TcpStream stream) -> void {
-    }
-
-    pub fn onWritable(TcpStream stream) -> void {
-    }
-
-    pub fn onError(TcpStream stream, IoError error) -> void {
-        this.loop.stop();
-    }
-
-    pub fn onListenerError(TcpListener listener, IoError error) -> void {
-        this.loop.stop();
     }
 
     pub fn onUdpReadable(UdpSocket socket) -> void {
@@ -43,6 +24,11 @@ class UdpHandler {
             }
             Err(e) => { println_i64(e.code as i64); }
         }
+        this.loop.stop();
+    }
+
+    pub fn onUdpError(UdpSocket socket, IoError error) -> void {
+        println_i64(error.code as i64);
         this.loop.stop();
     }
 }
@@ -62,8 +48,8 @@ fn main() -> i32 {
                     b.sendText(addrA, "ping");
 
                     EventLoop loop = new EventLoop();
-                    UdpHandler handler = new UdpHandler(loop);
-                    IoHandler ih = handler;
+                    UdpReadHandler handler = new UdpReadHandler(loop);
+                    UdpHandler ih = handler;
                     loop.addUdp(a, ih);
                     loop.run();
                     loop.removeUdp(a);

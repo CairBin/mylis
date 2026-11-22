@@ -1,0 +1,8 @@
+// EventLoop 的 UDP 回调：只处理读就绪与 socket 错误。
+import { UdpSocket } from "UdpSocket.myl";
+import { IoError } from "IoError.myl";
+
+pub interface UdpHandler {
+    fn onUdpReadable(UdpSocket socket) -> void;
+    fn onUdpError(UdpSocket socket, IoError error) -> void;
+}

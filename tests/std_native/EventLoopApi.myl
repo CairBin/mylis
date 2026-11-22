@@ -1,30 +1,18 @@
 import { EventLoop } from "EventLoop.myl";
-import { IoHandler } from "IoHandler.myl";
+import { TcpListenerHandler } from "TcpListenerHandler.myl";
+import { TcpStreamHandler } from "TcpStreamHandler.myl";
 import { TcpListener } from "TcpListener.myl";
 import { TcpStream } from "TcpStream.myl";
-import { UdpSocket } from "UdpSocket.myl";
 import { IoError } from "IoError.myl";
 import { println, println_i64, println_bool } from "Io.myl";
 import { Str } from "core/Str";
 import { fmt_i64 } from "core/Fmt";
 
-class EchoHandler {
+class EchoStreamHandler {
     EventLoop loop;
 
     pub fn init(EventLoop l) -> void {
         this.loop = l;
-    }
-
-    pub fn onAccept(TcpListener listener) -> void {
-        println("accept");
-        Result<TcpStream, IoError> r = listener.accept();
-        match r {
-            Ok(stream) => {
-                IoHandler selfHandler = this;
-                this.loop.add(stream, selfHandler);
-            }
-            Err(e) => { println_i64(e.code as i64); }
-        }
     }
 
     pub fn onReadable(TcpStream stream) -> void {
@@ -55,13 +43,31 @@ class EchoHandler {
         println_i64(error.code as i64);
         this.loop.stop();
     }
+}
+
+class EchoListenerHandler {
+    EventLoop loop;
+
+    pub fn init(EventLoop l) -> void {
+        this.loop = l;
+    }
+
+    pub fn onAccept(TcpListener listener) -> void {
+        println("accept");
+        Result<TcpStream, IoError> r = listener.accept();
+        match r {
+            Ok(stream) => {
+                EchoStreamHandler echo = new EchoStreamHandler(this.loop);
+                TcpStreamHandler handler = echo;
+                this.loop.add(stream, handler);
+            }
+            Err(e) => { println_i64(e.code as i64); }
+        }
+    }
 
     pub fn onListenerError(TcpListener listener, IoError error) -> void {
         println_i64(error.code as i64);
         this.loop.stop();
-    }
-
-    pub fn onUdpReadable(UdpSocket socket) -> void {
     }
 }
 
@@ -80,8 +86,8 @@ fn main() -> i32 {
                 Ok(c) => {
                     c.writeAllText("ping");
                     EventLoop loop = new EventLoop();
-                    EchoHandler echo = new EchoHandler(loop);
-                    IoHandler handler = echo;
+                    EchoListenerHandler echo = new EchoListenerHandler(loop);
+                    TcpListenerHandler handler = echo;
                     loop.addListener(listener, handler);
                     loop.run();
 

@@ -139,25 +139,33 @@ class TcpStream {
 
 - 平台后端负责等待 I/O 就绪，产出事件。
 - `std` 的 `EventLoop.run()` 在 Mylis 主线程消费事件并调用 handler。
-- 已落地：`IoHandler` interface + `EventLoop.add/addListener/addUdp/remove/removeListener/removeUdp/run/stop/close`；
+- 它是一个 hosted 网络事件循环，不是通用事件总线：可注册对象只有 `TcpListener` / `TcpStream` / `UdpSocket`，另外带一个异步 `FileTask` 完成泵；没有定时器、信号、任意 fd 或自定义事件源接口。
+- 已落地：`TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` 三个独立 interface + `EventLoop.add/addListener/addUdp/remove/removeListener/removeUdp/run/stop/close`；
   Linux 用 `epoll`，其他 POSIX 用 `poll` 后备，Windows 用 Winsock `WSAPoll`；Rust 只返回就绪 fd 与 `revents`，不执行 Mylis 回调。
 - Rust 线程不直接调用 Mylis 代码，因此不需要为 Rust 工作线程注册 GC 根。
-- 回调使用 interface，而不是闭包：
+- 回调使用 interface，而不是闭包；注册哪类 socket 就实现对应的 interface，不需要为其他协议补空方法：
 
 ```myl
-interface IoHandler {
+interface TcpListenerHandler {
+    fn onAccept(TcpListener listener) -> void;
+    fn onListenerError(TcpListener listener, IoError error) -> void;
+}
+
+interface TcpStreamHandler {
     fn onReadable(TcpStream stream) -> void;
     fn onWritable(TcpStream stream) -> void;
-    fn onAccept(TcpListener listener) -> void;
     fn onError(TcpStream stream, IoError error) -> void;
-    fn onListenerError(TcpListener listener, IoError error) -> void;
+}
+
+interface UdpHandler {
     fn onUdpReadable(UdpSocket socket) -> void;
+    fn onUdpError(UdpSocket socket, IoError error) -> void;
 }
 
 class EventLoop {
-    pub fn add(TcpStream stream, IoHandler handler) -> void;
-    pub fn addListener(TcpListener listener, IoHandler handler) -> void;
-    pub fn addUdp(UdpSocket socket, IoHandler handler) -> void;
+    pub fn add(TcpStream stream, TcpStreamHandler handler) -> void;
+    pub fn addListener(TcpListener listener, TcpListenerHandler handler) -> void;
+    pub fn addUdp(UdpSocket socket, UdpHandler handler) -> void;
     pub fn remove(TcpStream stream) -> void;
     pub fn removeListener(TcpListener listener) -> void;
     pub fn removeUdp(UdpSocket socket) -> void;
@@ -176,7 +184,7 @@ class EventLoop {
 - Rust 侧只使用标准库和系统 API，不引入 `mio` / Tokio 等第三方运行时。
 - 所有后端只产出事件，不执行 Mylis 回调。
 - 默认只注册读就绪；显式 `EventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
-- `onError` 分发流错误；`onListenerError` 分发监听器错误；`onUdpReadable` 分发 UDP 读就绪。
+- `onError` 分发 TCP 流错误；`onListenerError` 分发监听器错误；`onUdpReadable` 分发 UDP 读就绪；`onUdpError` 分发 UDP socket 错误。
 
 ### 4.3 文件异步（当前最小实现）
 
