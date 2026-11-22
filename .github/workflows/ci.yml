@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7m-none-eabi
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm make python3 qemu-system-arm
+      - name: Full test
+        run: make ci
+
+  windows-msvc:
+    name: Windows MSVC x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install GNU Make and LLVM
+        run: choco install make llvm -y --no-progress
+      - name: Add LLVM to PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\LLVM\bin"
+      - name: Full test
+        run: make ci
+
+  windows-mingw:
+    name: Windows MinGW x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-clang
+      - name: Add MinGW and MSYS2 to PATH
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
+      - name: Full test
+        run: make TOOLCHAIN_FAMILY=mingw ci
+
+  release-mingw:
+    name: Windows MinGW release check
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-clang
+      - name: Add MinGW and MSYS2 to PATH
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
+      - name: Build, package and verify
+        run: make TOOLCHAIN_FAMILY=mingw release-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mylis-win64-mingw
+          path: dist/mylis-*-win64-mingw.zip
+          if-no-files-found: error

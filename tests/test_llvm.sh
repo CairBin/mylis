@@ -5,6 +5,8 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MYLC=${MYLC:-$ROOT/build/mylc}
 cd "$ROOT"
+: "${MYLIS_PATH:=$ROOT:$ROOT/std/src}"
+export MYLIS_PATH
 
 CC=""
 for c in clang-20 clang-19 clang-18 clang-17 clang-16 clang-15 clang; do

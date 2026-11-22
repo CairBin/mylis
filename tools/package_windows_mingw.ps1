@@ -1,4 +1,4 @@
-# 生成 dist/mylis-<ver>-win64-mingw.zip（Windows + MinGW GCC / Rust windows-gnu）
+﻿# 生成 dist/mylis-<ver>-win64-mingw.zip（Windows + MinGW GCC / Rust windows-gnu）
 # 前置：make TOOLCHAIN_FAMILY=mingw all 已生成 bin/。
 # 默认会检查 bin/；缺失或不是 MinGW 布局时自动构建。
 param(

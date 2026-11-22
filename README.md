@@ -539,14 +539,14 @@ MinGW：
 
 ```bat
 make TOOLCHAIN_FAMILY=mingw test-win
-:: 或分别跑
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend mir
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend ast
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend llvm
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend std
+:: 或分别跑（批处理版，每批独立 PowerShell 进程）
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend mir -BatchSize 8
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend ast -BatchSize 8
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend llvm -BatchSize 4
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend std
 ```
 
-MinGW 的 PowerShell 回归不依赖 Git Bash/MSYS，避开 Cygwin fork 在大仓库测试中的随机崩溃；正向用例逐个编译、运行并比对 `.expected`，反向用例检查错误码。`-Backend llvm` 会使用 default LLVM 路径（clang 编 IR、gcc 链接），速度明显更慢，可按需单独跑。`-Backend std` 用 `--std --backend mir` 跑 Windows 的五个原生侧车冒烟：`WindowsStdApi`、`FileApi`、`TcpApi`、`UdpApi`、`EventLoopApi`。
+MinGW 的 PowerShell 回归不依赖 Git Bash/MSYS，避开 Cygwin fork 在大仓库测试中的随机崩溃；正向用例逐个编译、运行并比对 `.expected`，反向用例检查错误码。`run_tests_windows_batch.ps1` 按 `-BatchSize` 切分用例，每批启动独立 `pwsh.exe`/`powershell.exe`，子进程未输出汇总时自动减半重试，适合 8GB 内存宿主跑 AST 全量。`-Backend llvm` 会使用 default LLVM 路径（clang 编 IR、gcc 链接），速度明显更慢，可按需单独跑。`-Backend std` 用 `--std --backend mir` 跑 Windows 的五个原生侧车冒烟：`WindowsStdApi`、`FileApi`、`TcpApi`、`UdpApi`、`EventLoopApi`。需要单批调试时仍可直接调 `run_tests_windows.ps1 -Start/-Count`。
 
 MSVC 的 `tools/test_windows.ps1` 会：
 
@@ -619,6 +619,8 @@ ar = "lib.exe"
 
 ```bash
 make test        # 正向/反向 129 项 + 后端对拍 81 项 + std native/库模式/工具链/MIR/[native] include/LSP/裸机验收
+make ci          # 本地 CI：Linux/macOS 跑完整 make test；Windows 按 TOOLCHAIN_FAMILY 跑 MSVC 套件或 MinGW 批处理
+make TOOLCHAIN_FAMILY=mingw release-check  # Windows：dist + 包结构/清单/哈希检查 + Arith/WindowsStdApi 冒烟
 bash tests/run_package_tests.sh  # 嵌套模块、std 包依赖（含复制到项目 lib/）、导入可见性、原生载荷 LLVM 声明/真实链接、mixed native/MIR、泛型 .mylib（需 clang 15+）
 bash tools/check_std.sh         # std 包自洽检查
 bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Process/Worker，MIR/AST/LLVM 声明
@@ -626,13 +628,15 @@ MYLIS_BACKEND=ast bash tests/run_tests.sh  # 同一套正向/反向用例跑 AST
 mylc test        # 只跑 tests/ 下的 .expected 比对
 ```
 
-```
+`.github/workflows/ci.yml` 提供 Linux x86_64、Windows MSVC x64、Windows MinGW x64 三条构建矩阵；tag 构建额外跑 `release-check` 并上传 MinGW zip。
+
+```text
 mylc/src/       编译器（main/cli/driver/i18n/toolchain/lexer/ast/parser/program/derive/sema/codegen/lsp/diag）
 myrt/           C ABI 头文件（mylrt.h / mylrt_gc.h）
 mylrt-rs/       Rust 运行时（Runtime / Gc trait + 实现）
 core/, std/     core 层与独立 std 包；std-posix/native、std-win32/native 放 Rust/C ABI native 后端
 tests/          positive / negative / lib / emit / test_lsp.py
-tools/          bootstrap_gc.sh、build_std_native.{sh,ps1}、package_windows.{sh,ps1}、test_windows.ps1、write_manifest.{sh,ps1} 等构建/打包/测试脚本
+tools/          bootstrap_gc.sh、build_std_native.{sh,ps1}、package_windows.{sh,ps1}、package_windows_mingw.ps1、check_release_windows.ps1、test_windows.ps1、write_manifest.{sh,ps1} 等构建/打包/测试脚本
 docs/           Mylis 语言规范
 ```
 

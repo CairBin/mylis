@@ -189,7 +189,7 @@ ifeq ($(OS),Windows_NT)
   endif
 endif
 
-.PHONY: all bin mylc myls myrt test test-win bootstrap clean dist check-toolchain check-rt std-native std-native-win FORCE
+.PHONY: all bin mylc myls myrt test test-win ci release-check bootstrap clean dist check-toolchain check-rt std-native std-native-win FORCE
 
 all: check-toolchain bin
 
@@ -438,17 +438,36 @@ test: all
 bootstrap:
 	bash tools/bootstrap_gc.sh
 
-test-win:
+test-win: all
 ifeq ($(OS),Windows_NT)
   ifeq ($(TOOLCHAIN_FAMILY),mingw)
-	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend mir
-	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend ast
-	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend std
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend mir -BatchSize 8
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend ast -BatchSize 8
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend std
   else
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/test_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
   endif
 else
 	@echo "test-win 需要在 Windows 上执行：MSVC 用 tools/test_windows.ps1；MinGW 用 tests/run_tests_windows.ps1"
+endif
+
+# 本地 CI 入口：Linux/macOS 跑完整 make test；Windows 按构建族跑 test-win。
+ci:
+ifeq ($(OS),Windows_NT)
+	$(MAKE) test-win
+else
+	$(MAKE) test
+endif
+
+release-check: dist
+ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/check_release_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
+  else
+	@echo "MSVC 发布检查暂未实现；先运行 tools/package_windows.ps1 并人工验证 win64.zip"
+  endif
+else
+	@echo "release-check 需要在 Windows 上执行（MinGW 用 tools/check_release_windows.ps1）"
 endif
 
 dist: bin
