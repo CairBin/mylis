@@ -1292,7 +1292,7 @@ MIR 生成    → AST → 函数级 CFG（SSA 值 + 局部槽 + 显式终结指�
 
 ```bash
 make test
-# 正向/反向合计 128 项；MIR-C/AST-C 对拍 80 项
+# 正向/反向合计 129 项；MIR-C/AST-C 对拍 81 项
 # 另含 std native、库模式、工具链、MIR、LSP 与裸机验收
 ```
 
@@ -1610,7 +1610,7 @@ static void myl_init_statics(void) {
 - `tests/positive/{Arrays,Interp,Match,Registry}.myl`：四特性正向用例；
 - `tests/negative/{M014_interp_tostring,M015_match_exhaustive,M016_static_instance,M017_array_eq}.myl`：
   反向用例，命中 `MYL102`；
-- `bash tests/run_tests.sh` 共 **128 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
+- `bash tests/run_tests.sh` 共 **129 组**（正向/反向），全绿；默认 LLVM 后端另有 `tests/test_llvm.sh` 34 项（含泛型/泛型接收者）。
 
 ### 17.7 编译期派生 `@derive(ToString)` / `@derive(Json)`
 
@@ -1641,11 +1641,12 @@ pub fn toString() -> string {
 
 - 生成发生在编译期，运行时不保留字段名、偏移或类型表，也不存在按名字查字段的 API；
 - 除检查已有 `toString` / `to_string` 冲突外，只对**字段列表**做拼接，不读取方法体、其他注解或继承信息；
-- 字段类型必须能格式化：数值 / bool / string / class / enum / 数组直接走字符串插值规则；`Option<T>` 生成 `Some(<T>)` / `None` 分支；`Vec<T>` 生成逐元素拼接的 `[...]`；
+- 字段类型必须能格式化：数值 / bool / string / class / enum 走字符串插值规则；`Option<T>` 生成 `Some(<T>)` / `None`；数组 `T[]` 与 `Vec<T>` 生成逐元素拼接的 `[...]`；`Map<K, T>` 生成 `{key: value}`；
+- `Option` / 数组 / `Vec` / `Map` 会递归展开，因此 `Option<Option<T>>`、`Option<Vec<T>>`、`Vec<Option<T>>`、`Map<string, Vec<T>>`、`Option<Map<string, T>>` 等任意层嵌套都支持；Map 键按 ToString 规则输出（string 键不加引号）；
 - class / enum 字段保留原始类型直接调用其 `toString` / `to_string`，不会在格式化时改写字段访问的语义；
 - 类已有 `toString` 或 `to_string` 时报 `MYL102`，不会覆盖手写方法；
 - 当前版本不支持泛型 class（`class Box<T>`）：字段类型 `T` 的字符串化链路尚未打通，`@derive(ToString)` 会直接报 `MYL102`；
-- 当前只展开一层 `Option` / `Vec` 容器；`Option<Option<T>>`、`Vec<Option<T>>`、`Option<Vec<T>>` 等嵌套容器暂不支持，`Result` 字段也暂不支持；
+- `Result` 字段暂不支持；Map 字段的声明仍需 `import { Map } from "Map.myl";`；
 - 未知派生（如 `@derive(Yaml)`）、把 `@derive(ToString)` 用在 enum / interface / 函数上报 `MYL102`；
 - 同一 class 可写多个 `@derive(...)`，当前支持 `ToString` 与 `Json`，其余派生名全部报未实现。
 
@@ -1701,7 +1702,7 @@ class Point {
 
 这不是通用的 `#[derive]` 宏系统：编译器不执行用户代码，也不提供字段枚举 / 属性读取 API；新增派生能力必须在编译器内实现。
 
-测试覆盖：`tests/positive/DeriveToString.myl`（primitive / string / bool / 嵌套 class / class 数组字段）、`tests/positive/DeriveToStringContainers.myl`（`Option<Point>` / `Vec<Point>` / `Option<i64>` / `Vec<i64>` / 空 class）、`tests/positive/DeriveJson.myl`（嵌套 class / `Option` / `Vec` / 数组 / `Map<string, T>` / 多层容器 / 空对象）与 `tests/negative/{M039_derive_unknown,M040_derive_non_class,M041_derive_conflict,M042_derive_generic,M043_derive_json_conflict,M044_derive_json_non_class,M045_derive_json_generic,M046_derive_json_result,M047_derive_json_map_key}.myl`（均命中 `MYL102`）。
+测试覆盖：`tests/positive/DeriveToString.myl`（primitive / string / bool / 嵌套 class / class 数组字段）、`tests/positive/DeriveToStringContainers.myl`（`Option<Point>` / `Vec<Point>` / `Option<i64>` / `Vec<i64>` / 空 class）、`tests/positive/DeriveToStringNested.myl`（`Option<Vec<T>>` / `Vec<Option<T>>` / `Option<Option<T>>` / `Vec<Vec<T>>` / 数组 / `Map<string, T>` / `Map<i64, string>` / `Option<Map<string, T>>`）、`tests/positive/DeriveJson.myl`（嵌套 class / `Option` / `Vec` / 数组 / `Map<string, T>` / 多层容器 / 空对象）与 `tests/negative/{M039_derive_unknown,M040_derive_non_class,M041_derive_conflict,M042_derive_generic,M043_derive_json_conflict,M044_derive_json_non_class,M045_derive_json_generic,M046_derive_json_result,M047_derive_json_map_key}.myl`（均命中 `MYL102`）。
 
 ---
 
@@ -2170,3 +2171,5 @@ import { Io } from "std/Io";
 （`@export` / `@header` / `@deprecated` / `@inline`），外加一个受限的内置派生 `@derive(ToString)`
 （编译器读取 class 实例字段并生成方法，见 §17.7）；没有通用宏系统，也没有运行时反射。
 理由是同一条：**拒绝“代码形态取决于第三方宏或构建配置”的隐式行为**，派生能力由语言实现内置、可审计。
+
+

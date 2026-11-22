@@ -1,0 +1,1 @@
+Nested { some_points: Some([Point { x: 8 }]), maybe_points: [Some(Point { x: 9 }), None], deep: Some(Some(10)), matrix: [[1, 2], [3]], array: [4, 5, 6], named: {a: Point { x: 11 }, b: Point { x: 12 }}, by_number: {7: seven, 8: eight}, groups: {left: [13, 14], right: [15]}, optional_map: Some({k: 16}) }

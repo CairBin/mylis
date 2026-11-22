@@ -2,8 +2,8 @@
 //!
 //! 当前实现 `@derive(ToString)` 与 `@derive(Json)`：编译器读取 class 的实例字段，
 //! 在编译期生成 `pub fn toString() -> string` / `pub fn toJson() -> Json`，
-//! 不保留任何运行时类型表。primitive / string / class / 数组字段使用字符串插值；
-//! `Option<T>` 生成 Some/None 分支，`Vec<T>` 生成逐元素拼接，均不依赖运行时反射。
+//! 不保留任何运行时类型表。primitive / string / class / enum 走格式化规则；
+//! `Option<T>`、数组、`Vec<T>`、`Map<K, T>` 递归展开，不依赖运行时反射。
 
 use crate::ast::{AnnotArg, Decl, DeclKind, Type};
 use crate::diag::{Diag, E_GENERAL};
@@ -76,6 +76,7 @@ fn derive_to_string(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut D
 
     let fields: Vec<&crate::ast::Field> = d.fields.iter().filter(|f| !f.is_static).collect();
     let mut body = format!("        string __mylis_s = \"{} {{{{\";\n", d.name);
+    let mut counter = 0usize;
     for (i, f) in fields.iter().enumerate() {
         if i == 0 {
             body.push_str("        __mylis_s = __mylis_s + \" \";\n");
@@ -86,51 +87,19 @@ fn derive_to_string(d: &mut Decl, path: &str, line: u32, col: u32, diags: &mut D
             "        __mylis_s = __mylis_s + \"{}: \";\n",
             f.name
         ));
-        match &f.ty {
-            Type::Option(_) => {
-                body.push_str(&format!(
-                    "        if (this.{}.is_some()) {{\n",
-                    f.name
-                ));
-                body.push_str(&format!(
-                    "            __mylis_s = __mylis_s + \"Some({{this.{}.unwrap()}})\";\n",
-                    f.name
-                ));
-                body.push_str("        } else {\n");
-                body.push_str("            __mylis_s = __mylis_s + \"None\";\n");
-                body.push_str("        }\n");
-            }
-            Type::Generic(name, _) if name.rsplit("::").next() == Some("Vec") => {
-                body.push_str("        __mylis_s = __mylis_s + \"[\";\n");
-                body.push_str(&format!("        i64 __mylis_i_{} = 0;\n", i));
-                body.push_str(&format!(
-                    "        while (__mylis_i_{i} < this.{}.len()) {{\n",
-                    f.name,
-                    i = i
-                ));
-                body.push_str(&format!(
-                    "            if (__mylis_i_{i} > 0) {{ __mylis_s = __mylis_s + \", \"; }}\n",
-                    i = i
-                ));
-                body.push_str(&format!(
-                    "            __mylis_s = __mylis_s + \"{{this.{}.get(__mylis_i_{i})}}\";\n",
-                    f.name,
-                    i = i
-                ));
-                body.push_str(&format!(
-                    "            __mylis_i_{i} = __mylis_i_{i} + 1;\n",
-                    i = i
-                ));
-                body.push_str("        }\n");
-                body.push_str("        __mylis_s = __mylis_s + \"]\";\n");
-            }
-            _ => {
-                body.push_str(&format!(
-                    "        __mylis_s = __mylis_s + \"{{this.{}}}\";\n",
-                    f.name
-                ));
-            }
-        }
+        let value = fresh_name("s", &mut counter);
+        body.push_str(&format!("        string {value} = \"\";\n"));
+        emit_string_value(
+            &f.ty,
+            &format!("this.{}", f.name),
+            &value,
+            &mut counter,
+            8,
+            &mut body,
+        );
+        body.push_str(&format!(
+            "        __mylis_s = __mylis_s + {value};\n"
+        ));
     }
     body.push_str("        __mylis_s = __mylis_s + \" }\";\n");
     body.push_str("        return __mylis_s;\n");
@@ -171,6 +140,137 @@ fn parse_generated_method(
         m.col = col;
     }
     method
+}
+
+/// 生成把 `expr` 转成字符串、写入 `out` 的语句。
+/// `Option`/数组/`Vec`/`Map` 递归展开，其余类型交给字符串插值。
+fn emit_string_value(
+    ty: &Type,
+    expr: &str,
+    out: &str,
+    counter: &mut usize,
+    indent: usize,
+    body: &mut String,
+) {
+    let pad = " ".repeat(indent);
+    match ty {
+        Type::Option(inner) => {
+            body.push_str(&format!("{pad}if ({expr}.is_some()) {{\n"));
+            body.push_str(&format!("{pad}    {out} = \"Some(\";\n"));
+            let value = fresh_name("s", counter);
+            body.push_str(&format!("{pad}    string {value} = \"\";\n"));
+            emit_string_value(
+                inner,
+                &format!("{expr}.unwrap()"),
+                &value,
+                counter,
+                indent + 4,
+                body,
+            );
+            body.push_str(&format!(
+                "{pad}    {out} = {out} + {value} + \")\";\n"
+            ));
+            body.push_str(&format!("{pad}}} else {{\n"));
+            body.push_str(&format!("{pad}    {out} = \"None\";\n"));
+            body.push_str(&format!("{pad}}}\n"));
+        }
+        Type::Array(inner) => {
+            let idx = fresh_name("i", counter);
+            let elem = fresh_name("s", counter);
+            body.push_str(&format!("{pad}{out} = \"[\";\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
+            body.push_str(&format!(
+                "{pad}while ({idx} < ({expr}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "{pad}    if ({idx} > 0) {{ {out} = {out} + \", \"; }}\n"
+            ));
+            body.push_str(&format!("{pad}    string {elem} = \"\";\n"));
+            emit_string_value(
+                inner,
+                &format!("{expr}[{idx}]"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            );
+            body.push_str(&format!("{pad}    {out} = {out} + {elem};\n"));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
+            body.push_str(&format!("{pad}{out} = {out} + \"]\";\n"));
+        }
+        Type::Generic(name, args)
+            if name.rsplit("::").next() == Some("Vec") && args.len() == 1 =>
+        {
+            let idx = fresh_name("i", counter);
+            let elem = fresh_name("s", counter);
+            body.push_str(&format!("{pad}{out} = \"[\";\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
+            body.push_str(&format!(
+                "{pad}while ({idx} < ({expr}.len() as i64)) {{\n"
+            ));
+            body.push_str(&format!(
+                "{pad}    if ({idx} > 0) {{ {out} = {out} + \", \"; }}\n"
+            ));
+            body.push_str(&format!("{pad}    string {elem} = \"\";\n"));
+            emit_string_value(
+                &args[0],
+                &format!("{expr}.get({idx})"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            );
+            body.push_str(&format!("{pad}    {out} = {out} + {elem};\n"));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
+            body.push_str(&format!("{pad}{out} = {out} + \"]\";\n"));
+        }
+        Type::Generic(name, args)
+            if name.rsplit("::").next() == Some("Map") && args.len() == 2 =>
+        {
+            let idx = fresh_name("i", counter);
+            let key = fresh_name("s", counter);
+            let elem = fresh_name("s", counter);
+            body.push_str(&format!("{pad}{out} = \"{{{{\";\n"));
+            body.push_str(&format!("{pad}i64 {idx} = 0;\n"));
+            body.push_str(&format!(
+                "{pad}while ({idx} < {expr}.count) {{\n"
+            ));
+            body.push_str(&format!(
+                "{pad}    if ({idx} > 0) {{ {out} = {out} + \", \"; }}\n"
+            ));
+            body.push_str(&format!("{pad}    string {key} = \"\";\n"));
+            emit_string_value(
+                &args[0],
+                &format!("{expr}.keys[{idx}]"),
+                &key,
+                counter,
+                indent + 4,
+                body,
+            );
+            body.push_str(&format!(
+                "{pad}    {out} = {out} + {key} + \": \";\n"
+            ));
+            body.push_str(&format!("{pad}    string {elem} = \"\";\n"));
+            emit_string_value(
+                &args[1],
+                &format!("{expr}.values[{idx}]"),
+                &elem,
+                counter,
+                indent + 4,
+                body,
+            );
+            body.push_str(&format!("{pad}    {out} = {out} + {elem};\n"));
+            body.push_str(&format!("{pad}    {idx} = {idx} + 1;\n"));
+            body.push_str(&format!("{pad}}}\n"));
+            body.push_str(&format!("{pad}{out} = {out} + \"}}\";\n"));
+        }
+        _ => {
+            // 标量、class、enum 等保留字符串插值的原有语义。
+            body.push_str(&format!("{pad}{out} = \"{{{expr}}}\";\n"));
+        }
+    }
 }
 
 /// 生成 `toJson`：对象字段顺序与 class 声明顺序一致，值通过 `std/Json` 构造。

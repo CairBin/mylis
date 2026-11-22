@@ -583,7 +583,7 @@ ar = "lib.exe"
 ## 10. 测试与目录
 
 ```bash
-make test        # 正向/反向 128 项 + 后端对拍 80 项 + std native/库模式/工具链/MIR/[native] include/LSP/裸机验收
+make test        # 正向/反向 129 项 + 后端对拍 81 项 + std native/库模式/工具链/MIR/[native] include/LSP/裸机验收
 bash tests/run_package_tests.sh  # 嵌套模块、std 包依赖（含复制到项目 lib/）、导入可见性、原生载荷 LLVM 声明/真实链接、mixed native/MIR、泛型 .mylib（需 clang 15+）
 bash tools/check_std.sh         # std 包自洽检查
 bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Process/Worker，MIR/AST/LLVM 声明
@@ -604,3 +604,5 @@ docs/           Mylis 语言规范
 ### 明确不做
 
 `Vec<T>` 由标准库以泛型类提供，覆盖泛型类/函数/方法/接口/枚举，并支持接口 bound（`T: Show`）与简单类型实参推断；泛型模板源码（含函数/方法体）和原模块 `import` 可随 `.mylib` 导出，消费端据此实例化；库内已产生的具体实例同时进入 MIR 段；设计见 [`docs/泛型设计.md`](docs/泛型设计.md)。通用宏、运行时反射、通用的 `#[derive]` 式代码生成、继承、隐式类型转换、`let` 语法不做；仅内置 `@derive(ToString)` 与 `@derive(Json)` 编译期派生（读取 class 实例字段生成 `toString` / `toJson`，不保留运行时类型表），见语言规范 §17.7。包管理只覆盖本地 path / Git / 本地与 HTTP `.mylib` / 本地 registry，不做远程 registry 与 workspace 子包。
+
+

@@ -1,0 +1,89 @@
+import { println } from "Io.myl";
+import { Vec } from "Vec.myl";
+import { Map } from "Map.myl";
+
+@derive(ToString)
+class Point {
+    pub i64 x;
+
+    pub fn init(i64 x) {
+        this.x = x;
+    }
+}
+
+@derive(ToString)
+class Nested {
+    pub Option<Vec<Point>> some_points;
+    pub Vec<Option<Point>> maybe_points;
+    pub Option<Option<i64>> deep;
+    pub Vec<Vec<i64>> matrix;
+    pub i64[] array;
+    pub Map<string, Point> named;
+    pub Map<i64, string> by_number;
+    pub Map<string, Vec<i64>> groups;
+    pub Option<Map<string, i64>> optional_map;
+
+    pub fn init() {
+        this.some_points = None;
+        this.maybe_points = new Vec<Option<Point>>();
+        this.deep = None;
+        this.matrix = new Vec<Vec<i64>>();
+        this.array = [0, 0];
+        this.named = new Map<string, Point>();
+        this.by_number = new Map<i64, string>();
+        this.groups = new Map<string, Vec<i64>>();
+        this.optional_map = None;
+    }
+}
+
+fn main() -> i32 {
+    Vec<Point> some_points = new Vec<Point>();
+    some_points.push(new Point(8));
+
+    Vec<Option<Point>> maybe_points = new Vec<Option<Point>>();
+    maybe_points.push(Some(new Point(9)));
+    maybe_points.push(None);
+
+    Vec<i64> row1 = new Vec<i64>();
+    row1.push(1);
+    row1.push(2);
+    Vec<i64> row2 = new Vec<i64>();
+    row2.push(3);
+    Vec<Vec<i64>> matrix = new Vec<Vec<i64>>();
+    matrix.push(row1);
+    matrix.push(row2);
+
+    Map<string, Point> named = new Map<string, Point>();
+    named.set("a", new Point(11));
+    named.set("b", new Point(12));
+
+    Map<i64, string> by_number = new Map<i64, string>();
+    by_number.set(7, "seven");
+    by_number.set(8, "eight");
+
+    Vec<i64> left = new Vec<i64>();
+    left.push(13);
+    left.push(14);
+    Vec<i64> right = new Vec<i64>();
+    right.push(15);
+    Map<string, Vec<i64>> groups = new Map<string, Vec<i64>>();
+    groups.set("left", left);
+    groups.set("right", right);
+
+    Map<string, i64> optional_map = new Map<string, i64>();
+    optional_map.set("k", 16);
+
+    Nested nested = new Nested();
+    nested.some_points = Some(some_points);
+    nested.maybe_points = maybe_points;
+    nested.deep = Some(Some(10));
+    nested.matrix = matrix;
+    nested.array = [4, 5, 6];
+    nested.named = named;
+    nested.by_number = by_number;
+    nested.groups = groups;
+    nested.optional_map = Some(optional_map);
+
+    println("{nested}");
+    return 0;
+}
