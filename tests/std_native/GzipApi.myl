@@ -1,4 +1,5 @@
 import { Gzip } from "Gzip.myl";
+import { ByteBuilder } from "ByteBuilder.myl";
 import { Str } from "core/Str";
 import { IoError } from "IoError.myl";
 import { println, println_bool, println_i64 } from "Io.myl";
@@ -23,6 +24,29 @@ fn main() -> i32 {
     match Gzip::DecompressText(empty) {
         Ok(emptyText) => { println_i64(Str::ByteLen(emptyText) as i64); }
         Err(_) => { println_i64(-1); }
+    }
+
+    string repeated = "";
+    i32 repeatIndex = 0;
+    while (repeatIndex < 2000) {
+        repeated = repeated + "abcd";
+        repeatIndex = repeatIndex + 1;
+    }
+    u8[] dynamicPacked = Gzip::Compress(repeated);
+    i32 blockType = ((dynamicPacked[10] as i32) >> 1) & 3;
+    println_i64(blockType as i64);
+    match Gzip::DecompressText(dynamicPacked) {
+        Ok(dynamicText) => { println_bool(dynamicText == repeated); }
+        Err(_) => { println_bool(false); }
+    }
+
+    ByteBuilder multi = new ByteBuilder();
+    multi.appendBytes(Gzip::Compress("first-"));
+    multi.appendBytes(Gzip::Compress("second"));
+    u8[] multiPacked = multi.toArray();
+    match Gzip::DecompressText(multiPacked) {
+        Ok(multiText) => { println(multiText); }
+        Err(_) => { println("multi-error"); }
     }
     return 0;
 }

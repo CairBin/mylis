@@ -1,8 +1,9 @@
-// Gzip（RFC 1952）压缩/解压。压缩端同时尝试 stored block 与 fixed
-// Huffman + LZ77，选择更小的结果；解压端支持 stored、fixed 和 dynamic
-// Huffman 三种 DEFLATE block，并校验 CRC32 与长度。
+// Gzip（RFC 1952）压缩/解压。压缩端同时尝试 stored、fixed Huffman + LZ77
+// 与 dynamic Huffman + LZ77，选择更小的结果；dynamic 码长超过 15 位时回退。
+// 解压端支持 stored、fixed 和 dynamic Huffman 三种 DEFLATE block，支持多成员拼接流，并校验每个成员的 CRC32 与长度。
 import { Str } from "core/Str";
 import { ByteBuilder } from "ByteBuilder.myl";
+import { Vec } from "Vec.myl";
 import { Crc32 } from "Crc32.myl";
 import { IoError } from "IoError.myl";
 
@@ -74,6 +75,8 @@ class GzipBits {
 class HuffmanTable {
     i32[] symbols;
     i32[] lengths;
+    i32[] symbolCodes;
+    i32[] symbolBits;
     i32 maxBits;
 
     pub fn init(i32 bits) -> void {
@@ -86,9 +89,13 @@ class HuffmanTable {
         }
         this.symbols = new i32[size];
         this.lengths = new i32[size];
+        this.symbolCodes = new i32[288];
+        this.symbolBits = new i32[288];
     }
 
     fn add(i32 symbol, i32 code, i32 bits) -> void {
+        this.symbolCodes[symbol] = code;
+        this.symbolBits[symbol] = bits;
         i32 reversed = 0;
         i32 i = 0;
         while (i < bits) {
@@ -174,6 +181,18 @@ class GzipMatch {
     pub fn init(i32 len, i32 dist) -> void {
         this.length = len;
         this.distance = dist;
+    }
+}
+
+class GzipToken {
+    i32 kind;
+    i32 value;
+    i32 distance;
+
+    pub fn init(i32 tokenKind, i32 tokenValue, i32 tokenDistance) -> void {
+        this.kind = tokenKind;
+        this.value = tokenValue;
+        this.distance = tokenDistance;
     }
 }
 
@@ -373,10 +392,11 @@ pub class Gzip {
     pub static fn CompressBytes(u8[] data) -> u8[] {
         u8[] stored = Gzip::CompressStore(data);
         u8[] fixed = Gzip::CompressFixed(data);
-        if (fixed.len() < stored.len()) {
-            return fixed;
-        }
-        return stored;
+        u8[] dynamic = Gzip::CompressDynamic(data);
+        u8[] best = stored;
+        if (fixed.len() < best.len()) { best = fixed; }
+        if (dynamic.len() > 0 && dynamic.len() < best.len()) { best = dynamic; }
+        return best;
     }
 
     static fn FindMatch(u8[] data, i64 pos) -> GzipMatch {
@@ -452,6 +472,285 @@ pub class Gzip {
         return 29;
     }
 
+    static fn Tokenize(u8[] data) -> Vec<GzipToken> {
+        Vec<GzipToken> tokens = new Vec<GzipToken>();
+        i64 length = data.len() as i64;
+        i64 pos = 0;
+        while (pos < length) {
+            GzipMatch found = Gzip::FindMatch(data, pos);
+            if (found.length >= 3) {
+                tokens.push(new GzipToken(1, found.length, found.distance));
+                pos = pos + (found.length as i64);
+            } else {
+                tokens.push(new GzipToken(0, data[pos] as i32, 0));
+                pos = pos + 1;
+            }
+        }
+        return tokens;
+    }
+
+    // 返回每个符号的码长；全零树返回等长零数组，无法限制到 maxBits 时返回空数组。
+    static fn BuildLengths(i32[] frequencies, i32 maxBits) -> i32[] {
+        i32 n = frequencies.len() as i32;
+        i32[] lengths = new i32[n];
+        i32 active = 0;
+        i32 i = 0;
+        while (i < n) {
+            if (frequencies[i] > 0) { active = active + 1; }
+            i = i + 1;
+        }
+        if (active == 0) { return lengths; }
+        i32 dummy = -1;
+        if (active == 1) {
+            i = 0;
+            while (i < n && frequencies[i] > 0) { i = i + 1; }
+            dummy = i;
+            if (dummy >= n) { dummy = 0; }
+        }
+        i32[] weight = new i32[n * 2];
+        i32[] parent = new i32[n * 2];
+        i = 0;
+        while (i < n * 2) {
+            parent[i] = -1;
+            i = i + 1;
+        }
+        i = 0;
+        while (i < n) {
+            weight[i] = frequencies[i];
+            i = i + 1;
+        }
+        if (active == 1) { weight[dummy] = 1; }
+        i32 next = n;
+        i32 remaining = active;
+        if (active == 1) { remaining = 2; }
+        while (remaining > 1) {
+            i32 first = -1;
+            i32 second = -1;
+            i32 j = 0;
+            while (j < next) {
+                if (parent[j] < 0 && weight[j] > 0) {
+                    if (first < 0 || weight[j] < weight[first]) {
+                        second = first;
+                        first = j;
+                    } else if (second < 0 || weight[j] < weight[second]) {
+                        second = j;
+                    }
+                }
+                j = j + 1;
+            }
+            if (second < 0) { return new i32[0]; }
+            weight[next] = weight[first] + weight[second];
+            parent[first] = next;
+            parent[second] = next;
+            next = next + 1;
+            remaining = remaining - 1;
+        }
+        i = 0;
+        while (i < n) {
+            bool used = frequencies[i] > 0 || i == dummy;
+            if (used) {
+                i32 depth = 0;
+                i32 node = i;
+                while (parent[node] >= 0) {
+                    depth = depth + 1;
+                    node = parent[node];
+                }
+                if (depth <= 0 || depth > maxBits) { return new i32[0]; }
+                lengths[i] = depth;
+            }
+            i = i + 1;
+        }
+        return lengths;
+    }
+
+    static fn CodeLengthExtra(i32 symbol) -> i32 {
+        if (symbol == 16) { return 2; }
+        if (symbol == 17) { return 3; }
+        if (symbol == 18) { return 7; }
+        return 0;
+    }
+
+    static fn RunLengthEncode(i32[] lengths, Vec<i32> symbols, Vec<i32> extra) -> void {
+        i32 n = lengths.len() as i32;
+        i32 i = 0;
+        while (i < n) {
+            i32 value = lengths[i];
+            i32 j = i;
+            while (j < n && lengths[j] == value) { j = j + 1; }
+            i32 run = j - i;
+            if (value == 0) {
+                while (run >= 11) {
+                    i32 take = run;
+                    if (take > 138) { take = 138; }
+                    symbols.push(18);
+                    extra.push(take - 11);
+                    run = run - take;
+                }
+                while (run >= 3) {
+                    i32 take = run;
+                    if (take > 10) { take = 10; }
+                    symbols.push(17);
+                    extra.push(take - 3);
+                    run = run - take;
+                }
+                while (run > 0) {
+                    symbols.push(0);
+                    extra.push(0);
+                    run = run - 1;
+                }
+            } else {
+                symbols.push(value);
+                extra.push(0);
+                run = run - 1;
+                while (run >= 3) {
+                    i32 take = run;
+                    if (take > 6) { take = 6; }
+                    symbols.push(16);
+                    extra.push(take - 3);
+                    run = run - take;
+                }
+                while (run > 0) {
+                    symbols.push(value);
+                    extra.push(0);
+                    run = run - 1;
+                }
+            }
+            i = j;
+        }
+    }
+
+    static fn WriteCode(GzipBitWriter bits, HuffmanTable table, i32 symbol) -> void {
+        i32 code = table.symbolCodes[symbol];
+        i32 count = table.symbolBits[symbol];
+        if (count > 0) {
+            bits.writeHuffman(code as u32, count);
+        }
+    }
+
+    static fn CompressDynamic(u8[] data) -> u8[] {
+        Vec<GzipToken> tokens = Gzip::Tokenize(data);
+        i32[] litFreq = new i32[286];
+        i32[] distFreq = new i32[30];
+        litFreq[256] = 1;
+        i32 i = 0;
+        while (i < tokens.len() as i32) {
+            GzipToken token = tokens.get(i as i64);
+            if (token.kind == 0) {
+                litFreq[token.value] = litFreq[token.value] + 1;
+            } else {
+                i32 lengthIndex = Gzip::LengthSymbol(token.value);
+                i32 symbolIndex = 257 + lengthIndex;
+                litFreq[symbolIndex] = litFreq[symbolIndex] + 1;
+                i32 distanceIndex = Gzip::DistanceSymbol(token.distance);
+                distFreq[distanceIndex] = distFreq[distanceIndex] + 1;
+            }
+            i = i + 1;
+        }
+        i32[] litLengths = Gzip::BuildLengths(litFreq, 15);
+        i32[] distLengths = Gzip::BuildLengths(distFreq, 15);
+        if (litLengths.len() == 0 || distLengths.len() == 0) {
+            return new u8[0];
+        }
+        i32 hlit = 286;
+        while (hlit > 257 && litLengths[hlit - 1] == 0) { hlit = hlit - 1; }
+        i32 hdist = 30;
+        while (hdist > 1 && distLengths[hdist - 1] == 0) { hdist = hdist - 1; }
+        i32[] combined = new i32[hlit + hdist];
+        i = 0;
+        while (i < hlit) {
+            combined[i] = litLengths[i];
+            i = i + 1;
+        }
+        i = 0;
+        while (i < hdist) {
+            combined[hlit + i] = distLengths[i];
+            i = i + 1;
+        }
+        Vec<i32> clSymbols = new Vec<i32>();
+        Vec<i32> clExtra = new Vec<i32>();
+        Gzip::RunLengthEncode(combined, clSymbols, clExtra);
+        i32[] clFreq = new i32[19];
+        i = 0;
+        while (i < clSymbols.len() as i32) {
+            i32 symbol = clSymbols.get(i as i64);
+            clFreq[symbol] = clFreq[symbol] + 1;
+            i = i + 1;
+        }
+        i32[] clLengths = Gzip::BuildLengths(clFreq, 7);
+        if (clLengths.len() == 0) { return new u8[0]; }
+        i32[] order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+        i32 hclen = 4;
+        i32 c = 18;
+        while (c >= 0) {
+            if (clLengths[order[c]] > 0) {
+                hclen = c + 1;
+                if (hclen < 4) { hclen = 4; }
+                break;
+            }
+            c = c - 1;
+        }
+        HuffmanTable litTable = Gzip::BuildHuffman(litLengths);
+        HuffmanTable distTable = Gzip::BuildHuffman(distLengths);
+        HuffmanTable clTable = Gzip::BuildHuffman(clLengths);
+        ByteBuilder out = new ByteBuilder();
+        out.append(31 as u8);
+        out.append(139 as u8);
+        out.append(8 as u8);
+        out.append(0 as u8);
+        out.append(0 as u8);
+        out.append(0 as u8);
+        out.append(0 as u8);
+        out.append(0 as u8);
+        out.append(0 as u8);
+        out.append(3 as u8);
+        GzipBitWriter bits = new GzipBitWriter();
+        bits.writeBits(1 as u32, 1);
+        bits.writeBits(2 as u32, 2);
+        bits.writeBits((hlit - 257) as u32, 5);
+        bits.writeBits((hdist - 1) as u32, 5);
+        bits.writeBits((hclen - 4) as u32, 4);
+        i = 0;
+        while (i < hclen) {
+            bits.writeBits(clLengths[order[i]] as u32, 3);
+            i = i + 1;
+        }
+        i = 0;
+        while (i < clSymbols.len() as i32) {
+            i32 symbol = clSymbols.get(i as i64);
+            Gzip::WriteCode(bits, clTable, symbol);
+            i32 extraBits = Gzip::CodeLengthExtra(symbol);
+            if (extraBits > 0) {
+                bits.writeBits(clExtra.get(i as i64) as u32, extraBits);
+            }
+            i = i + 1;
+        }
+        i = 0;
+        while (i < tokens.len() as i32) {
+            GzipToken token = tokens.get(i as i64);
+            if (token.kind == 0) {
+                Gzip::WriteCode(bits, litTable, token.value);
+            } else {
+                i32 lengthIndex = Gzip::LengthSymbol(token.value);
+                Gzip::WriteCode(bits, litTable, 257 + lengthIndex);
+                bits.writeBits((token.value - Gzip::LengthBase(lengthIndex)) as u32, Gzip::LengthExtra(lengthIndex));
+                i32 distanceIndex = Gzip::DistanceSymbol(token.distance);
+                Gzip::WriteCode(bits, distTable, distanceIndex);
+                bits.writeBits((token.distance - Gzip::DistanceBase(distanceIndex)) as u32, Gzip::DistanceExtra(distanceIndex));
+            }
+            i = i + 1;
+        }
+        Gzip::WriteCode(bits, litTable, 256);
+        u8[] body = bits.finish();
+        i = 0;
+        while (i < body.len()) {
+            out.append(body[i]);
+            i = i + 1;
+        }
+        Gzip::AppendU32(out, Crc32::Of(data));
+        Gzip::AppendU32(out, data.len() as u32);
+        return out.toArray();
+    }
+
     static fn CompressFixed(u8[] data) -> u8[] {
         ByteBuilder out = new ByteBuilder();
         out.append(31 as u8);
@@ -501,15 +800,15 @@ pub class Gzip {
         return out.toArray();
     }
 
-    pub static fn DecompressBytes(u8[] data) -> Result<u8[], IoError> {
+    static fn InflateMember(u8[] data, i64 start, ByteBuilder total) -> Result<i64, IoError> {
         i64 length = data.len() as i64;
-        if (length < 18 || (data[0] as i32) != 31 || (data[1] as i32) != 139 || (data[2] as i32) != 8) {
+        if (start + 18 > length || (data[start] as i32) != 31 || (data[start + 1] as i32) != 139 || (data[start + 2] as i32) != 8) {
             return Err(new IoError(22));
         }
-        i32 flags = data[3] as i32;
-        i64 pos = 10;
+        i32 flags = data[start + 3] as i32;
+        i64 pos = start + 10;
         if ((flags & 4) != 0) {
-            if (pos + 1 >= length) { return Err(new IoError(22)); }
+            if (pos + 2 > length) { return Err(new IoError(22)); }
             i32 extraLength = (data[pos] as i32) | ((data[pos + 1] as i32) << 8);
             pos = pos + 2 + (extraLength as i64);
         }
@@ -560,10 +859,10 @@ pub class Gzip {
                     c = c + 1;
                 }
                 HuffmanTable codeTable = Gzip::BuildHuffman(codeLengths);
-                i32 total = hlit + hdist;
-                i32[] lengths = new i32[total];
+                i32 totalLengths = hlit + hdist;
+                i32[] lengths = new i32[totalLengths];
                 i32 index = 0;
-                while (index < total) {
+                while (index < totalLengths) {
                     i32 symbol = Gzip::Decode(codeTable, bits);
                     if (symbol < 0) { return Err(new IoError(22)); }
                     if (symbol <= 15) {
@@ -573,21 +872,21 @@ pub class Gzip {
                         if (index == 0) { return Err(new IoError(22)); }
                         i32 repeat = 3 + (bits.readBits(2) as i32);
                         i32 previous = lengths[index - 1];
-                        while (repeat > 0 && index < total) {
+                        while (repeat > 0 && index < totalLengths) {
                             lengths[index] = previous;
                             index = index + 1;
                             repeat = repeat - 1;
                         }
                     } else if (symbol == 17) {
                         i32 repeat = 3 + (bits.readBits(3) as i32);
-                        while (repeat > 0 && index < total) {
+                        while (repeat > 0 && index < totalLengths) {
                             lengths[index] = 0;
                             index = index + 1;
                             repeat = repeat - 1;
                         }
                     } else if (symbol == 18) {
                         i32 repeat = 11 + (bits.readBits(7) as i32);
-                        while (repeat > 0 && index < total) {
+                        while (repeat > 0 && index < totalLengths) {
                             lengths[index] = 0;
                             index = index + 1;
                             repeat = repeat - 1;
@@ -616,14 +915,35 @@ pub class Gzip {
             }
         }
         bits.align();
-        if (bits.bytePos + 8 > length) { return Err(new IoError(22)); }
-        u32 expectedCrc = Gzip::ReadU32(data, bits.bytePos);
-        u32 expectedSize = Gzip::ReadU32(data, bits.bytePos + 4);
+        i64 crcPos = bits.bytePos;
+        if (crcPos + 8 > length) { return Err(new IoError(22)); }
+        u32 expectedCrc = Gzip::ReadU32(data, crcPos);
+        u32 expectedSize = Gzip::ReadU32(data, crcPos + 4);
         u8[] result = out.toArray();
         if (Crc32::Of(result) != expectedCrc || (result.len() as u32) != expectedSize) {
             return Err(new IoError(22));
         }
-        return Ok(result);
+        total.appendBytes(result);
+        return Ok(crcPos + 8);
+    }
+
+    pub static fn DecompressBytes(u8[] data) -> Result<u8[], IoError> {
+        i64 length = data.len() as i64;
+        ByteBuilder total = new ByteBuilder();
+        i64 start = 0;
+        bool any = false;
+        while (start < length) {
+            Result<i64, IoError> member = Gzip::InflateMember(data, start, total);
+            match member {
+                Ok(next) => {
+                    any = true;
+                    start = next;
+                }
+                Err(error) => { return Err(error); }
+            }
+        }
+        if (!any) { return Err(new IoError(22)); }
+        return Ok(total.toArray());
     }
 
     pub static fn DecompressText(u8[] data) -> Result<string, IoError> {
