@@ -1,6 +1,8 @@
 import { File } from "File.myl";
 import { FileTask } from "FileTask.myl";
 import { FileHandler } from "FileHandler.myl";
+import { FilePump } from "FilePump.myl";
+import { EventPump } from "EventPump.myl";
 import { EventLoop } from "EventLoop.myl";
 import { IoError } from "IoError.myl";
 import { println, println_i64 } from "Io.myl";
@@ -73,13 +75,16 @@ fn main() -> i32 {
     }
 
     EventLoop loop = new EventLoop();
+    FilePump pump = new FilePump();
+    EventPump pumpInterface = pump;
+    loop.addPump(pumpInterface);
     FileDoneHandler done = new FileDoneHandler(loop);
     FileHandler handler = done;
 
     Result<FileTask, IoError> readTask = File::ReadAllBytesAsync(path, handler);
     match (readTask) {
         Ok(readTaskValue) => {
-            loop.addFile(readTaskValue);
+            pump.add(readTaskValue);
             loop.run();
             println("read-done");
         }
@@ -93,8 +98,8 @@ fn main() -> i32 {
         Ok(firstTask) => {
             match (readTaskTwo) {
                 Ok(secondTask) => {
-                    loop.addFile(firstTask);
-                    loop.addFile(secondTask);
+                    pump.add(firstTask);
+                    pump.add(secondTask);
                     loop.run();
                     println("multi-done");
                 }
@@ -109,7 +114,7 @@ fn main() -> i32 {
     Result<FileTask, IoError> writeTask = File::WriteAllBytesAsync(outPath, payload, handler);
     match (writeTask) {
         Ok(writeTaskValue) => {
-            loop.addFile(writeTaskValue);
+            pump.add(writeTaskValue);
             loop.run();
             println("write-done");
         }
@@ -119,7 +124,7 @@ fn main() -> i32 {
     Result<FileTask, IoError> missingTask = File::ReadAllBytesAsync(missing, handler);
     match (missingTask) {
         Ok(missingTaskValue) => {
-            loop.addFile(missingTaskValue);
+            pump.add(missingTaskValue);
             loop.run();
             println("error-done");
         }

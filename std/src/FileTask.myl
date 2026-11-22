@@ -1,5 +1,5 @@
 // 异步文件任务：由 File.ReadAllBytesAsync / WriteAllBytesAsync 返回。
-// 必须通过 EventLoop.addFile 注册后，完成回调才会在主线程分发。
+// 必须通过 FilePump.add 注册后，完成回调才会在主线程分发。
 import { FileHandler } from "FileHandler.myl";
 import { mylis_file_async_cancel } from "File_bind.myl";
 

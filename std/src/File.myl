@@ -1,5 +1,5 @@
 // std 文件 API：阻塞文本/二进制读写；以及两个最小异步入口（读/写全部字节）。
-// 异步任务通过 EventLoop.addFile 注册，回调在主线程执行；File 句柄本身仍由调用方关闭。
+// 异步任务通过 FilePump.add 注册，回调在主线程执行；File 句柄本身仍由调用方关闭。
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
 import { Str } from "core/Str";
@@ -48,7 +48,7 @@ pub class File {
         return Ok(new File(h));
     }
 
-    // 异步读取全部字节；任务提交后必须用 EventLoop.addFile 注册回调。
+    // 异步读取全部字节；任务提交后必须用 FilePump.add 注册回调。
     pub static fn ReadAllBytesAsync(string path, FileHandler handler) -> Result<FileTask, IoError> {
         i64 id = 0;
         unsafe {

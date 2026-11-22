@@ -1,4 +1,5 @@
 import { EventLoop } from "EventLoop.myl";
+import { UdpEventLoop } from "UdpEventLoop.myl";
 import { UdpHandler } from "UdpHandler.myl";
 import { UdpSocket } from "UdpSocket.myl";
 import { UdpPacket } from "UdpPacket.myl";
@@ -48,11 +49,12 @@ fn main() -> i32 {
                     b.sendText(addrA, "ping");
 
                     EventLoop loop = new EventLoop();
+                    UdpEventLoop udp = new UdpEventLoop(loop);
                     UdpReadHandler handler = new UdpReadHandler(loop);
                     UdpHandler ih = handler;
-                    loop.addUdp(a, ih);
+                    udp.addSocket(a, ih);
                     loop.run();
-                    loop.removeUdp(a);
+                    udp.removeSocket(a);
                     loop.close();
                     b.close();
                 }

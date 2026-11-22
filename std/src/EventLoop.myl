@@ -1,136 +1,78 @@
-// 单线程 EventLoop：事件后端等待就绪 -> Mylis 主线程分发 handler。
+// 单线程通用 fd 事件循环：事件后端等待 fd 就绪 -> Mylis 主线程分发 FdHandler。
 // Linux 使用 epoll，其他 POSIX 使用 poll 后备，Windows 使用 Winsock WSAPoll；Rust 后端不执行 Mylis 回调。
-// 网络事件按 TCP 监听器 / TCP 连接 / UDP socket 分开存放；异步文件任务也在这里泵入完成回调。
-import { TcpListenerHandler } from "TcpListenerHandler.myl";
-import { TcpStreamHandler } from "TcpStreamHandler.myl";
-import { UdpHandler } from "UdpHandler.myl";
-import { TcpListener } from "TcpListener.myl";
-import { TcpStream } from "TcpStream.myl";
-import { UdpSocket } from "UdpSocket.myl";
+// 不直接依赖 TCP/UDP/File；协议适配器和文件完成泵通过类组合接入。
+import { FdHandler } from "FdHandler.myl";
+import { EventPump } from "EventPump.myl";
 import { IoError } from "IoError.myl";
-import { FileTask } from "FileTask.myl";
 import { mylis_event_new, mylis_event_add, mylis_event_modify, mylis_event_remove, mylis_event_wait, mylis_event_close } from "Event_bind.myl";
-import { mylis_file_async_poll, mylis_file_async_take } from "File_bind.myl";
 
-class StreamEntry {
-    i64 handle;
+class EventEntry {
     i64 fd;
-    TcpStreamHandler handler;
+    FdHandler handler;
 
-    pub fn init(i64 h, i64 d, TcpStreamHandler hd) -> void {
-        this.handle = h;
+    pub fn init(i64 d, FdHandler hd) -> void {
         this.fd = d;
         this.handler = hd;
     }
 }
 
-class ListenerEntry {
-    i64 handle;
-    i64 fd;
-    TcpListenerHandler handler;
+class PumpEntry {
+    EventPump pump;
 
-    pub fn init(i64 h, i64 d, TcpListenerHandler hd) -> void {
-        this.handle = h;
-        this.fd = d;
-        this.handler = hd;
-    }
-}
-
-class UdpEntry {
-    i64 handle;
-    i64 fd;
-    UdpHandler handler;
-
-    pub fn init(i64 h, i64 d, UdpHandler hd) -> void {
-        this.handle = h;
-        this.fd = d;
-        this.handler = hd;
+    pub fn init(EventPump p) -> void {
+        this.pump = p;
     }
 }
 
 pub class EventLoop {
-    StreamEntry[] streams;
-    i32 streamCount;
-    i32 streamCapacity;
-    ListenerEntry[] listeners;
-    i32 listenerCount;
-    i32 listenerCapacity;
-    UdpEntry[] udpEntries;
-    i32 udpCount;
-    i32 udpCapacity;
+    EventEntry[] entries;
+    i32 count;
+    i32 capacity;
+    PumpEntry[] pumps;
+    i32 pumpCount;
+    i32 pumpCapacity;
     i64 eventHandle;
-    FileTask[] fileTasks;
-    i32 fileCount;
-    i32 fileCapacity;
     bool stopped;
 
     pub fn init() -> void {
-        this.streamCapacity = 8;
-        this.streams = new StreamEntry[this.streamCapacity];
-        this.streamCount = 0;
-        this.listenerCapacity = 8;
-        this.listeners = new ListenerEntry[this.listenerCapacity];
-        this.listenerCount = 0;
-        this.udpCapacity = 8;
-        this.udpEntries = new UdpEntry[this.udpCapacity];
-        this.udpCount = 0;
-        this.fileCapacity = 8;
-        this.fileTasks = new FileTask[this.fileCapacity];
-        this.fileCount = 0;
+        this.capacity = 8;
+        this.entries = new EventEntry[this.capacity];
+        this.count = 0;
+        this.pumpCapacity = 8;
+        this.pumps = new PumpEntry[this.pumpCapacity];
+        this.pumpCount = 0;
         this.stopped = false;
         unsafe {
             this.eventHandle = mylis_event_new();
         }
     }
 
-    fn growStreams() -> void {
-        this.streamCapacity = this.streamCapacity * 2;
-        StreamEntry[] ns = new StreamEntry[this.streamCapacity];
+    fn grow() -> void {
+        this.capacity = this.capacity * 2;
+        EventEntry[] ne = new EventEntry[this.capacity];
         i32 i = 0;
-        while (i < this.streamCount) {
-            ns[i] = this.streams[i];
+        while (i < this.count) {
+            ne[i] = this.entries[i];
             i = i + 1;
         }
-        this.streams = ns;
+        this.entries = ne;
     }
 
-    fn growListeners() -> void {
-        this.listenerCapacity = this.listenerCapacity * 2;
-        ListenerEntry[] nl = new ListenerEntry[this.listenerCapacity];
+    fn growPumps() -> void {
+        this.pumpCapacity = this.pumpCapacity * 2;
+        PumpEntry[] np = new PumpEntry[this.pumpCapacity];
         i32 i = 0;
-        while (i < this.listenerCount) {
-            nl[i] = this.listeners[i];
+        while (i < this.pumpCount) {
+            np[i] = this.pumps[i];
             i = i + 1;
         }
-        this.listeners = nl;
+        this.pumps = np;
     }
 
-    fn growUdp() -> void {
-        this.udpCapacity = this.udpCapacity * 2;
-        UdpEntry[] nu = new UdpEntry[this.udpCapacity];
+    fn findFd(i64 fd) -> i32 {
         i32 i = 0;
-        while (i < this.udpCount) {
-            nu[i] = this.udpEntries[i];
-            i = i + 1;
-        }
-        this.udpEntries = nu;
-    }
-
-    fn growFiles() -> void {
-        this.fileCapacity = this.fileCapacity * 2;
-        FileTask[] nf = new FileTask[this.fileCapacity];
-        i32 i = 0;
-        while (i < this.fileCount) {
-            nf[i] = this.fileTasks[i];
-            i = i + 1;
-        }
-        this.fileTasks = nf;
-    }
-
-    fn findFile(i64 id) -> i32 {
-        i32 i = 0;
-        while (i < this.fileCount) {
-            if (this.fileTasks[i].id == id) {
+        while (i < this.count) {
+            if (this.entries[i].fd == fd) {
                 return i;
             }
             i = i + 1;
@@ -138,149 +80,51 @@ pub class EventLoop {
         return -1;
     }
 
-    fn removeFileAt(i32 idx) -> void {
+    fn removeAt(i32 idx) -> void {
         i32 j = idx;
-        while (j + 1 < this.fileCount) {
-            this.fileTasks[j] = this.fileTasks[j + 1];
+        while (j + 1 < this.count) {
+            this.entries[j] = this.entries[j + 1];
             j = j + 1;
         }
-        this.fileCount = this.fileCount - 1;
+        this.count = this.count - 1;
     }
 
-    fn findStreamHandle(i64 handle) -> i32 {
+    fn hasPendingPump() -> bool {
         i32 i = 0;
-        while (i < this.streamCount) {
-            if (this.streams[i].handle == handle) {
-                return i;
+        while (i < this.pumpCount) {
+            if (this.pumps[i].pump.hasPending()) {
+                return true;
             }
             i = i + 1;
         }
-        return -1;
+        return false;
     }
 
-    fn findListenerHandle(i64 handle) -> i32 {
+    fn pumpAll() -> void {
         i32 i = 0;
-        while (i < this.listenerCount) {
-            if (this.listeners[i].handle == handle) {
-                return i;
-            }
+        while (i < this.pumpCount) {
+            this.pumps[i].pump.pump();
             i = i + 1;
         }
-        return -1;
     }
 
-    fn findUdpHandle(i64 handle) -> i32 {
-        i32 i = 0;
-        while (i < this.udpCount) {
-            if (this.udpEntries[i].handle == handle) {
-                return i;
-            }
-            i = i + 1;
+    pub fn add(i64 fd, FdHandler handler) -> void {
+        if (this.findFd(fd) >= 0) {
+            return;
         }
-        return -1;
-    }
-
-    fn findStreamFd(i64 fd) -> i32 {
-        i32 i = 0;
-        while (i < this.streamCount) {
-            if (this.streams[i].fd == fd) {
-                return i;
-            }
-            i = i + 1;
+        if (this.count >= this.capacity) {
+            this.grow();
         }
-        return -1;
-    }
-
-    fn findListenerFd(i64 fd) -> i32 {
-        i32 i = 0;
-        while (i < this.listenerCount) {
-            if (this.listeners[i].fd == fd) {
-                return i;
-            }
-            i = i + 1;
-        }
-        return -1;
-    }
-
-    fn findUdpFd(i64 fd) -> i32 {
-        i32 i = 0;
-        while (i < this.udpCount) {
-            if (this.udpEntries[i].fd == fd) {
-                return i;
-            }
-            i = i + 1;
-        }
-        return -1;
-    }
-
-    fn removeStreamAt(i32 idx) -> void {
-        i32 j = idx;
-        while (j + 1 < this.streamCount) {
-            this.streams[j] = this.streams[j + 1];
-            j = j + 1;
-        }
-        this.streamCount = this.streamCount - 1;
-    }
-
-    fn removeListenerAt(i32 idx) -> void {
-        i32 j = idx;
-        while (j + 1 < this.listenerCount) {
-            this.listeners[j] = this.listeners[j + 1];
-            j = j + 1;
-        }
-        this.listenerCount = this.listenerCount - 1;
-    }
-
-    fn removeUdpAt(i32 idx) -> void {
-        i32 j = idx;
-        while (j + 1 < this.udpCount) {
-            this.udpEntries[j] = this.udpEntries[j + 1];
-            j = j + 1;
-        }
-        this.udpCount = this.udpCount - 1;
-    }
-
-    pub fn add(TcpStream stream, TcpStreamHandler handler) -> void {
-        stream.setNonblocking(true);
-        if (this.streamCount >= this.streamCapacity) {
-            this.growStreams();
-        }
-        i32 i = this.streamCount;
-        this.streams[i] = new StreamEntry(stream.nativeHandle(), stream.nativeFd(), handler);
-        this.streamCount = this.streamCount + 1;
+        i32 i = this.count;
+        this.entries[i] = new EventEntry(fd, handler);
+        this.count = this.count + 1;
         unsafe {
-            mylis_event_add(this.eventHandle, stream.nativeFd());
+            mylis_event_add(this.eventHandle, fd);
         }
     }
 
-    pub fn addListener(TcpListener listener, TcpListenerHandler handler) -> void {
-        listener.setNonblocking(true);
-        if (this.listenerCount >= this.listenerCapacity) {
-            this.growListeners();
-        }
-        i32 i = this.listenerCount;
-        this.listeners[i] = new ListenerEntry(listener.nativeHandle(), listener.nativeFd(), handler);
-        this.listenerCount = this.listenerCount + 1;
-        unsafe {
-            mylis_event_add(this.eventHandle, listener.nativeFd());
-        }
-    }
-
-    pub fn addUdp(UdpSocket socket, UdpHandler handler) -> void {
-        socket.setNonblocking(true);
-        if (this.udpCount >= this.udpCapacity) {
-            this.growUdp();
-        }
-        i32 i = this.udpCount;
-        this.udpEntries[i] = new UdpEntry(socket.nativeHandle(), socket.nativeFd(), handler);
-        this.udpCount = this.udpCount + 1;
-        unsafe {
-            mylis_event_add(this.eventHandle, socket.nativeFd());
-        }
-    }
-
-    pub fn setWriteInterest(TcpStream stream, bool enabled) -> void {
-        i32 idx = this.findStreamHandle(stream.nativeHandle());
+    pub fn setWriteInterest(i64 fd, bool enabled) -> void {
+        i32 idx = this.findFd(fd);
         if (idx < 0) {
             return;
         }
@@ -289,102 +133,28 @@ pub class EventLoop {
             flag = 1;
         }
         unsafe {
-            mylis_event_modify(this.eventHandle, this.streams[idx].fd, flag);
+            mylis_event_modify(this.eventHandle, fd, flag);
         }
     }
 
-    pub fn remove(TcpStream stream) -> void {
-        i32 idx = this.findStreamHandle(stream.nativeHandle());
+    pub fn remove(i64 fd) -> void {
+        i32 idx = this.findFd(fd);
         if (idx < 0) {
             return;
         }
-        i64 fd = this.streams[idx].fd;
         unsafe {
             mylis_event_remove(this.eventHandle, fd);
         }
-        this.removeStreamAt(idx);
+        this.removeAt(idx);
     }
 
-    pub fn removeListener(TcpListener listener) -> void {
-        i32 idx = this.findListenerHandle(listener.nativeHandle());
-        if (idx < 0) {
-            return;
+    // 挂入不基于 fd 的完成泵（例如 FilePump）；run() 每轮都会调用 pump()。
+    pub fn addPump(EventPump pump) -> void {
+        if (this.pumpCount >= this.pumpCapacity) {
+            this.growPumps();
         }
-        i64 fd = this.listeners[idx].fd;
-        unsafe {
-            mylis_event_remove(this.eventHandle, fd);
-        }
-        this.removeListenerAt(idx);
-    }
-
-    pub fn removeUdp(UdpSocket socket) -> void {
-        i32 idx = this.findUdpHandle(socket.nativeHandle());
-        if (idx < 0) {
-            return;
-        }
-        i64 fd = this.udpEntries[idx].fd;
-        unsafe {
-            mylis_event_remove(this.eventHandle, fd);
-        }
-        this.removeUdpAt(idx);
-    }
-
-    // 注册异步文件任务；完成回调由 run() 在主线程分发。
-    pub fn addFile(FileTask task) -> void {
-        if (this.fileCount >= this.fileCapacity) {
-            this.growFiles();
-        }
-        this.fileTasks[this.fileCount] = task;
-        this.fileCount = this.fileCount + 1;
-    }
-
-    fn drainFiles() -> void {
-        i64[] meta = new i64[4];
-        while (true) {
-            i64 rc = 0;
-            unsafe {
-                rc = mylis_file_async_poll(meta);
-            }
-            if (rc <= 0) {
-                return;
-            }
-            i64 id = meta[0];
-            i32 kind = meta[1] as i32;
-            i64 status = meta[2];
-            i64 len = meta[3];
-            i32 idx = this.findFile(id);
-            if (idx < 0) {
-                u8[] discard = new u8[0];
-                unsafe {
-                    mylis_file_async_take(id, discard);
-                }
-                continue;
-            }
-            FileTask task = this.fileTasks[idx];
-            this.removeFileAt(idx);
-            if (status < 0) {
-                u8[] empty = new u8[0];
-                unsafe {
-                    mylis_file_async_take(id, empty);
-                }
-                IoError error = new IoError((-status) as i32);
-                if (kind == 1) {
-                    task.handler.onReadDone(id, Err(error));
-                } else {
-                    task.handler.onWriteDone(id, Err(error));
-                }
-            } else {
-                u8[] data = new u8[len];
-                unsafe {
-                    mylis_file_async_take(id, data);
-                }
-                if (kind == 1) {
-                    task.handler.onReadDone(id, Ok(data));
-                } else {
-                    task.handler.onWriteDone(id, Ok(len));
-                }
-            }
-        }
+        this.pumps[this.pumpCount] = new PumpEntry(pump);
+        this.pumpCount = this.pumpCount + 1;
     }
 
     pub fn run() -> void {
@@ -393,8 +163,8 @@ pub class EventLoop {
             return;
         }
         this.stopped = false;
-        while (!this.stopped && (this.streamCount + this.listenerCount + this.udpCount > 0 || this.fileCount > 0)) {
-            i32 n = this.streamCount + this.listenerCount + this.udpCount;
+        while (!this.stopped && (this.count > 0 || this.hasPendingPump())) {
+            i32 n = this.count;
             i32 cap = n;
             if (cap == 0) {
                 cap = 1;
@@ -413,47 +183,22 @@ pub class EventLoop {
             while (i < rc) {
                 i64 fd = fds[i];
                 i64 mask = revents[i];
-                i32 streamIdx = this.findStreamFd(fd);
-                if (streamIdx >= 0) {
-                    TcpStreamHandler handler = this.streams[streamIdx].handler;
-                    i64 handle = this.streams[streamIdx].handle;
+                i32 idx = this.findFd(fd);
+                if (idx >= 0) {
+                    FdHandler handler = this.entries[idx].handler;
                     if ((mask & 1) != 0) {
-                        handler.onReadable(new TcpStream(handle));
+                        handler.onFdReadable(fd);
                     }
                     if ((mask & 4) != 0) {
-                        handler.onWritable(new TcpStream(handle));
+                        handler.onFdWritable(fd);
                     }
                     if ((mask & 24) != 0 || (mask & 32) != 0) {
-                        handler.onError(new TcpStream(handle), new IoError(5));
-                    }
-                } else {
-                    i32 listenerIdx = this.findListenerFd(fd);
-                    if (listenerIdx >= 0) {
-                        TcpListenerHandler handler = this.listeners[listenerIdx].handler;
-                        i64 handle = this.listeners[listenerIdx].handle;
-                        if ((mask & 1) != 0) {
-                            handler.onAccept(new TcpListener(handle));
-                        }
-                        if ((mask & 24) != 0 || (mask & 32) != 0) {
-                            handler.onListenerError(new TcpListener(handle), new IoError(5));
-                        }
-                    } else {
-                        i32 udpIdx = this.findUdpFd(fd);
-                        if (udpIdx >= 0) {
-                            UdpHandler handler = this.udpEntries[udpIdx].handler;
-                            i64 handle = this.udpEntries[udpIdx].handle;
-                            if ((mask & 1) != 0) {
-                                handler.onUdpReadable(new UdpSocket(handle));
-                            }
-                            if ((mask & 24) != 0 || (mask & 32) != 0) {
-                                handler.onUdpError(new UdpSocket(handle), new IoError(5));
-                            }
-                        }
+                        handler.onFdError(fd, new IoError(5));
                     }
                 }
                 i = i + 1;
             }
-            this.drainFiles();
+            this.pumpAll();
         }
     }
 
@@ -463,9 +208,10 @@ pub class EventLoop {
 
     pub fn close() -> void {
         this.stopped = true;
-        while (this.fileCount > 0) {
-            this.fileTasks[this.fileCount - 1].cancel();
-            this.fileCount = this.fileCount - 1;
+        i32 i = 0;
+        while (i < this.pumpCount) {
+            this.pumps[i].pump.shutdown();
+            i = i + 1;
         }
         if (this.eventHandle > 0) {
             unsafe {
@@ -473,8 +219,7 @@ pub class EventLoop {
             }
         }
         this.eventHandle = -1;
-        this.streamCount = 0;
-        this.listenerCount = 0;
-        this.udpCount = 0;
+        this.count = 0;
+        this.pumpCount = 0;
     }
 }

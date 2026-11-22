@@ -1,0 +1,8 @@
+// EventLoop 的底层 fd 回调：事件循环只关心 fd 就绪，不认识具体协议对象。
+import { IoError } from "IoError.myl";
+
+pub interface FdHandler {
+    fn onFdReadable(i64 fd) -> void;
+    fn onFdWritable(i64 fd) -> void;
+    fn onFdError(i64 fd, IoError error) -> void;
+}

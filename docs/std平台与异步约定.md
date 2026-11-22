@@ -16,7 +16,7 @@
 ## 2. 分包结构
 
 ```text
-std                    # 公共 Mylis API：File / TcpListener / TcpStream / EventLoop / IoError
+std                    # 公共 Mylis API：File / FilePump / TcpListener / TcpEventLoop / UdpSocket / UdpEventLoop / EventLoop / IoError
 std-posix              # POSIX 侧车包；native/ 下是 POSIX 与跨平台 Rust 实现
 std-posix/native       # file.rs / io.rs / process.rs / time.rs / net.rs / event.rs
 std-win32              # Windows MSVC / MinGW 侧车包；native/ 下是同名 shim 与 WSAPoll 事件后端
@@ -92,7 +92,7 @@ class FileTask {
 
 - `File` 显式 `close`；GC 不负责关闭文件描述符。
 - 同步 API 仍是阻塞读写；异步 API 当前只有 `ReadAllBytesAsync` / `WriteAllBytesAsync` 两个入口。
-- 异步任务返回 `FileTask`，必须 `EventLoop.addFile(task)` 注册；`FileHandler.onReadDone` / `onWriteDone` 在主线程执行。`task.cancel()` 是尽力取消，已进入阻塞 I/O 的任务可能仍完成，并以 `IoError(125)` 返回。
+- 异步任务返回 `FileTask`，必须 `FilePump.add(task)` 注册；`FileHandler.onReadDone` / `onWriteDone` 在主线程执行。`task.cancel()` 是尽力取消，已进入阻塞 I/O 的任务可能仍完成，并以 `IoError(125)` 返回。
 - 异步文件后端是固定 Rust 工作线程池（默认 2 个，`MYLIS_ASYNC_FILE_THREADS` 可配置 1～8）；完成结果只放在 Rust 堆，主线程再拷入 `u8[]`，工作线程不接触 Mylis GC。
 - TCP 为阻塞/非阻塞 socket；`accept` / `connect` / `read` 在阻塞模式下占住当前线程，非阻塞模式返回 `WouldBlock`。
 - 路径类型使用 `string`；Windows 后端负责 UTF-8 -> UTF-16。
@@ -135,17 +135,29 @@ class TcpStream {
 
 ## 4. 异步模型
 
-### 4.1 当前：单线程 Reactor + 事件队列
+### 4.1 当前：通用 fd Reactor + 域适配器
 
-- 平台后端负责等待 I/O 就绪，产出事件。
-- `std` 的 `EventLoop.run()` 在 Mylis 主线程消费事件并调用 handler。
-- 它是一个 hosted 网络事件循环，不是通用事件总线：可注册对象只有 `TcpListener` / `TcpStream` / `UdpSocket`，另外带一个异步 `FileTask` 完成泵；没有定时器、信号、任意 fd 或自定义事件源接口。
-- 已落地：`TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` 三个独立 interface + `EventLoop.add/addListener/addUdp/remove/removeListener/removeUdp/run/stop/close`；
-  Linux 用 `epoll`，其他 POSIX 用 `poll` 后备，Windows 用 Winsock `WSAPoll`；Rust 只返回就绪 fd 与 `revents`，不执行 Mylis 回调。
+- 平台后端负责等待 fd 就绪，产出事件。
+- `std` 的通用 `EventLoop` 只认识 fd 和 `FdHandler`，不 import TCP/UDP/File 类型。
+- `TcpEventLoop` / `UdpEventLoop` 是协议域适配器，组合 `EventLoop` + 对应 socket/handler；应用层继续使用 `TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler`。
+- `FilePump` 通过 `EventPump` 接口挂入 `EventLoop`，文件完成泵不再属于网络 EventLoop。
+- Linux 用 `epoll`，其他 POSIX 用 `poll` 后备，Windows 用 Winsock `WSAPoll`；Rust 只返回就绪 fd 与 `revents`，不执行 Mylis 回调。
 - Rust 线程不直接调用 Mylis 代码，因此不需要为 Rust 工作线程注册 GC 根。
-- 回调使用 interface，而不是闭包；注册哪类 socket 就实现对应的 interface，不需要为其他协议补空方法：
+- 回调使用 interface，而不是闭包：
 
 ```myl
+interface FdHandler {
+    fn onFdReadable(i64 fd) -> void;
+    fn onFdWritable(i64 fd) -> void;
+    fn onFdError(i64 fd, IoError error) -> void;
+}
+
+interface EventPump {
+    fn pump() -> void;
+    fn hasPending() -> bool;
+    fn shutdown() -> void;
+}
+
 interface TcpListenerHandler {
     fn onAccept(TcpListener listener) -> void;
     fn onListenerError(TcpListener listener, IoError error) -> void;
@@ -163,16 +175,26 @@ interface UdpHandler {
 }
 
 class EventLoop {
-    pub fn add(TcpStream stream, TcpStreamHandler handler) -> void;
-    pub fn addListener(TcpListener listener, TcpListenerHandler handler) -> void;
-    pub fn addUdp(UdpSocket socket, UdpHandler handler) -> void;
-    pub fn remove(TcpStream stream) -> void;
-    pub fn removeListener(TcpListener listener) -> void;
-    pub fn removeUdp(UdpSocket socket) -> void;
-    pub fn addFile(FileTask task) -> void;
+    pub fn add(i64 fd, FdHandler handler) -> void;
+    pub fn remove(i64 fd) -> void;
+    pub fn setWriteInterest(i64 fd, bool enabled) -> void;
+    pub fn addPump(EventPump pump) -> void;
     pub fn run() -> void;
     pub fn stop() -> void;
     pub fn close() -> void;
+}
+
+class TcpEventLoop {
+    pub fn addListener(TcpListener listener, TcpListenerHandler handler) -> void;
+    pub fn addStream(TcpStream stream, TcpStreamHandler handler) -> void;
+    pub fn removeListener(TcpListener listener) -> void;
+    pub fn removeStream(TcpStream stream) -> void;
+    pub fn setWriteInterest(TcpStream stream, bool enabled) -> void;
+}
+
+class UdpEventLoop {
+    pub fn addSocket(UdpSocket socket, UdpHandler handler) -> void;
+    pub fn removeSocket(UdpSocket socket) -> void;
 }
 ```
 
@@ -183,16 +205,16 @@ class EventLoop {
 - Windows：Winsock `WSAPoll`，实现在 `std-win32/native/event.rs`。
 - Rust 侧只使用标准库和系统 API，不引入 `mio` / Tokio 等第三方运行时。
 - 所有后端只产出事件，不执行 Mylis 回调。
-- 默认只注册读就绪；显式 `EventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
-- `onError` 分发 TCP 流错误；`onListenerError` 分发监听器错误；`onUdpReadable` 分发 UDP 读就绪；`onUdpError` 分发 UDP socket 错误。
+- 默认只注册读就绪；`TcpEventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
+- `TcpStreamHandler.onError` 分发 TCP 流错误；`TcpListenerHandler.onListenerError` 分发监听器错误；`UdpHandler.onUdpError` 分发 UDP socket 错误。
 
 ### 4.3 文件异步（当前最小实现）
 
-- Rust 固定工作线程池只执行文件 I/O；完成结果进入 native 完成队列，Mylis 主线程通过 `EventLoop.run()` 泵入并分发回调。
+- Rust 固定工作线程池只执行文件 I/O；完成结果进入 native 完成队列，Mylis 主线程通过 `FilePump.pump()`（挂到 `EventLoop` 的 `EventPump`）泵入并分发回调。
 - 当前完成延迟最多约 100ms（沿用事件等待的超时）；暂不做 `eventfd`/本地 socket 唤醒。
 - 工作线程不得分配或访问 Mylis GC 对象；读结果先放在 Rust `Vec<u8>`，主线程 `take` 时拷入 `u8[]`。
 - 当前入口只有 `File.ReadAllBytesAsync` / `File.WriteAllBytesAsync`；不做异步 open/seek/append，也不做 IOCP / `io_uring`。
-- 因为 `EventLoop` 现在带文件完成泵，手工链接 EventLoop 的程序也需要同时链接 `libmylis_file.a` / `mylis_file.lib`；`--std` 会自动包含。
+- `FilePump` 自己依赖 `libmylis_file.a` / `mylis_file.lib`；只用通用 `EventLoop` 的程序不再被迫链接 file 库。`--std` 仍自动包含全部库。
 
 ### 4.4 明确不做
 

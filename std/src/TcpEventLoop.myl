@@ -1,0 +1,85 @@
+// TCP 域的事件循环适配：组合通用 EventLoop + TCP handler，不让 EventLoop 认识 TCP 类型。
+import { EventLoop } from "EventLoop.myl";
+import { FdHandler } from "FdHandler.myl";
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { TcpListenerHandler } from "TcpListenerHandler.myl";
+import { TcpStreamHandler } from "TcpStreamHandler.myl";
+import { IoError } from "IoError.myl";
+
+class TcpListenerAdapter {
+    TcpListener listener;
+    TcpListenerHandler handler;
+
+    pub fn init(TcpListener value, TcpListenerHandler hd) -> void {
+        this.listener = value;
+        this.handler = hd;
+    }
+
+    pub fn onFdReadable(i64 fd) -> void {
+        this.handler.onAccept(this.listener);
+    }
+
+    pub fn onFdWritable(i64 fd) -> void {
+    }
+
+    pub fn onFdError(i64 fd, IoError error) -> void {
+        this.handler.onListenerError(this.listener, error);
+    }
+}
+
+class TcpStreamAdapter {
+    TcpStream stream;
+    TcpStreamHandler handler;
+
+    pub fn init(TcpStream value, TcpStreamHandler hd) -> void {
+        this.stream = value;
+        this.handler = hd;
+    }
+
+    pub fn onFdReadable(i64 fd) -> void {
+        this.handler.onReadable(this.stream);
+    }
+
+    pub fn onFdWritable(i64 fd) -> void {
+        this.handler.onWritable(this.stream);
+    }
+
+    pub fn onFdError(i64 fd, IoError error) -> void {
+        this.handler.onError(this.stream, error);
+    }
+}
+
+pub class TcpEventLoop {
+    EventLoop loop;
+
+    pub fn init(EventLoop l) -> void {
+        this.loop = l;
+    }
+
+    pub fn addListener(TcpListener listener, TcpListenerHandler handler) -> void {
+        listener.setNonblocking(true);
+        TcpListenerAdapter adapter = new TcpListenerAdapter(listener, handler);
+        FdHandler fdHandler = adapter;
+        this.loop.add(listener.nativeFd(), fdHandler);
+    }
+
+    pub fn addStream(TcpStream stream, TcpStreamHandler handler) -> void {
+        stream.setNonblocking(true);
+        TcpStreamAdapter adapter = new TcpStreamAdapter(stream, handler);
+        FdHandler fdHandler = adapter;
+        this.loop.add(stream.nativeFd(), fdHandler);
+    }
+
+    pub fn setWriteInterest(TcpStream stream, bool enabled) -> void {
+        this.loop.setWriteInterest(stream.nativeFd(), enabled);
+    }
+
+    pub fn removeListener(TcpListener listener) -> void {
+        this.loop.remove(listener.nativeFd());
+    }
+
+    pub fn removeStream(TcpStream stream) -> void {
+        this.loop.remove(stream.nativeFd());
+    }
+}

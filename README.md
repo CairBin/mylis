@@ -207,7 +207,7 @@ pub fn main() -> i32 {
 
 `Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`；`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。
 
-std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell，以及最小异步 `ReadAllBytesAsync` / `WriteAllBytesAsync`）、`FileTask` / `FileHandler`、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` / `EventLoop`。这些 hosted 接口由 `std-posix/native` 与 Windows MSVC 的 `std-win32/native` 侧车提供（Rust staticlib，C ABI；Windows 事件循环为 Winsock `WSAPoll`），不进入 `core` 或 GC；`--std` 会自动加入头文件路径和六个 native 库。
+std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell，以及最小异步 `ReadAllBytesAsync` / `WriteAllBytesAsync`）、`FileTask` / `FileHandler`、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` / `FdHandler` / `EventPump` / `FilePump` / `TcpEventLoop` / `UdpEventLoop` / `EventLoop`。这些 hosted 接口由 `std-posix/native` 与 Windows MSVC 的 `std-win32/native` 侧车提供（Rust staticlib，C ABI；Windows 事件循环为 Winsock `WSAPoll`），不进入 `core` 或 GC；`--std` 会自动加入头文件路径和六个 native 库。
 
 ---
 

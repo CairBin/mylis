@@ -1,0 +1,46 @@
+// UDP 域的事件循环适配：组合通用 EventLoop + UDP handler。
+import { EventLoop } from "EventLoop.myl";
+import { FdHandler } from "FdHandler.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { UdpHandler } from "UdpHandler.myl";
+import { IoError } from "IoError.myl";
+
+class UdpAdapter {
+    UdpSocket socket;
+    UdpHandler handler;
+
+    pub fn init(UdpSocket value, UdpHandler hd) -> void {
+        this.socket = value;
+        this.handler = hd;
+    }
+
+    pub fn onFdReadable(i64 fd) -> void {
+        this.handler.onUdpReadable(this.socket);
+    }
+
+    pub fn onFdWritable(i64 fd) -> void {
+    }
+
+    pub fn onFdError(i64 fd, IoError error) -> void {
+        this.handler.onUdpError(this.socket, error);
+    }
+}
+
+pub class UdpEventLoop {
+    EventLoop loop;
+
+    pub fn init(EventLoop l) -> void {
+        this.loop = l;
+    }
+
+    pub fn addSocket(UdpSocket socket, UdpHandler handler) -> void {
+        socket.setNonblocking(true);
+        UdpAdapter adapter = new UdpAdapter(socket, handler);
+        FdHandler fdHandler = adapter;
+        this.loop.add(socket.nativeFd(), fdHandler);
+    }
+
+    pub fn removeSocket(UdpSocket socket) -> void {
+        this.loop.remove(socket.nativeFd());
+    }
+}

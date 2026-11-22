@@ -1,4 +1,5 @@
 import { EventLoop } from "EventLoop.myl";
+import { TcpEventLoop } from "TcpEventLoop.myl";
 import { TcpListenerHandler } from "TcpListenerHandler.myl";
 import { TcpStreamHandler } from "TcpStreamHandler.myl";
 import { TcpListener } from "TcpListener.myl";
@@ -10,9 +11,11 @@ import { fmt_i64 } from "core/Fmt";
 
 class EchoStreamHandler {
     EventLoop loop;
+    TcpEventLoop tcp;
 
-    pub fn init(EventLoop l) -> void {
+    pub fn init(EventLoop l, TcpEventLoop t) -> void {
         this.loop = l;
+        this.tcp = t;
     }
 
     pub fn onReadable(TcpStream stream) -> void {
@@ -25,7 +28,7 @@ class EchoStreamHandler {
             }
             Err(e) => { println_i64(e.code as i64); }
         }
-        this.loop.setWriteInterest(stream, true);
+        this.tcp.setWriteInterest(stream, true);
     }
 
     pub fn onWritable(TcpStream stream) -> void {
@@ -35,7 +38,7 @@ class EchoStreamHandler {
             Ok(_) => { }
             Err(we) => { println_i64(we.code as i64); }
         }
-        this.loop.setWriteInterest(stream, false);
+        this.tcp.setWriteInterest(stream, false);
         this.loop.stop();
     }
 
@@ -47,9 +50,11 @@ class EchoStreamHandler {
 
 class EchoListenerHandler {
     EventLoop loop;
+    TcpEventLoop tcp;
 
-    pub fn init(EventLoop l) -> void {
+    pub fn init(EventLoop l, TcpEventLoop t) -> void {
         this.loop = l;
+        this.tcp = t;
     }
 
     pub fn onAccept(TcpListener listener) -> void {
@@ -57,9 +62,9 @@ class EchoListenerHandler {
         Result<TcpStream, IoError> r = listener.accept();
         match r {
             Ok(stream) => {
-                EchoStreamHandler echo = new EchoStreamHandler(this.loop);
+                EchoStreamHandler echo = new EchoStreamHandler(this.loop, this.tcp);
                 TcpStreamHandler handler = echo;
-                this.loop.add(stream, handler);
+                this.tcp.addStream(stream, handler);
             }
             Err(e) => { println_i64(e.code as i64); }
         }
@@ -86,9 +91,10 @@ fn main() -> i32 {
                 Ok(c) => {
                     c.writeAllText("ping");
                     EventLoop loop = new EventLoop();
-                    EchoListenerHandler echo = new EchoListenerHandler(loop);
+                    TcpEventLoop tcp = new TcpEventLoop(loop);
+                    EchoListenerHandler echo = new EchoListenerHandler(loop, tcp);
                     TcpListenerHandler handler = echo;
-                    loop.addListener(listener, handler);
+                    tcp.addListener(listener, handler);
                     loop.run();
 
                     Result<u8[], IoError> pong = c.read(4);
@@ -99,7 +105,7 @@ fn main() -> i32 {
                         }
                         Err(e) => { println_i64(e.code as i64); }
                     }
-                    loop.removeListener(listener);
+                    tcp.removeListener(listener);
                     loop.close();
                     c.close();
                 }

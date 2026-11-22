@@ -1,0 +1,6 @@
+// EventLoop 的可插拔泵接口：文件完成、定时器等不基于 fd 的工作可以独立挂入。
+pub interface EventPump {
+    fn pump() -> void;
+    fn hasPending() -> bool;
+    fn shutdown() -> void;
+}

@@ -1,0 +1,115 @@
+// 异步文件完成泵：只负责 FileTask 的完成队列和回调，不依赖网络 EventLoop。
+import { FileTask } from "FileTask.myl";
+import { IoError } from "IoError.myl";
+import { mylis_file_async_poll, mylis_file_async_take } from "File_bind.myl";
+
+pub class FilePump {
+    FileTask[] tasks;
+    i32 count;
+    i32 capacity;
+
+    pub fn init() -> void {
+        this.capacity = 8;
+        this.tasks = new FileTask[this.capacity];
+        this.count = 0;
+    }
+
+    fn grow() -> void {
+        this.capacity = this.capacity * 2;
+        FileTask[] nt = new FileTask[this.capacity];
+        i32 i = 0;
+        while (i < this.count) {
+            nt[i] = this.tasks[i];
+            i = i + 1;
+        }
+        this.tasks = nt;
+    }
+
+    fn find(i64 id) -> i32 {
+        i32 i = 0;
+        while (i < this.count) {
+            if (this.tasks[i].id == id) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn removeAt(i32 idx) -> void {
+        i32 j = idx;
+        while (j + 1 < this.count) {
+            this.tasks[j] = this.tasks[j + 1];
+            j = j + 1;
+        }
+        this.count = this.count - 1;
+    }
+
+    pub fn add(FileTask task) -> void {
+        if (this.count >= this.capacity) {
+            this.grow();
+        }
+        this.tasks[this.count] = task;
+        this.count = this.count + 1;
+    }
+
+    pub fn pump() -> void {
+        i64[] meta = new i64[4];
+        while (true) {
+            i64 rc = 0;
+            unsafe {
+                rc = mylis_file_async_poll(meta);
+            }
+            if (rc <= 0) {
+                return;
+            }
+            i64 id = meta[0];
+            i32 kind = meta[1] as i32;
+            i64 status = meta[2];
+            i64 len = meta[3];
+            i32 idx = this.find(id);
+            if (idx < 0) {
+                u8[] discard = new u8[0];
+                unsafe {
+                    mylis_file_async_take(id, discard);
+                }
+                continue;
+            }
+            FileTask task = this.tasks[idx];
+            this.removeAt(idx);
+            if (status < 0) {
+                u8[] empty = new u8[0];
+                unsafe {
+                    mylis_file_async_take(id, empty);
+                }
+                IoError error = new IoError((-status) as i32);
+                if (kind == 1) {
+                    task.handler.onReadDone(id, Err(error));
+                } else {
+                    task.handler.onWriteDone(id, Err(error));
+                }
+            } else {
+                u8[] data = new u8[len];
+                unsafe {
+                    mylis_file_async_take(id, data);
+                }
+                if (kind == 1) {
+                    task.handler.onReadDone(id, Ok(data));
+                } else {
+                    task.handler.onWriteDone(id, Ok(len));
+                }
+            }
+        }
+    }
+
+    pub fn hasPending() -> bool {
+        return this.count > 0;
+    }
+
+    pub fn shutdown() -> void {
+        while (this.count > 0) {
+            this.tasks[this.count - 1].cancel();
+            this.count = this.count - 1;
+        }
+    }
+}
