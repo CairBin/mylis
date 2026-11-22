@@ -1,6 +1,7 @@
 import { Regex } from "Regex.myl";
 import { RegexMatch } from "RegexMatch.myl";
 import { RegexCaptures } from "RegexCaptures.myl";
+import { Vec } from "Vec.myl";
 import { IoError } from "IoError.myl";
 import { println, println_bool, println_i64 } from "Io.myl";
 
@@ -212,6 +213,112 @@ fn main() -> i32 {
             }
         }
         Err(_) => { println("nested-repeat-compile-error"); }
+    }
+
+    Result<Regex, IoError> lookResult = Regex::Compile("foo(?=bar)");
+    match lookResult {
+        Ok(lookPattern) => {
+            println_bool(lookPattern.isMatch("foobar"));
+            println_bool(lookPattern.isMatch("foobaz"));
+            Option<RegexMatch> lookFound = lookPattern.find("xxfoobar");
+            match lookFound {
+                Some(value) => {
+                    println_i64(value.start);
+                    println_i64(value.end);
+                    println(value.text("xxfoobar"));
+                }
+                None => { println("look-none"); }
+            }
+        }
+        Err(_) => { println("look-compile-error"); }
+    }
+
+    Result<Regex, IoError> negativeLookResult = Regex::Compile("foo(?!bar)");
+    match negativeLookResult {
+        Ok(negativeLookPattern) => {
+            println_bool(negativeLookPattern.isMatch("foobaz"));
+            println_bool(negativeLookPattern.isMatch("foobar"));
+        }
+        Err(_) => { println("negative-look-compile-error"); }
+    }
+
+    Result<Regex, IoError> lookCaptureResult = Regex::Compile("(a)(?=(b))");
+    match lookCaptureResult {
+        Ok(lookCapturePattern) => {
+            Option<RegexCaptures> lookCaptureFound = lookCapturePattern.findCaptures("ab");
+            match lookCaptureFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("ab", 0));
+                    println(caps.text("ab", 1));
+                    println(caps.text("ab", 2));
+                }
+                None => { println("look-capture-none"); }
+            }
+        }
+        Err(_) => { println("look-capture-compile-error"); }
+    }
+
+    Result<Regex, IoError> nestedLookResult = Regex::Compile("a(?=b(?=c))");
+    match nestedLookResult {
+        Ok(nestedLookPattern) => {
+            println_bool(nestedLookPattern.isMatch("abc"));
+            println_bool(nestedLookPattern.isMatch("abd"));
+        }
+        Err(_) => { println("nested-look-compile-error"); }
+    }
+
+    Result<Regex, IoError> lookAllResult = Regex::Compile("a(?=b)");
+    match lookAllResult {
+        Ok(lookAllPattern) => {
+            Vec<RegexMatch> lookMatches = lookAllPattern.findAll("abab");
+            println_i64(lookMatches.len());
+            if (lookMatches.len() > 0) {
+                println_i64(lookMatches.get(0).start);
+            }
+            if (lookMatches.len() > 1) {
+                println_i64(lookMatches.get(1).start);
+            }
+        }
+        Err(_) => { println("look-all-compile-error"); }
+    }
+
+    Result<Regex, IoError> longestLookResult = Regex::Compile("a(?=b)|ab");
+    match longestLookResult {
+        Ok(longestLookPattern) => {
+            Option<RegexMatch> longestFound = longestLookPattern.find("ab");
+            match longestFound {
+                Some(value) => { println_i64(value.end); }
+                None => { println("longest-look-none"); }
+            }
+        }
+        Err(_) => { println("longest-look-compile-error"); }
+    }
+
+    Result<Regex, IoError> lookBehindResult = Regex::Compile("(?<=a)b");
+    match lookBehindResult {
+        Ok(_) => { println("lookbehind-supported"); }
+        Err(_) => { println("lookbehind-error"); }
+    }
+
+    Result<Regex, IoError> lookLeakResult = Regex::Compile("((?=(a))ab|ac)");
+    match lookLeakResult {
+        Ok(lookLeakPattern) => {
+            Option<RegexCaptures> lookLeakFound = lookLeakPattern.findCaptures("ac");
+            match lookLeakFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("ac", 0));
+                    match caps.group(2) {
+                        Some(_) => { println("look-leak-bad"); }
+                        None => { println("look-leak-none"); }
+                    }
+                    println(caps.text("ac", 1));
+                }
+                None => { println("look-leak-capture-none"); }
+            }
+        }
+        Err(_) => { println("look-leak-compile-error"); }
     }
 
     return 0;
