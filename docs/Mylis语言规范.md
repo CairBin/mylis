@@ -1791,7 +1791,7 @@ mylc --shared mathlib.myl -o libmathlib.so     # Linux/macOS
 mylc --shared mathlib.myl -o mathlib.dll       # Windows
 ```
 
-- Linux/macOS 用 `-shared -fPIC`；Windows MSVC 用 `cl /LD /Fe:<dll>`，并由 `__declspec(dllexport)` 导出；
+- Linux/macOS 用 `-shared -fPIC`；Windows MSVC 用 `cl /LD /Fe:<dll>`，MinGW 用 `gcc -shared` 并生成 `.dll.a` 导入库；两者都由 `__declspec(dllexport)` 导出；
 - 同样导出 `void <stem>_init(void)`，使用方先调用一次；
 - **运行时链接默认**：Linux/macOS 构建的 `mylc` 默认不把运行时链进 `.so`，宿主程序负责提供 `myrt_*`；Windows 构建的 `mylc` 默认把运行时链入 DLL（`cfg!(windows)`），`--embed-runtime` 用于在 Linux/macOS 上显式打开自包含。GNU 侧自研 GC 以 PIC 构建；Boehm 的 `libgc.a` 通常不是 PIC，直接链进 `.so` 可能报 `relocation R_X86_64_TPOFF32 ... recompile with -fPIC`。
 - Windows 上调 `*.dll` 需要 **import lib**（`foo.lib` 或 `libfoo.dll.a`），不能直接给 `.dll`。
@@ -1938,12 +1938,11 @@ gcc -I<mylis>/myrt client.c libmathlib.a \
 | 平台 | 状态 | 工具链 / 说明 |
 | --- | --- | --- |
 | Windows x64 | 已验证 | Windows 10/11；MSVC `cl.exe` / `lib.exe`；Rust `x86_64-pc-windows-msvc`；默认 LLVM 需 LLVM 15+ `clang.exe` |
+| Windows x64（MinGW） | 已验证 | Windows 10/11；MinGW-w64 `gcc.exe` / `ar.exe`；Rust `x86_64-pc-windows-gnu`；LLVM 需支持 `--target=x86_64-w64-windows-gnu` 的 clang |
 | Linux x86_64 | 已验证 | `gcc` + `ar`；默认 LLVM 需 `clang`；POSIX `epoll` / `poll` |
 | macOS / BSD | 按 POSIX 路径实现 | `poll` 后备；`kqueue` 优化尚未实现 |
 
-Windows 当前只支持 **MSVC x64**，不支持 MinGW/GNU target；`make test-win` 会检查 ABI 与工具链，
-并运行原生 std、Worker、写超时与发行包自检。Windows 7 不在当前支持范围；`mylc.exe` 与生成程序均按
-现代 MSVC 运行时和 Windows SDK 构建。
+Windows 支持 **MSVC x64** 与 **MinGW-w64 GNU x64** 两套隔离 ABI：`mylc.exe` 自身的 Rust target 决定链接 `.lib` 还是 `.a`，两套产物不能混用。MinGW 的默认 LLVM 后端用 clang 编 IR、MinGW `gcc` 链接，运行时/GC/std 侧车均为 GNU `.a`。`make test-win` 会按构建族检查工具链并运行回归；Windows 7 不在当前支持范围。
 
 ### 18.7 库模式的验证用例
 

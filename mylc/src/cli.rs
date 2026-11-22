@@ -298,8 +298,11 @@ pub fn apply_std_defaults(a: &mut Args) -> Result<(), String> {
             a.includes.push(project.to_string_lossy().to_string());
         }
     }
-    // 平台侧车随编译器目标选择：POSIX 用 std-posix，Windows 用 std-win32。
-    let (pkg, prefix, ext) = if cfg!(windows) {
+    // 平台侧车随编译器目标选择：POSIX 用 std-posix；Windows MSVC 用
+    // std-win32 的 .lib，Windows GNU（MinGW）用同一来源编出的 lib*.a。
+    let (pkg, prefix, ext) = if cfg!(all(windows, target_env = "gnu")) {
+        ("std-win32", "lib", "a")
+    } else if cfg!(windows) {
         ("std-win32", "", "lib")
     } else {
         ("std-posix", "lib", "a")

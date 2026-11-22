@@ -53,14 +53,7 @@ OBJ        := .o
 
 ifeq ($(OS),Windows_NT)
   EXE          := .exe
-  OBJ          := .obj
-  CARGO_TARGET ?= x86_64-pc-windows-msvc
-  # Windows 分支强制 MSVC 默认；命令行的 CC=clang-cl 仍可覆盖。
-  # 不能用 ?=，否则 Git Bash/终端继承的 CC=cc 会覆盖默认值。
-  CC           := cl
-  AR           := lib
-  RUSTFLAGS_T  = --target $(CARGO_TARGET)
-  RUST_OUT     = target/$(CARGO_TARGET)/release
+  TOOLCHAIN_FAMILY ?= msvc
   SHELL        := cmd.exe
   .SHELLFLAGS  := /c
   W             = $(subst /,\,$1)
@@ -68,33 +61,65 @@ ifeq ($(OS),Windows_NT)
   RMDIR         = if exist "$(call W,$1)" rmdir /S /Q "$(call W,$1)"
   COPY          = copy /Y "$(call W,$1)" "$(call W,$2)" >NUL
   COPYTREE      = xcopy /E /I /Y /Q "$(call W,$1)\*" "$(call W,$2)" >NUL
-  MYRT_LIB      := build/mylrt.lib
-  SIMPLE_LIB    := build/gc_simple.lib
-  BOEHM_LIB     := build/gc_boehm.lib
-  MYLGC_LIB     := build/mylgc.lib
-  GC_DEPS       := $(MYLGC_LIB) $(SIMPLE_LIB)
-  CFLAGS        := /nologo /std:c11 /O2 /I$(ROOT)/myrt
-  LIBFLAGS      := /nologo
   BIN_MYLC      := build/mylc$(EXE)
   BIN_MYLS      := build/myls$(EXE)
-  TOOLCHAIN_FAMILY ?= msvc
   MANIFEST_OS   := windows
   MANIFEST_FAMILY := $(TOOLCHAIN_FAMILY)
-  MANIFEST_STYLE := msvc
-  MANIFEST_ABI  := msvc
-  MANIFEST_TARGET := $(CARGO_TARGET)
-  MANIFEST_CC   := cl
-  MANIFEST_AR   := lib
   MANIFEST_MYRT = $(MYRT_LIB)
   MANIFEST_MYLGC = $(MYLGC_LIB)
   MANIFEST_SIMPLE = $(SIMPLE_LIB)
-  # Rust std（windows-msvc）静态库引用的系统库；cl / clang 都需要显式带上。
-  WIN_RT_LIBS   := ws2_32.lib ntdll.lib userenv.lib advapi32.lib bcrypt.lib ole32.lib oleaut32.lib shell32.lib
-  # RT_NO_STD=1 表示 freestanding 运行时，不额外链 Windows 系统库。
-  MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
   STD_WIN_DIR := build/std-win32/native
-  STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,mylis_file.lib mylis_io.lib mylis_time.lib mylis_net.lib mylis_event.lib mylis_process.lib)
   STD_WIN_STAMP := $(STD_WIN_DIR)/.built
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+    OBJ          := .o
+    CARGO_TARGET ?= x86_64-pc-windows-gnu
+    CC           := gcc
+    AR           := ar
+    RUSTFLAGS_T  = --target $(CARGO_TARGET)
+    RUST_OUT     = target/$(CARGO_TARGET)/release
+    MYRT_LIB     := build/libmylrt.a
+    SIMPLE_LIB   := build/libgc_simple.a
+    BOEHM_LIB    := build/libgc_boehm.a
+    MYLGC_LIB    := build/libmylgc.a
+    GC_DEPS      := $(MYLGC_LIB) $(SIMPLE_LIB)
+    CFLAGS       := -std=c11 -O2 -Wall -Wextra -fno-strict-aliasing -I$(ROOT)/myrt
+    LIBFLAGS     :=
+    MANIFEST_STYLE := gnu
+    MANIFEST_ABI := gnu
+    MANIFEST_TARGET := $(CARGO_TARGET)
+    MANIFEST_CC  := $(notdir $(CC))
+    MANIFEST_AR  := $(notdir $(AR))
+    # Rust std（windows-gnu）静态库引用的系统库；链接时加 -l 前缀。
+    WIN_RT_LIBS  := ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32
+    MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
+    STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,libmylis_file.a libmylis_io.a libmylis_time.a libmylis_net.a libmylis_event.a libmylis_process.a)
+  else
+    OBJ          := .obj
+    CARGO_TARGET ?= x86_64-pc-windows-msvc
+    # Windows 分支强制 MSVC 默认；命令行的 CC=clang-cl 仍可覆盖。
+    # 不能用 ?=，否则 Git Bash/终端继承的 CC=cc 会覆盖默认值。
+    CC           := cl
+    AR           := lib
+    RUSTFLAGS_T  = --target $(CARGO_TARGET)
+    RUST_OUT     = target/$(CARGO_TARGET)/release
+    MYRT_LIB     := build/mylrt.lib
+    SIMPLE_LIB   := build/gc_simple.lib
+    BOEHM_LIB    := build/gc_boehm.lib
+    MYLGC_LIB    := build/mylgc.lib
+    GC_DEPS      := $(MYLGC_LIB) $(SIMPLE_LIB)
+    CFLAGS       := /nologo /std:c11 /O2 /I$(ROOT)/myrt
+    LIBFLAGS     := /nologo
+    MANIFEST_STYLE := msvc
+    MANIFEST_ABI := msvc
+    MANIFEST_TARGET := $(CARGO_TARGET)
+    MANIFEST_CC  := cl
+    MANIFEST_AR  := lib
+    # Rust std（windows-msvc）静态库引用的系统库；cl / clang 都需要显式带上。
+    WIN_RT_LIBS  := ws2_32.lib ntdll.lib userenv.lib advapi32.lib bcrypt.lib ole32.lib oleaut32.lib shell32.lib
+    # RT_NO_STD=1 表示 freestanding 运行时，不额外链 Windows 系统库。
+    MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
+    STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,mylis_file.lib mylis_io.lib mylis_time.lib mylis_net.lib mylis_event.lib mylis_process.lib)
+  endif
 else
   CC           ?= gcc
   AR           ?= ar
@@ -135,19 +160,32 @@ GC_ROOT ?= $(HOME)/mylis-toolchain
 BUILD_MANIFEST := build/mylis-build.json
 
 ifeq ($(OS),Windows_NT)
-  ifeq ($(findstring -msvc,$(CARGO_TARGET)),)
-    $(error Windows build requires CARGO_TARGET=x86_64-pc-windows-msvc; current: $(CARGO_TARGET). Add a full MinGW toolchain family instead of changing only CC)
-  endif
-  ifneq ($(TOOLCHAIN_FAMILY),msvc)
-    $(error Windows currently supports TOOLCHAIN_FAMILY=msvc only; clang-msvc/MinGW requires a full target + runtime build family)
-  endif
-  CC_STEM := $(basename $(notdir $(CC)))
-  AR_STEM := $(basename $(notdir $(AR)))
-  ifneq ($(filter cl clang-cl,$(CC_STEM)),$(CC_STEM))
-    $(error Windows build requires CC=cl or clang-cl; current CC=$(CC); run: set CC=cl)
-  endif
-  ifneq ($(filter lib,$(AR_STEM)),$(AR_STEM))
-    $(error Windows build requires AR=lib; current AR=$(AR); run: set AR=lib)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+    ifeq ($(findstring -gnu,$(CARGO_TARGET)),)
+      $(error MinGW build requires CARGO_TARGET=x86_64-pc-windows-gnu; current: $(CARGO_TARGET))
+    endif
+    CC_STEM := $(basename $(notdir $(CC)))
+    AR_STEM := $(basename $(notdir $(AR)))
+    ifeq ($(filter gcc clang,$(CC_STEM)),)
+      $(error MinGW build requires CC=gcc or clang; current CC=$(CC))
+    endif
+    ifeq ($(filter ar llvm-ar,$(AR_STEM)),)
+      $(error MinGW build requires AR=ar or llvm-ar; current AR=$(AR))
+    endif
+  else ifneq ($(TOOLCHAIN_FAMILY),msvc)
+    $(error Windows supports TOOLCHAIN_FAMILY=msvc or mingw; current: $(TOOLCHAIN_FAMILY))
+  else
+    ifeq ($(findstring -msvc,$(CARGO_TARGET)),)
+      $(error Windows MSVC build requires CARGO_TARGET=x86_64-pc-windows-msvc; current: $(CARGO_TARGET))
+    endif
+    CC_STEM := $(basename $(notdir $(CC)))
+    AR_STEM := $(basename $(notdir $(AR)))
+    ifneq ($(filter cl clang-cl,$(CC_STEM)),$(CC_STEM))
+      $(error Windows MSVC build requires CC=cl or clang-cl; current CC=$(CC); run: set CC=cl)
+    endif
+    ifneq ($(filter lib,$(AR_STEM)),$(AR_STEM))
+      $(error Windows MSVC build requires AR=lib; current AR=$(AR); run: set AR=lib)
+    endif
   endif
 endif
 
@@ -180,12 +218,21 @@ ifeq ($(OS),Windows_NT)
 	@$(call MKDIR,bin/std-win32)
 	@$(call COPYTREE,std-win32,bin/std-win32)
 	@$(call MKDIR,bin/build/std-win32/native)
+ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	@$(call COPY,build/std-win32/native/libmylis_file.a,bin/build/std-win32/native/libmylis_file.a)
+	@$(call COPY,build/std-win32/native/libmylis_io.a,bin/build/std-win32/native/libmylis_io.a)
+	@$(call COPY,build/std-win32/native/libmylis_time.a,bin/build/std-win32/native/libmylis_time.a)
+	@$(call COPY,build/std-win32/native/libmylis_net.a,bin/build/std-win32/native/libmylis_net.a)
+	@$(call COPY,build/std-win32/native/libmylis_event.a,bin/build/std-win32/native/libmylis_event.a)
+	@$(call COPY,build/std-win32/native/libmylis_process.a,bin/build/std-win32/native/libmylis_process.a)
+else
 	@$(call COPY,build/std-win32/native/mylis_file.lib,bin/build/std-win32/native/mylis_file.lib)
 	@$(call COPY,build/std-win32/native/mylis_io.lib,bin/build/std-win32/native/mylis_io.lib)
 	@$(call COPY,build/std-win32/native/mylis_time.lib,bin/build/std-win32/native/mylis_time.lib)
 	@$(call COPY,build/std-win32/native/mylis_net.lib,bin/build/std-win32/native/mylis_net.lib)
 	@$(call COPY,build/std-win32/native/mylis_event.lib,bin/build/std-win32/native/mylis_event.lib)
 	@$(call COPY,build/std-win32/native/mylis_process.lib,bin/build/std-win32/native/mylis_process.lib)
+endif
 endif
 	@$(call COPY,$(MYRT_LIB),bin/build/$(notdir $(MYRT_LIB)))
 	@$(call COPY,$(MYLGC_LIB),bin/build/$(notdir $(MYLGC_LIB)))
@@ -228,7 +275,11 @@ endif
 ifeq ($(OS),Windows_NT)
 $(MYRT_LIB): $(MYLRT_SRC) mylrt-rs/build.rs mylrt-rs/Cargo.toml $(RT_IMPL_RS) $(PLATFORM_IMPL_RS) FORCE | build
 	cd mylrt-rs && set "MYLRT_IMPL_RS=$(RT_IMPL_RS_WIN)" && set "MYLRT_PLATFORM_RS=$(PLATFORM_IMPL_RS_WIN)" && $(CARGO) build --release $(RUSTFLAGS_T) $(RUST_FEATURES)
+ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	@$(call COPY,mylrt-rs/$(RUST_OUT)/libmylrt.a,$@)
+else
 	@$(call COPY,mylrt-rs/$(RUST_OUT)/mylrt.lib,$@)
+endif
 else
 $(MYRT_LIB): $(MYLRT_SRC) mylrt-rs/build.rs mylrt-rs/Cargo.toml $(RT_IMPL_RS) $(PLATFORM_IMPL_RS) FORCE | build
 	cd mylrt-rs && MYLRT_IMPL_RS="$(abspath $(RT_IMPL_RS))" MYLRT_PLATFORM_RS="$(abspath $(PLATFORM_IMPL_RS))" $(CARGO) build --release $(RUSTFLAGS_T) $(RUST_FEATURES)
@@ -243,6 +294,19 @@ build/libmylrt_c.a: myrt/mylrt.c myrt/mylrt.h myrt/mylrt_gc.h | build
 
 # ---- 可选 GC 后端（Boehm / simple）----
 ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+build/gc_simple.o: myrt/gc/gc_simple.c myrt/mylrt_gc.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/gc_boehm.o: myrt/gc/gc_boehm.c myrt/mylrt_gc.h | build
+	$(CC) $(CFLAGS) -I$(GC_ROOT)/include -c $< -o $@
+
+$(SIMPLE_LIB): build/gc_simple.o
+	$(AR) rcs $@ build/gc_simple.o
+
+$(BOEHM_LIB): build/gc_boehm.o
+	$(AR) rcs $@ build/gc_boehm.o
+  else
 build/gc_simple.obj: myrt/gc/gc_simple.c myrt/mylrt_gc.h | build
 	$(CC) $(CFLAGS) /c myrt/gc/gc_simple.c /Fo:build/gc_simple.obj
 
@@ -254,6 +318,7 @@ $(SIMPLE_LIB): build/gc_simple.obj
 
 $(BOEHM_LIB): build/gc_boehm.obj
 	$(AR) $(LIBFLAGS) /OUT:$@ build/gc_boehm.obj
+  endif
 else
 build/gc_simple.o: myrt/gc/gc_simple.c myrt/mylrt_gc.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -274,7 +339,11 @@ endif
 ifeq ($(OS),Windows_NT)
 $(MYLGC_LIB): $(MYLGC_SRC) mylgc/Cargo.toml | build
 	cd mylgc && set "RUSTFLAGS=$(RUSTFLAGS) -C relocation-model=pic" && $(CARGO) build --release $(RUSTFLAGS_T)
+ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	@$(call COPY,mylgc/$(RUST_OUT)/libmylgc.a,$@)
+else
 	@$(call COPY,mylgc/$(RUST_OUT)/mylgc.lib,$@)
+endif
 else
 $(MYLGC_LIB): $(MYLGC_SRC) mylgc/Cargo.toml | build
 	cd mylgc && RUSTFLAGS="$(RUSTFLAGS) -C relocation-model=pic" $(CARGO) build --release $(RUSTFLAGS_T)
@@ -294,7 +363,7 @@ $(BIN_MYLS): $(wildcard mylc/src/*.rs) $(wildcard mylc/src/*/*.rs) mylc/Cargo.to
 # PowerShell 5.1 在 rustc 子进程结束后可能不自动退出；用 -Command 显式收尾，并保留失败退出码。
 ifeq ($(OS),Windows_NT)
 $(STD_WIN_STAMP): $(wildcard std-win32/native/*.rs) $(wildcard std-win32/native/*.h) $(wildcard std-posix/native/*.rs) tools/build_std_native.ps1 | build
-	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/build_std_native.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/build_std_native.ps1' -Target '$(CARGO_TARGET)' -Out '$(subst /,\,$(STD_WIN_DIR))' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
 	@echo built > "$(call W,$@)"
 
 std-native-win: $(STD_WIN_STAMP)
@@ -311,9 +380,15 @@ endif
 
 check-toolchain:
 ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	@where $(CC) >NUL 2>NUL || (echo check-toolchain: 找不到 $(CC)，请把 MinGW bin 加入 PATH & exit /b 1)
+	@where $(AR) >NUL 2>NUL || (echo check-toolchain: 找不到 $(AR) & exit /b 1)
+	@$(CARGO) --version >NUL 2>NUL || (echo check-toolchain: 找不到 cargo & exit /b 1)
+  else
 	@where cl >NUL 2>NUL || (echo check-toolchain: 找不到 cl.exe，请先进入 VS 开发者环境或运行 vcvars64.bat & exit /b 1)
 	@where lib >NUL 2>NUL || (echo check-toolchain: 找不到 lib.exe & exit /b 1)
 	@$(CARGO) --version >NUL 2>NUL || (echo check-toolchain: 找不到 cargo & exit /b 1)
+  endif
 else
 	@command -v $(CC) >/dev/null 2>&1 || (echo "check-toolchain: 找不到 $(CC)" && exit 1)
 	@command -v $(AR) >/dev/null 2>&1 || (echo "check-toolchain: 找不到 $(AR)" && exit 1)
@@ -323,8 +398,13 @@ endif
 # 链接探针：用当前 CC 同时链接 myrt + mylgc，提前暴露 ABI/CRT 不一致。
 check-rt: $(MYRT_LIB) $(MYLGC_LIB) $(BUILD_MANIFEST)
 ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	@$(CC) $(CFLAGS) -o build/rt_probe.exe tools/rt_probe.c $(MYRT_LIB) $(MYLGC_LIB) $(addprefix -l,$(WIN_RT_LIBS))
+	@build\rt_probe.exe
+  else
 	@$(CC) $(CFLAGS) /Fe:build\rt_probe.exe tools\rt_probe.c $(MYRT_LIB) $(MYLGC_LIB) $(MANIFEST_SYS_LIBS)
 	@build\rt_probe.exe
+  endif
 else
 	@$(CC) $(CFLAGS) -o build/rt_probe tools/rt_probe.c $(MYRT_LIB) $(MYLGC_LIB) -lm -lpthread -ldl
 	@./build/rt_probe
@@ -360,16 +440,26 @@ bootstrap:
 
 test-win:
 ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend mir
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend ast
+	powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend std
+  else
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/test_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
+  endif
 else
-	@echo "test-win 需要在 Windows + MSVC 环境执行：powershell -File tools/test_windows.ps1"
+	@echo "test-win 需要在 Windows 上执行：MSVC 用 tools/test_windows.ps1；MinGW 用 tests/run_tests_windows.ps1"
 endif
 
-dist:
+dist: bin
 ifeq ($(OS),Windows_NT)
+  ifeq ($(TOOLCHAIN_FAMILY),mingw)
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/package_windows_mingw.ps1' -SkipBuild } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
+  else
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/package_windows.ps1' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
+  endif
 else
-	@echo "dist 目标需要在 Windows + MSVC 环境执行（或使用 tools/package_windows.ps1）"
+	@echo "dist 目标需要在 Windows 上执行（MSVC 用 tools/package_windows.ps1，MinGW 用 tools/package_windows_mingw.ps1）"
 endif
 
 clean:

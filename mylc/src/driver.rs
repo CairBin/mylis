@@ -813,18 +813,27 @@ pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
             }
         }
     }
-    let runtime_is_msvc = (is_llvm && cfg!(windows)) || tc.style == toolchain::Style::Msvc;
+    // 编译器自身的 Rust target 决定 Windows ABI；windows-gnu 编出的 mylc
+    // 使用 GNU 运行时（.a + -l 系统库），windows-msvc 编出的仍走 MSVC。
+    let runtime_is_msvc = cfg!(windows) && cfg!(target_env = "msvc");
+    let windows_gnu = cfg!(windows) && !runtime_is_msvc;
     let win_system_libs: Vec<String> = if runtime_is_msvc {
         match build_manifest.as_ref().and_then(|m| m.system_libs.as_ref()) {
             Some(libs) => libs.clone(),
             None => default_msvc_system_libs(),
         }
+    } else if windows_gnu {
+        default_windows_gnu_system_libs()
     } else {
         Vec::new()
     };
-    // Windows 默认 LLVM 后端仍用 clang 驱动，但运行时是 MSVC 静态库；
-    // 不能因为 clang 是 GNU 方言就去找 libmylrt.a。
-    let llvm_windows = is_llvm && cfg!(windows);
+    // Windows + MSVC 的 LLVM 后端仍用 clang 驱动，但运行时是 MSVC 静态库；
+    // MinGW 的 LLVM 后端目标为 windows-gnu，按 GNU 路径处理。
+    let llvm_windows = is_llvm && runtime_is_msvc;
+    // Windows GNU 的 clang 驱动在同时编译 IR + 链接 Rust 静态库时容易在
+    // LLVM 23 的优化/链接阶段耗尽内存；这里改为 clang 只出对象，再用
+    // MinGW gcc 完成最终链接，既保留 -O2 也避开 clang 的 GNU 链接路径。
+    let llvm_windows_gnu = is_llvm && windows_gnu;
     let cpath = PathBuf::from(format!("{}.myl.{}", output, if is_llvm { "ll" } else { "c" }));
     if let Err(e) = std::fs::write(&cpath, &csrc) {
         eprintln!("mylc: {}: {}", i18n::tf("err.write_c", &[("path", &cpath.display().to_string())]), e);
@@ -849,9 +858,9 @@ pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
         }
         return emit_msvc(&tc, &lay, args, &root, gc, &cpath, &output, &header, &win_system_libs);
     }
-    let myrt_path = if llvm_windows { &lay.myrt_msvc_lib } else { &lay.myrt_lib };
-    let simple_path = if llvm_windows { &lay.simple_msvc_lib } else { &lay.simple_lib };
-    let mylgc_path = if llvm_windows { &lay.mylgc_msvc_lib } else { &lay.mylgc_lib };
+    let myrt_path = if runtime_is_msvc { &lay.myrt_msvc_lib } else { &lay.myrt_lib };
+    let simple_path = if runtime_is_msvc { &lay.simple_msvc_lib } else { &lay.simple_lib };
+    let mylgc_path = if runtime_is_msvc { &lay.mylgc_msvc_lib } else { &lay.mylgc_lib };
     let myrt_ok = myrt_path.is_file();
     let gc_ok = match gc {
         GcMode::Simple => simple_path.is_file(),
@@ -872,6 +881,9 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
 
     let mut cmd = Command::new(&lay.cc);
     if is_llvm {
+        if cfg!(all(windows, target_env = "gnu")) {
+            cmd.arg("--target=x86_64-w64-windows-gnu");
+        }
         cmd.arg("-O2").arg("-Xclang").arg("-opaque-pointers");
     } else {
         for f in &tc.cflags {
@@ -886,10 +898,14 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
         cmd.arg(format!("-I{}", d));
     }
     for d in &tc.ldflags {
-        cmd.arg(d);
+        if !llvm_windows_gnu {
+            cmd.arg(d);
+        }
     }
     for d in &args.link_dirs {
-        cmd.arg(format!("-L{}", d));
+        if !llvm_windows_gnu {
+            cmd.arg(format!("-L{}", d));
+        }
     }
     cmd.arg(&cpath);
 
@@ -934,6 +950,10 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
             cmd.arg("-shared");
             if cfg!(windows) {
                 cmd.arg("-Wl,--export-all-symbols").arg("-static-libgcc");
+                if windows_gnu {
+                    // MinGW 消费端用 `-l<name>` 时需要导入库；DLL 与 .dll.a 同名前缀。
+                    cmd.arg(format!("-Wl,--out-implib,{}.a", output));
+                }
             }
             cmd.arg("-o").arg(&output);
             // 动态库默认不内嵌运行时（Boehm 静态库通常非 PIC）；宿主负责提供 myrt 符号。
@@ -947,9 +967,6 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
                     GcMode::Own => { cmd.arg(mylgc_path); }
                     GcMode::Simple => { cmd.arg(simple_path); }
                 }
-                if llvm_windows {
-                    add_windows_system_libs(&mut cmd, &win_system_libs, true);
-                }
             }
             add_native_links(&mut cmd, &native_links);
             for l in &args.link_libs {
@@ -957,36 +974,78 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
             }
             for f in &args.link_files {
                 cmd.arg(f);
+            }
+            if llvm_windows || windows_gnu {
+                add_windows_system_libs(&mut cmd, &win_system_libs, true);
             }
             run_cmd(&mut cmd, args.verbose, &lay.cc);
         }
         _ => {
-            cmd.arg("-o").arg(&output);
-            cmd.arg(myrt_path);
-            match gc {
-                GcMode::Boehm => { cmd.arg(&lay.boehm_lib); cmd.arg(&lay.gc_lib); }
-                GcMode::Own => { cmd.arg(mylgc_path); }
-                GcMode::Simple => { cmd.arg(simple_path); }
-            }
-            if llvm_windows {
-                add_windows_system_libs(&mut cmd, &win_system_libs, true);
-            }
-            for l in &args.link_libs {
-                cmd.arg(format!("-l{}", l));
-            }
-            for f in &args.link_files {
-                cmd.arg(f);
-            }
-            add_native_links(&mut cmd, &native_links);
-            if llvm_windows {
-                // clang 用 MSVC 目标链接 .lib；不要传 GNU -static/-static-libgcc。
-                cmd.arg("-Wl,/SUBSYSTEM:CONSOLE");
-            } else if cfg!(windows) {
-                cmd.arg("-static").arg("-static-libgcc").arg("-Wl,--subsystem,console");
+            if llvm_windows_gnu {
+                // 第一步：clang 只把 LLVM IR 编成对象文件（-O2 在这一步完成）。
+                let obj = PathBuf::from(format!("{}.o", output));
+                cmd.arg("-c").arg("-o").arg(&obj);
+                run_cmd(&mut cmd, args.verbose, &lay.cc);
+                // 第二步：交给 MinGW gcc 链接，避免 clang 的 GNU 链接驱动崩溃。
+                let gnu_linker = toolchain::Toolchain::builtin("gcc")
+                    .map(|t| t.cc)
+                    .unwrap_or_else(|| "gcc".into());
+                let mut ld = Command::new(&gnu_linker);
+                ld.arg(&obj);
+                ld.arg(myrt_path);
+                match gc {
+                    GcMode::Boehm => { ld.arg(&lay.boehm_lib); ld.arg(&lay.gc_lib); }
+                    GcMode::Own => { ld.arg(mylgc_path); }
+                    GcMode::Simple => { ld.arg(simple_path); }
+                }
+                for d in &args.link_dirs {
+                    ld.arg(format!("-L{}", d));
+                }
+                for l in &args.link_libs {
+                    ld.arg(format!("-l{}", l));
+                }
+                for f in &args.link_files {
+                    ld.arg(f);
+                }
+                add_native_links(&mut ld, &native_links);
+                // GNU ld 按顺序解析库；系统库必须放在所有引用它们的静态库之后。
+                add_windows_system_libs(&mut ld, &win_system_libs, true);
+                ld.arg("-static")
+                    .arg("-static-libgcc")
+                    .arg("-Wl,--subsystem,console")
+                    .arg("-o")
+                    .arg(&output);
+                run_cmd(&mut ld, args.verbose, &gnu_linker);
+                let _ = std::fs::remove_file(&obj);
             } else {
-                cmd.arg("-lm").arg("-lpthread").arg("-ldl");
+                cmd.arg("-o").arg(&output);
+                cmd.arg(myrt_path);
+                match gc {
+                    GcMode::Boehm => { cmd.arg(&lay.boehm_lib); cmd.arg(&lay.gc_lib); }
+                    GcMode::Own => { cmd.arg(mylgc_path); }
+                    GcMode::Simple => { cmd.arg(simple_path); }
+                }
+                for l in &args.link_libs {
+                    cmd.arg(format!("-l{}", l));
+                }
+                for f in &args.link_files {
+                    cmd.arg(f);
+                }
+                add_native_links(&mut cmd, &native_links);
+                // GNU ld 按顺序解析库；系统库必须放在所有引用它们的静态库之后。
+                if llvm_windows || windows_gnu {
+                    add_windows_system_libs(&mut cmd, &win_system_libs, true);
+                }
+                if llvm_windows {
+                    // clang 用 MSVC 目标链接 .lib；不要传 GNU -static/-static-libgcc。
+                    cmd.arg("-Wl,/SUBSYSTEM:CONSOLE");
+                } else if cfg!(windows) {
+                    cmd.arg("-static").arg("-static-libgcc").arg("-Wl,--subsystem,console");
+                } else {
+                    cmd.arg("-lm").arg("-lpthread").arg("-ldl");
+                }
+                run_cmd(&mut cmd, args.verbose, &lay.cc);
             }
-            run_cmd(&mut cmd, args.verbose, &lay.cc);
         }
     }
 
@@ -1257,6 +1316,18 @@ const MSVC_RT_SYSTEM_LIBS: &[&str] = &[
     "shell32.lib",
 ];
 
+/// Rust std（windows-gnu）静态库引用的系统库；GCC/clang 用 `-l<name>`。
+const WINDOWS_GNU_RT_SYSTEM_LIBS: &[&str] = &[
+    "ws2_32",
+    "ntdll",
+    "userenv",
+    "advapi32",
+    "bcrypt",
+    "ole32",
+    "oleaut32",
+    "shell32",
+];
+
 fn add_windows_system_libs(cmd: &mut Command, libs: &[String], dash_l: bool) {
     for lib in libs {
         if dash_l {
@@ -1270,6 +1341,10 @@ fn add_windows_system_libs(cmd: &mut Command, libs: &[String], dash_l: bool) {
 
 fn default_msvc_system_libs() -> Vec<String> {
     MSVC_RT_SYSTEM_LIBS.iter().map(|s| s.to_string()).collect()
+}
+
+fn default_windows_gnu_system_libs() -> Vec<String> {
+    WINDOWS_GNU_RT_SYSTEM_LIBS.iter().map(|s| s.to_string()).collect()
 }
 
 /// MSVC 家族（cl.exe + lib.exe）：运行时源码随产物一起编译。

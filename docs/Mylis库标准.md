@@ -400,7 +400,7 @@ P1 当前实现已提供 `--emit-mylib` 和 `--link-mylib`：
 - API 按包内模块分段；根 API 是 `--- api lib`，根包子模块是 `--- api 包名::vector`、`--- api 包名::vector::A`；依赖包 API 用 `dep::lib`、`dep::vector::A` 这种包名限定段；
 - 归档仍是单文件文本，`api.mir` / `impl.mir` 独立文件和压缩归档留后。
 - 原生载荷按 **API 声明名** 提供 C ABI 符号。第三方 C 库必须导出归档 API 中的顶层函数名；用 Mylis 自己生成时，在源函数上加 `@export("answer")` 让 `mylc --static` / `--shared` 导出稳定符号，再嵌入归档。例如 `@export("answer") pub fn answer() -> i32 { ... }`。
-- 带原生载荷的归档可由 `--backend mir`（C 后端）或 `--backend llvm` 消费；LLVM 后端为 API 顶层函数生成外部 `declare`，不生成空定义，并直接链接原生库。动态库载荷在 Linux/macOS 通过 `-Wl,-rpath` 指向提取目录，Windows 只支持与 API 名一致的 `.lib` 导入库。
+- 带原生载荷的归档可由 `--backend mir`（C 后端）或 `--backend llvm` 消费；LLVM 后端为 API 顶层函数生成外部 `declare`，不生成空定义，并直接链接原生库。动态库载荷在 Linux/macOS 通过 `-Wl,-rpath` 指向提取目录；Windows 支持与 API 名一致的 `.lib` 导入库（MSVC）或 `.a` / `.dll.a`（MinGW）。
 
 接口 API 已端到端验证：库返回 class，应用声明为 interface，链接后能正确装箱并动态派遣到库内方法。
 

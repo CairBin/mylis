@@ -365,7 +365,15 @@ impl Toolchain {
             .filter(|s| !s.trim().is_empty())
             .or_else(|| project_cfg.get("family").cloned())
             .or_else(|| bundle.get("family").cloned())
-            .unwrap_or_else(|| if cfg!(windows) { "msvc".to_string() } else { "gcc".to_string() });
+            .unwrap_or_else(|| {
+                if cfg!(all(windows, target_env = "gnu")) {
+                    "mingw".to_string()
+                } else if cfg!(windows) {
+                    "msvc".to_string()
+                } else {
+                    "gcc".to_string()
+                }
+            });
 
         let mut tc = specs.get(&requested).cloned().or_else(|| {
             Toolchain::builtin(&requested).map(|mut b| {
@@ -523,9 +531,11 @@ impl BuildManifest {
         None
     }
 
-    /// `llvm` 为 true 时，Windows 的 clang 驱动虽然属于 GNU argv 风格，
-    /// 但运行时 ABI 仍是 MSVC，不能拿 `tc.style` 直接判断。
-    pub fn validate(&self, tc: &Toolchain, lay: &Layout, root: &Path, llvm: bool) -> Result<(), String> {
+    /// Windows ABI 由 `mylc` 自身的 Rust target 决定：windows-msvc 编出的编译器
+    /// 默认链接 MSVC 运行时，windows-gnu 编出的编译器默认链接 GNU 运行时。
+    /// LLVM 后端仍使用同一个 host ABI；MinGW 的 clang 以 windows-gnu 为目标，
+    /// 因此不能按“Windows + LLVM ⇒ MSVC”推断。
+    pub fn validate(&self, tc: &Toolchain, lay: &Layout, root: &Path, _llvm: bool) -> Result<(), String> {
         let current_os = if cfg!(windows) {
             "windows"
         } else if cfg!(target_os = "macos") {
@@ -540,7 +550,7 @@ impl BuildManifest {
             ));
         }
 
-        let runtime_msvc = (llvm && cfg!(windows)) || tc.style == Style::Msvc;
+        let runtime_msvc = cfg!(windows) && cfg!(target_env = "msvc");
         let manifest_msvc = self.abi.eq_ignore_ascii_case("msvc")
             || self.style.eq_ignore_ascii_case("msvc");
         if manifest_msvc != runtime_msvc {
@@ -551,7 +561,7 @@ impl BuildManifest {
             ));
         }
 
-        if !llvm && !self.cc.is_empty() {
+        if !_llvm && !self.cc.is_empty() {
             if let Some(kind) = Toolchain::guess_builtin(&self.cc) {
                 let cc_msvc = kind == "msvc";
                 if cc_msvc != runtime_msvc {

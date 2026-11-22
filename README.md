@@ -31,13 +31,13 @@ bin/
 ├── core/         # 语言 core：GC/格式化/字符串/数学/ToString/panic+assert
 ├── std/          # 独立 std 包（Io 等），通过包依赖显式使用
 ├── std-posix/    # POSIX 的 std native 侧车（Linux/macOS）
-├── std-win32/    # Windows MSVC 的 std native 侧车（shim + 头文件）
+├── std-win32/    # Windows MSVC / MinGW 的 std native 侧车（shim + 头文件）
 ├── myrt/         # 运行时头文件与源码（mylrt.h / mylrt_gc.h ...）
 ├── gc/           # 可选 Boehm GC 的 include + lib
-└── build/        # libmylrt.a / libmylgc.a（Windows MSVC 为 .lib；Windows 下还有 std-win32/native/mylis_*.lib）
+└── build/        # libmylrt.a / libmylgc.a（Windows MSVC 为 .lib；Windows 下还有 std-win32/native/mylis_*.lib 或 libmylis_*.a）
 ```
 
-**拷贝 `bin/` 这一个目录就能用**（Linux/macOS 需要 GCC 兼容 C 编译器；Windows 用 MSVC `cl.exe`；默认 LLVM 后端需要 LLVM 15+ 的 `clang`）：
+**拷贝 `bin/` 这一个目录就能用**（Linux/macOS 需要 GCC 兼容 C 编译器；Windows 可用 MSVC `cl.exe` 或 MinGW GCC；默认 LLVM 后端需要 LLVM 15+ 的 `clang`）：
 
 ```bash
 bin/mylc hello.myl -o hello
@@ -273,7 +273,7 @@ core 当前对外 API（`core/lib.myl` 统一导出）：
 
 | 家族 | 典型编译器 | 参数风格 |
 | --- | --- | --- |
-| `gcc`（gnu） | gcc、cc（Unix；Windows 不支持 MinGW 构建） | `-std=c11 -O2 -I<dir> -o out -c -shared -L<dir> -lname` |
+| `gcc`（gnu） | gcc、cc（Unix；Windows + MinGW 用 gcc） | `-std=c11 -O2 -I<dir> -o out -c -shared -L<dir> -lname` |
 | `clang`（gnu） | clang、llvm-ar | 同上 |
 | `msvc` | cl.exe、lib.exe | `/std:c11 /O2 /I <dir> /Fe:out /Fo<obj> /link /LIBPATH:<dir> name.lib` |
 
@@ -285,7 +285,7 @@ core 当前对外 API（`core/lib.myl` 统一导出）：
 2. 环境变量 `MYLIS_FAMILY=<规格名>`；
 3. 工程 `mylis.toml` 的 `[toolchain] family = "<规格名>"`；
 4. 随包 `mylis-toolchain.json` 的 `"family"`；
-5. 平台默认：Windows `msvc`，Linux/macOS `gcc`。
+5. 平台默认：Windows 按 `mylc` 自身的 Rust target 选 `msvc`（windows-msvc）或 `mingw`（windows-gnu）；Linux/macOS 为 `gcc`。
 
 ### 6.2 规格文件（插件目录）
 
@@ -431,30 +431,32 @@ pub fn runtime() -> &'static dyn Runtime { &RT }
 
 ---
 
-## 8. Windows（win64）
+## 8. Windows（win64 / win64-mingw）
 
-Windows 侧的 mylc/myls 与运行时默认使用 **MSVC**（Rust 目标 `x86_64-pc-windows-msvc`，C 代码用 `cl.exe` + `lib.exe`）。Linux/macOS 默认使用 GCC。
+Windows 支持两套**互相隔离的原生 ABI**：
 
-发行包 `mylis-*-win64.zip` 的形态：
+- **MSVC（默认）**：Rust `x86_64-pc-windows-msvc`，C 代码用 `cl.exe` + `lib.exe`；
+- **MinGW-w64 GNU**：Rust `x86_64-pc-windows-gnu`，C 代码用 `gcc` + `ar`，产物是 `.a`。
+
+`mylc.exe` 自己用哪个 Rust target 编译，就固定走对应 ABI：windows-msvc 版只链 `.lib`，windows-gnu 版只链 `.a`。两套 `bin/`、`std-win32` 侧车和发行包不能混用。
+
+发行包形态：
 
 ```text
-mylc.exe
-myls.exe
-core/               # 隐式 core 模块；mylc 运行必需
-std/
-std-win32/          # Windows MSVC native 侧车源码与头文件
-myrt/
-gc/                 # 可选 Boehm；默认自研 GC 不需要
-build/mylrt.lib
-build/mylgc.lib
-build/gc_simple.lib
-build/std-win32/native/   # 六个 std native 库
+mylis-*-win64.zip          # MSVC
+mylis-*-win64-mingw.zip    # MinGW
+mylc.exe  myls.exe
+core/  std/  std-win32/  myrt/  gc/
+build/mylrt.lib  或 build/libmylrt.a
+build/mylgc.lib  或 build/libmylgc.a
+build/gc_simple.lib 或 build/libgc_simple.a
+build/std-win32/native/   # 六个 std native 库（.lib 或 lib*.a）
 docs/ mylc/src/ tests/ editors/
-mylis-toolchain.json   # {"family":"msvc"}；cl.exe/lib.exe 从 PATH 解析
-mylis-build.json       # 本套产物的 ABI/target/库路径，mylc 启动时校验
+mylis-toolchain.json   # {"family":"msvc"} 或 {"family":"mingw"}
+mylis-build.json       # ABI/target/库路径，mylc 启动时校验
 ```
 
-### 在 Windows 上从源码构建
+### MSVC 构建
 
 ```bat
 :: 前提：Windows 10/11 x64；Rust（含 x86_64-pc-windows-msvc target）、
@@ -467,31 +469,51 @@ set AR=lib
 make all
 ```
 
-Windows 分支默认强制 `CC=cl`、`AR=lib`，会忽略终端继承的 `CC=cc` / `AR=ar`；
-命令行仍可用 `make CC=clang-cl`。如果显式传 `make CC=cc`，Makefile 会拒绝。
-`make test-win` 也会锁定并在结束后恢复。
+MSVC 分支强制 `CC=cl`、`AR=lib`，会忽略终端继承的 `CC=cc` / `AR=ar`；命令行仍可用 `make CC=clang-cl`。`make test-win` 也会锁定并在结束后恢复。
 
-Windows 分支不需要 gcc。GNU Make 需要 4.x；GnuWin32 的 3.81 在 cmd 配方下会卡住，
-可换用 ezwinports 的 `make-4.4.1-without-guile-w32-bin.zip`。
+### MinGW 构建
 
-`make all` 默认：
+```bat
+:: 前提：Windows 10/11 x64；Rust（含 x86_64-pc-windows-gnu target）、
+:: MinGW-w64 GCC（gcc.exe / ar.exe，UCRT 或 MSVCRT 均可）、GNU Make 4.x；
+:: 默认 LLVM 后端仍需要支持 GNU target 的 clang（例如 LLVM 官方 clang）
+rustup target add x86_64-pc-windows-gnu
+cd mylis
+set PATH=C:\path\to\mingw64\bin;%PATH%
+make TOOLCHAIN_FAMILY=mingw all
+```
 
-- 后端：`BACKEND=llvm`
-- GC 标签：`GC_BACKEND=own`（仅构建提示；实际选择见 `MYLIS_GC`）
-- 编译器：`CC=cl`、`AR=lib`、Rust target `x86_64-pc-windows-msvc`
-- 构建族：`TOOLCHAIN_FAMILY=msvc`
+MinGW 分支默认：
+
+- 编译器：`CC=gcc`、`AR=ar`、Rust target `x86_64-pc-windows-gnu`
+- 构建族：`TOOLCHAIN_FAMILY=mingw`
+- 运行时/GC：`build/libmylrt.a`、`build/libmylgc.a`、`build/libgc_simple.a`
+- std 侧车：`build/std-win32/native/libmylis_*.a`
+- 系统库：`ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32`
+
+`make` 会拒绝混搭：`TOOLCHAIN_FAMILY=mingw` 必须配 `CARGO_TARGET=*-windows-gnu`、`CC=gcc|clang`、`AR=ar|llvm-ar`；MSVC 则必须配 `*-windows-msvc`、`cl|clang-cl`、`lib`。
+
+MinGW 下默认 LLVM 后端采用“两段式”：clang 只把 LLVM IR 编成对象，最终链接交给 MinGW `gcc`，避免 clang 的 GNU 链接驱动在部分 LLVM 版本上崩溃，同时保留 `-O2`。因此 MinGW + LLVM 环境里 `gcc` 和 `clang` 都要在 PATH 中。
+
+GNU Make 需要 4.x；GnuWin32 的 3.81 在 cmd 配方下会卡住，可换用 ezwinports 的 `make-4.4.1-without-guile-w32-bin.zip`。
 
 可覆盖：
 
 ```bat
 set MYLIS_GC=simple
 mylc app.myl -o app
-make all CC=clang-cl
-make all CARGO_TARGET=x86_64-pc-windows-msvc
+make TOOLCHAIN_FAMILY=mingw CC=clang AR=llvm-ar
+make TOOLCHAIN_FAMILY=mingw CARGO_TARGET=x86_64-pc-windows-gnu
 ```
 
-当前 Windows 构建族只允许 `TOOLCHAIN_FAMILY=msvc` 和 `CARGO_TARGET=*-windows-msvc`；
-如果改成 GNU target 或 MinGW 编译器，Makefile 会直接报错，而不是生成混合 ABI 的产物。
+MinGW 的 `--shared` 会同时生成 `*.dll`、同名 `.dll.a` 导入库和头文件；消费端用 `-L<dir> -l<name>` 链接，运行时把 DLL 放到 exe 同目录或 PATH。注意不要同时加 `-static`，否则 GNU ld 会只找静态库。
+
+### 构建一致性检查
+
+```bat
+make check-toolchain   :: MSVC 检查 cl/lib/cargo；MinGW 检查 gcc/ar/cargo
+make check-rt          :: 用当前 CC 同时链接 myrt + mylgc，并运行探针
+```
 
 ### 构建一致性检查
 
@@ -505,7 +527,7 @@ make check-rt          :: 用当前 CC 同时链接 myrt + mylgc，并运行探�
 
 ### Windows 冒烟测试
 
-在 Windows 上可以直接跑：
+MSVC：
 
 ```bat
 make test-win
@@ -513,7 +535,20 @@ make test-win
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\test_windows.ps1
 ```
 
-脚本会：
+MinGW：
+
+```bat
+make TOOLCHAIN_FAMILY=mingw test-win
+:: 或分别跑
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend mir
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend ast
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend llvm
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows.ps1 -Backend std
+```
+
+MinGW 的 PowerShell 回归不依赖 Git Bash/MSYS，避开 Cygwin fork 在大仓库测试中的随机崩溃；正向用例逐个编译、运行并比对 `.expected`，反向用例检查错误码。`-Backend llvm` 会使用 default LLVM 路径（clang 编 IR、gcc 链接），速度明显更慢，可按需单独跑。`-Backend std` 用 `--std --backend mir` 跑 Windows 的五个原生侧车冒烟：`WindowsStdApi`、`FileApi`、`TcpApi`、`UdpApi`、`EventLoopApi`。
+
+MSVC 的 `tools/test_windows.ps1` 会：
 
 - 自动定位并加载 `vcvars64.bat`（也可用 `-VcVars` 指定）；
 - 检查 Rust MSVC target、`cl.exe`、`lib.exe`、GNU make、`clang.exe`；
@@ -552,7 +587,7 @@ MYLIS_GC=boehm mylc app.myl -o app
 backend = "mir"          # llvm（默认）/ mir / ast / ir
 
 [toolchain]
-family = "msvc"          # Windows；Linux/macOS 用 gnu
+family = "msvc"          # Windows MSVC；MinGW 用 mingw（或 gcc）；Linux/macOS 用 gcc
 cc = "cl.exe"
 ar = "lib.exe"
 ```

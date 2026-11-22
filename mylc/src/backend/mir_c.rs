@@ -285,7 +285,9 @@ fn zero_expr(t: &str) -> String {
     if t.starts_with("struct ") || t.starts_with("MylR_") || t.starts_with("MylO_") {
         format!("({}){{0}}", t)
     } else {
-        "0".to_string()
+        // 指针/整数都带类型转换，避免 GCC 把 `?:` 两侧的 0 当成 int
+        // 并与指针分支判为 -Wint-conversion。
+        format!("({})0", t)
     }
 }
 
