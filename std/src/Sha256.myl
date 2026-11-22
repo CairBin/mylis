@@ -1,0 +1,140 @@
+// SHA-256（纯 Mylis，按字节处理，返回小写十六进制）。
+// 支持 UTF-8 文本与任意字节数组；不依赖 native 加密库。
+import { Str } from "core/Str";
+import { StringBuilder } from "StringBuilder.myl";
+
+pub class Sha256 {
+    pub static fn Hash(string message) -> string {
+        return Sha256::HashBytes(Str::Bytes(message));
+    }
+
+    static fn rotr(u32 value, u32 bits) -> u32 {
+        return (value >> bits) | (value << ((32 as u32) - bits));
+    }
+
+    static fn hex(u8[] value) -> string {
+        StringBuilder out = new StringBuilder();
+        string digits = "0123456789abcdef";
+        i64 i = 0;
+        while (i < (value.len() as i64)) {
+            u8 b = value[i];
+            out.append(Str::Substring(digits, ((b >> 4) as u64), 1));
+            out.append(Str::Substring(digits, ((b & 15) as u64), 1));
+            i = i + 1;
+        }
+        return out.toString();
+    }
+
+    pub static fn HashBytes(u8[] data) -> string {
+        u32[] k = [
+            (1116352408) as u32, (1899447441) as u32, (-1245643825) as u32, (-373957723) as u32,
+            (961987163) as u32, (1508970993) as u32, (-1841331548) as u32, (-1424204075) as u32,
+            (-670586216) as u32, (310598401) as u32, (607225278) as u32, (1426881987) as u32,
+            (1925078388) as u32, (-2132889090) as u32, (-1680079193) as u32, (-1046744716) as u32,
+            (-459576895) as u32, (-272742522) as u32, (264347078) as u32, (604807628) as u32,
+            (770255983) as u32, (1249150122) as u32, (1555081692) as u32, (1996064986) as u32,
+            (-1740746414) as u32, (-1473132947) as u32, (-1341970488) as u32, (-1084653625) as u32,
+            (-958395405) as u32, (-710438585) as u32, (113926993) as u32, (338241895) as u32,
+            (666307205) as u32, (773529912) as u32, (1294757372) as u32, (1396182291) as u32,
+            (1695183700) as u32, (1986661051) as u32, (-2117940946) as u32, (-1838011259) as u32,
+            (-1564481375) as u32, (-1474664885) as u32, (-1035236496) as u32, (-949202525) as u32,
+            (-778901479) as u32, (-694614492) as u32, (-200395387) as u32, (275423344) as u32,
+            (430227734) as u32, (506948616) as u32, (659060556) as u32, (883997877) as u32,
+            (958139571) as u32, (1322822218) as u32, (1537002063) as u32, (1747873779) as u32,
+            (1955562222) as u32, (2024104815) as u32, (-2067236844) as u32, (-1933114872) as u32,
+            (-1866530822) as u32, (-1538233109) as u32, (-1090935817) as u32, (-965641998) as u32
+        ];
+        u32[] h = [
+            (1779033703) as u32, (-1150833019) as u32, (1013904242) as u32, (-1521486534) as u32,
+            (1359893119) as u32, (-1694144372) as u32, (528734635) as u32, (1541459225) as u32
+        ];
+
+        i64 length = data.len() as i64;
+        i64 total = ((length + 9 + 63) / 64) * 64;
+        u8[] padded = new u8[total];
+        i64 i = 0;
+        while (i < length) {
+            padded[i] = data[i];
+            i = i + 1;
+        }
+        padded[length] = 128 as u8;
+        u64 bitLength = (length as u64) * (8 as u64);
+        i32 j = 0;
+        while (j < 8) {
+            padded[total - 1 - (j as i64)] = (bitLength >> ((j * 8) as u64)) as u8;
+            j = j + 1;
+        }
+
+        i64 block = 0;
+        while (block < total / 64) {
+            u32[] w = new u32[64];
+            i32 t = 0;
+            while (t < 16) {
+                i64 off = block * 64 + (t as i64) * 4;
+                w[t] = ((padded[off] as u32) << 24)
+                    | ((padded[off + 1] as u32) << 16)
+                    | ((padded[off + 2] as u32) << 8)
+                    | (padded[off + 3] as u32);
+                t = t + 1;
+            }
+            t = 16;
+            while (t < 64) {
+                u32 s0 = Sha256::rotr(w[t - 15], 7)
+                    ^ Sha256::rotr(w[t - 15], 18)
+                    ^ (w[t - 15] >> 3);
+                u32 s1 = Sha256::rotr(w[t - 2], 17)
+                    ^ Sha256::rotr(w[t - 2], 19)
+                    ^ (w[t - 2] >> 10);
+                w[t] = w[t - 16] + s0 + w[t - 7] + s1;
+                t = t + 1;
+            }
+
+            u32 a = h[0];
+            u32 b = h[1];
+            u32 c = h[2];
+            u32 d = h[3];
+            u32 e = h[4];
+            u32 f = h[5];
+            u32 g = h[6];
+            u32 hh = h[7];
+            t = 0;
+            while (t < 64) {
+                u32 s1 = Sha256::rotr(e, 6) ^ Sha256::rotr(e, 11) ^ Sha256::rotr(e, 25);
+                u32 ch = (e & f) ^ ((~e) & g);
+                u32 temp1 = hh + s1 + ch + k[t] + w[t];
+                u32 s0 = Sha256::rotr(a, 2) ^ Sha256::rotr(a, 13) ^ Sha256::rotr(a, 22);
+                u32 maj = (a & b) ^ (a & c) ^ (b & c);
+                u32 temp2 = s0 + maj;
+                hh = g;
+                g = f;
+                f = e;
+                e = d + temp1;
+                d = c;
+                c = b;
+                b = a;
+                a = temp1 + temp2;
+                t = t + 1;
+            }
+            h[0] = h[0] + a;
+            h[1] = h[1] + b;
+            h[2] = h[2] + c;
+            h[3] = h[3] + d;
+            h[4] = h[4] + e;
+            h[5] = h[5] + f;
+            h[6] = h[6] + g;
+            h[7] = h[7] + hh;
+            block = block + 1;
+        }
+
+        u8[] digest = new u8[32];
+        i32 word = 0;
+        while (word < 8) {
+            digest[(word * 4) as i64] = (h[word] >> 24) as u8;
+            digest[(word * 4 + 1) as i64] = (h[word] >> 16) as u8;
+            digest[(word * 4 + 2) as i64] = (h[word] >> 8) as u8;
+            digest[(word * 4 + 3) as i64] = h[word] as u8;
+            word = word + 1;
+        }
+        return Sha256::hex(digest);
+    }
+}

@@ -476,6 +476,27 @@ run_timer_case() {
   echo "  ok   TimerApi（$backend）"
 }
 
+run_stdflag_named_case() {
+  local name=$1
+  local backend=$2
+  local exe="$OUT/${name}_$backend"
+  if ! "$ROOT/build/mylc" --std --backend "$backend" "tests/std_native/$name.myl" -o "$exe" >"$OUT/$name-$backend.build.log" 2>&1; then
+    echo "FAIL $name（$backend 编译失败）"
+    sed -n '1,20p' "$OUT/$name-$backend.build.log"
+    return 1
+  fi
+  if ! timeout 30 "$exe" >"$OUT/$name.actual" 2>"$OUT/$name-$backend.err"; then
+    echo "FAIL $name（$backend 运行失败）"
+    sed -n '1,10p' "$OUT/$name-$backend.err"
+    return 1
+  fi
+  if ! diff -u "tests/std_native/$name.expected" "$OUT/$name.actual"; then
+    echo "FAIL $name（$backend 输出不一致）"
+    return 1
+  fi
+  echo "  ok   $name（$backend）"
+}
+
 run_case mir
 run_case ast
 run_std_flag_case
@@ -714,5 +735,19 @@ run_async_file_case mir
 run_async_file_case ast
 run_timer_case mir
 run_timer_case ast
+run_stdflag_named_case BufferedTcpApi mir
+run_stdflag_named_case BufferedTcpApi ast
+run_stdflag_named_case UnixSocketApi mir
+run_stdflag_named_case UnixSocketApi ast
+run_stdflag_named_case FilePermApi mir
+run_stdflag_named_case FilePermApi ast
+run_stdflag_named_case DateTimeApi mir
+run_stdflag_named_case DateTimeApi ast
+run_stdflag_named_case RegexApi mir
+run_stdflag_named_case RegexApi ast
+run_stdflag_named_case HashApi mir
+run_stdflag_named_case HashApi ast
+run_stdflag_named_case GzipApi mir
+run_stdflag_named_case GzipApi ast
 
 echo "std native 测试通过"

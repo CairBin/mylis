@@ -1,0 +1,6 @@
+// 目录监听回调接口。
+import { DirEvent } from "DirEvent.myl";
+
+pub interface DirWatchHandler {
+    fn onDirEvent(DirEvent event) -> void;
+}

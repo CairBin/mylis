@@ -1,0 +1,35 @@
+// CRC-32（IEEE 802.3，多项式 EDB88320），供 gzip/zip 校验使用。
+pub class Crc32 {
+    static fn table() -> u32[] {
+        u32[] values = new u32[256];
+        i32 i = 0;
+        while (i < 256) {
+            u32 value = i as u32;
+            i32 bit = 0;
+            while (bit < 8) {
+                if ((value & (1 as u32)) != (0 as u32)) {
+                    value = ((-306674912) as u32) ^ (value >> 1);
+                } else {
+                    value = value >> 1;
+                }
+                bit = bit + 1;
+            }
+            values[i] = value;
+            i = i + 1;
+        }
+        return values;
+    }
+
+    pub static fn Of(u8[] data) -> u32 {
+        u32[] values = Crc32::table();
+        u32 crc = 0 as u32;
+        crc = crc - (1 as u32);
+        i64 i = 0;
+        while (i < (data.len() as i64)) {
+            u32 index = (crc ^ (data[i] as u32)) & (255 as u32);
+            crc = values[index] ^ (crc >> 8);
+            i = i + 1;
+        }
+        return crc ^ ((0 as u32) - (1 as u32));
+    }
+}

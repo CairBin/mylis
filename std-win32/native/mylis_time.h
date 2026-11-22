@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 int64_t mylis_time_now_millis(void);
+int64_t mylis_time_local_offset_minutes(void);
 int64_t mylis_time_now_nanos(void);
 int64_t mylis_time_monotonic_millis(void);
 double  mylis_time_now_seconds(void);

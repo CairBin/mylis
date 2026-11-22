@@ -13,6 +13,8 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 fn errno(e: std::io::Error) -> i64 {
     #[cfg(windows)]
@@ -150,6 +152,61 @@ pub extern "C" fn mylis_file_remove_dir(path: *const c_char) -> i64 {
 pub extern "C" fn mylis_file_remove_dir_all(path: *const c_char) -> i64 {
     let p = match path_str(path) { Ok(p) => p, Err(e) => return e };
     match std::fs::remove_dir_all(p) { Ok(()) => 0, Err(e) => errno(e) }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_file_mode(path: *const c_char) -> i64 {
+    let p = match path_str(path) { Ok(p) => p, Err(e) => return e };
+    let meta = match std::fs::metadata(p) { Ok(m) => m, Err(e) => return errno(e) };
+    #[cfg(unix)]
+    {
+        return (meta.permissions().mode() & 0o7777) as i64;
+    }
+    #[cfg(windows)]
+    {
+        if meta.permissions().readonly() { 0o444 } else { 0o666 }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = meta;
+        0o644
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_file_chmod(path: *const c_char, mode: i32) -> i64 {
+    let p = match path_str(path) { Ok(p) => p, Err(e) => return e };
+    if mode < 0 || mode > 0o7777 { return -22; }
+    #[cfg(unix)]
+    {
+        let perms = std::fs::Permissions::from_mode(mode as u32);
+        return match std::fs::set_permissions(p, perms) { Ok(()) => 0, Err(e) => errno(e) };
+    }
+    #[cfg(windows)]
+    {
+        let meta = match std::fs::metadata(p) { Ok(m) => m, Err(e) => return errno(e) };
+        let mut perms = meta.permissions();
+        perms.set_readonly((mode & 0o200) == 0);
+        return match std::fs::set_permissions(p, perms) { Ok(()) => 0, Err(e) => errno(e) };
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (p, mode);
+        -95
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_file_modified_millis(path: *const c_char) -> i64 {
+    let p = match path_str(path) { Ok(p) => p, Err(e) => return e };
+    let meta = match std::fs::metadata(p) { Ok(m) => m, Err(e) => return errno(e) };
+    match meta.modified() {
+        Ok(t) => match t.duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => d.as_millis() as i64,
+            Err(e) => -(e.duration().as_millis() as i64),
+        },
+        Err(e) => errno(e),
+    }
 }
 
 #[no_mangle]

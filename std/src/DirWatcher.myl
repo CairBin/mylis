@@ -1,0 +1,131 @@
+// 轮询式目录监听：基于名字、mtime 和大小快照做差异比较。
+// 不依赖 inotify/ReadDirectoryChangesW；适合低频配置/文件目录，不保证捕获同一毫秒内
+// 同大小内容的修改。需要事件循环集成时用 DirWatchPump。
+import { IoError } from "IoError.myl";
+import { DirEvent } from "DirEvent.myl";
+import { File } from "File.myl";
+import { Path } from "Path.myl";
+import { Vec } from "Vec.myl";
+
+class DirWatchEntry {
+    string name;
+    i64 modified;
+    i64 size;
+    bool isDir;
+
+    pub fn init(string value, i64 modifiedMillis, i64 bytes, bool directory) -> void {
+        this.name = value;
+        this.modified = modifiedMillis;
+        this.size = bytes;
+        this.isDir = directory;
+    }
+}
+
+pub class DirWatcher {
+    pub string path;
+    Vec<DirWatchEntry> entries;
+    bool closed;
+
+    pub fn init(string value) -> void {
+        this.path = value;
+        this.entries = new Vec<DirWatchEntry>();
+        this.closed = false;
+    }
+
+    pub static fn Watch(string path) -> Result<DirWatcher, IoError> {
+        DirWatcher watcher = new DirWatcher(path);
+        Result<Vec<DirWatchEntry>, IoError> snapshot = watcher.snapshot();
+        match snapshot {
+            Ok(entries) => {
+                watcher.entries = entries;
+                return Ok(watcher);
+            }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    fn snapshot() -> Result<Vec<DirWatchEntry>, IoError> {
+        Result<Vec<string>, IoError> listed = File::ReadDir(this.path);
+        match listed {
+            Ok(names) => {
+                Vec<DirWatchEntry> out = new Vec<DirWatchEntry>();
+                i64 i = 0;
+                while (i < names.len()) {
+                    string name = names.get(i);
+                    string full = Path::Join(this.path, name);
+                    i64 modified = 0;
+                    i64 size = 0;
+                    bool isDir = File::IsDir(full);
+                    Result<i64, IoError> modifiedResult = File::ModifiedMillis(full);
+                    match modifiedResult {
+                        Ok(modifiedValue) => { modified = modifiedValue; }
+                        Err(_) => { i = i + 1; continue; }
+                    }
+                    Result<i64, IoError> sizeResult = File::Size(full);
+                    match sizeResult {
+                        Ok(sizeValue) => { size = sizeValue; }
+                        Err(_) => { i = i + 1; continue; }
+                    }
+                    out.push(new DirWatchEntry(name, modified, size, isDir));
+                    i = i + 1;
+                }
+                return Ok(out);
+            }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    static fn indexOf(Vec<DirWatchEntry> values, string name) -> i64 {
+        i64 i = 0;
+        while (i < values.len()) {
+            if (values.get(i).name == name) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // 返回自上次 poll（或 Watch 建立快照）以来的变化。
+    pub fn poll() -> Result<Vec<DirEvent>, IoError> {
+        if (this.closed) {
+            return Err(new IoError(9));
+        }
+        Result<Vec<DirWatchEntry>, IoError> snapshot = this.snapshot();
+        match snapshot {
+            Ok(next) => {
+                Vec<DirEvent> events = new Vec<DirEvent>();
+                i64 i = 0;
+                while (i < next.len()) {
+                    DirWatchEntry current = next.get(i);
+                    i64 oldIndex = DirWatcher::indexOf(this.entries, current.name);
+                    if (oldIndex < 0) {
+                        events.push(new DirEvent(DirEvent::CREATED, current.name, Path::Join(this.path, current.name)));
+                    } else {
+                        DirWatchEntry previous = this.entries.get(oldIndex);
+                        if (previous.modified != current.modified || previous.size != current.size || previous.isDir != current.isDir) {
+                            events.push(new DirEvent(DirEvent::MODIFIED, current.name, Path::Join(this.path, current.name)));
+                        }
+                    }
+                    i = i + 1;
+                }
+                i = 0;
+                while (i < this.entries.len()) {
+                    DirWatchEntry previous = this.entries.get(i);
+                    if (DirWatcher::indexOf(next, previous.name) < 0) {
+                        events.push(new DirEvent(DirEvent::DELETED, previous.name, Path::Join(this.path, previous.name)));
+                    }
+                    i = i + 1;
+                }
+                this.entries = next;
+                return Ok(events);
+            }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    pub fn close() -> void {
+        this.closed = true;
+        this.entries.clear();
+    }
+}

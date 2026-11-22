@@ -1,0 +1,223 @@
+// TCP 缓冲包装：读侧预取 + 按行读取，写侧聚合后 flush。
+// 不改变 TcpStream 的阻塞/非阻塞语义；EAGAIN 等错误原样返回。
+import { IoError } from "IoError.myl";
+import { ByteBuilder } from "ByteBuilder.myl";
+import { TcpStream } from "TcpStream.myl";
+import { Str } from "core/Str";
+
+pub class BufferedTcpStream {
+    TcpStream stream;
+    u8[] readBuffer;
+    i64 readPos;
+    i64 readLen;
+    i64 readCapacity;
+    ByteBuilder writeBuffer;
+    i64 writeCapacity;
+    bool autoFlush;
+
+    pub fn init(TcpStream value, i64 readSize, i64 writeSize) -> void {
+        this.stream = value;
+        if (readSize < 1) { readSize = 4096; }
+        if (writeSize < 1) { writeSize = 8192; }
+        this.readCapacity = readSize;
+        this.readBuffer = new u8[readSize];
+        this.readPos = 0;
+        this.readLen = 0;
+        this.writeBuffer = new ByteBuilder();
+        this.writeCapacity = writeSize;
+        this.autoFlush = true;
+    }
+
+    pub static fn Wrap(TcpStream value) -> BufferedTcpStream {
+        return new BufferedTcpStream(value, 4096, 8192);
+    }
+
+    pub static fn Connect(string address) -> Result<BufferedTcpStream, IoError> {
+        Result<TcpStream, IoError> connected = TcpStream::Connect(address);
+        match connected {
+            Ok(stream) => { return Ok(BufferedTcpStream::Wrap(stream)); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    pub fn stream() -> TcpStream {
+        return this.stream;
+    }
+
+    pub fn bufferedBytes() -> i64 {
+        return this.readLen - this.readPos;
+    }
+
+    pub fn setAutoFlush(bool enabled) -> void {
+        this.autoFlush = enabled;
+    }
+
+    // 从 socket 再取一批数据；返回本次读到的字节数，0 表示 EOF。
+    fn fill() -> Result<i64, IoError> {
+        Result<u8[], IoError> got = this.stream.read(this.readCapacity);
+        match got {
+            Ok(data) => {
+                this.readBuffer = data;
+                this.readPos = 0;
+                this.readLen = data.len() as i64;
+                return Ok(this.readLen);
+            }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    pub fn readSome(i64 maxBytes) -> Result<u8[], IoError> {
+        if (maxBytes <= 0) {
+            return Err(new IoError(22));
+        }
+        if (this.readPos >= this.readLen) {
+            Result<i64, IoError> filled = this.fill();
+            match filled {
+                Ok(n) => {
+                    if (n == 0) {
+                        return Ok(new u8[0]);
+                    }
+                }
+                Err(error) => { return Err(error); }
+            }
+        }
+        i64 available = this.readLen - this.readPos;
+        i64 count = maxBytes;
+        if (count > available) { count = available; }
+        u8[] out = new u8[count];
+        i64 i = 0;
+        while (i < count) {
+            out[i] = this.readBuffer[this.readPos + i];
+            i = i + 1;
+        }
+        this.readPos = this.readPos + count;
+        return Ok(out);
+    }
+
+    // 读取一行（去掉行尾 \n 和 \r\n）；EOF 时返回剩余内容，完全无数据时返回空串。
+    pub fn readLine() -> Result<string, IoError> {
+        ByteBuilder line = new ByteBuilder();
+        while (true) {
+            if (this.readPos >= this.readLen) {
+                Result<i64, IoError> filled = this.fill();
+                match filled {
+                    Ok(n) => {
+                        if (n == 0) {
+                            u8[] tail = line.toArray();
+                            i64 tailLen = tail.len() as i64;
+                            if (tailLen > 0 && tail[tailLen - 1] == 13) {
+                                u8[] trimmed = new u8[tailLen - 1];
+                                i64 j = 0;
+                                while (j < tailLen - 1) {
+                                    trimmed[j] = tail[j];
+                                    j = j + 1;
+                                }
+                                return Ok(Str::FromBytes(trimmed));
+                            }
+                            return Ok(Str::FromBytes(tail));
+                        }
+                    }
+                    Err(error) => { return Err(error); }
+                }
+            }
+            i64 start = this.readPos;
+            i64 end = start;
+            while (end < this.readLen && this.readBuffer[end] != 10) {
+                end = end + 1;
+            }
+            if (end < this.readLen) {
+                line.appendRange(this.readBuffer, start, end - start);
+                this.readPos = end + 1;
+                u8[] bytes = line.toArray();
+                i64 n = bytes.len() as i64;
+                if (n > 0 && bytes[n - 1] == 13) {
+                    u8[] trimmed = new u8[n - 1];
+                    i64 j = 0;
+                    while (j < n - 1) {
+                        trimmed[j] = bytes[j];
+                        j = j + 1;
+                    }
+                    return Ok(Str::FromBytes(trimmed));
+                }
+                return Ok(Str::FromBytes(bytes));
+            }
+            line.appendRange(this.readBuffer, start, this.readLen - start);
+            this.readPos = this.readLen;
+            if (line.len() > 1048576) {
+                return Err(new IoError(90));
+            }
+        }
+        return Err(new IoError(5));
+    }
+
+    pub fn readAllBytes() -> Result<u8[], IoError> {
+        ByteBuilder out = new ByteBuilder();
+        while (true) {
+            Result<u8[], IoError> chunk = this.readSome(4096);
+            match chunk {
+                Ok(data) => {
+                    if (data.len() == 0) {
+                        return Ok(out.toArray());
+                    }
+                    out.appendBytes(data);
+                }
+                Err(error) => { return Err(error); }
+            }
+        }
+        return Err(new IoError(5));
+    }
+
+    pub fn readAllText() -> Result<string, IoError> {
+        Result<u8[], IoError> bytes = this.readAllBytes();
+        match bytes {
+            Ok(data) => { return Ok(Str::FromBytes(data)); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    // 只写入缓冲区；返回接收的字节数，不代表已发送到内核。
+    pub fn writeAllBytes(u8[] data) -> Result<i64, IoError> {
+        this.writeBuffer.appendBytes(data);
+        if (this.autoFlush && this.writeBuffer.len() >= this.writeCapacity) {
+            Result<i64, IoError> flushed = this.flush();
+            match flushed {
+                Ok(_) => { }
+                Err(error) => { return Err(error); }
+            }
+        }
+        return Ok(data.len() as i64);
+    }
+
+    pub fn writeAllText(string text) -> Result<i64, IoError> {
+        return this.writeAllBytes(Str::Bytes(text));
+    }
+
+    pub fn flush() -> Result<i64, IoError> {
+        i64 pending = this.writeBuffer.len();
+        if (pending == 0) {
+            return Ok(0);
+        }
+        u8[] data = this.writeBuffer.toArray();
+        Result<i64, IoError> written = this.stream.writeAllBytes(data);
+        match written {
+            Ok(n) => {
+                this.writeBuffer.clear();
+                return Ok(n);
+            }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    pub fn setTimeout(i64 milliseconds) -> Result<i64, IoError> {
+        return this.stream.setTimeout(milliseconds);
+    }
+
+    pub fn close() -> Result<i64, IoError> {
+        Result<i64, IoError> flushed = this.flush();
+        this.stream.close();
+        match flushed {
+            Ok(n) => { return Ok(n); }
+            Err(error) => { return Err(error); }
+        }
+    }
+}

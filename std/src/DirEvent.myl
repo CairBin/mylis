@@ -1,0 +1,16 @@
+// 目录监听事件：kind 为 CREATED / DELETED / MODIFIED。
+pub class DirEvent {
+    pub static const i32 CREATED = 1;
+    pub static const i32 DELETED = 2;
+    pub static const i32 MODIFIED = 3;
+
+    pub i32 kind;
+    pub string name;
+    pub string path;
+
+    pub fn init(i32 eventKind, string entryName, string fullPath) -> void {
+        this.kind = eventKind;
+        this.name = entryName;
+        this.path = fullPath;
+    }
+}

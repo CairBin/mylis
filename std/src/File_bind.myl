@@ -75,3 +75,12 @@ pub unsafe fn mylis_file_async_poll(i64[] meta) -> i64;
 
 @header("mylis_file.h")
 pub unsafe fn mylis_file_async_take(i64 id, u8[] data) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_mode(i8* path) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_chmod(i8* path, i32 mode) -> i64;
+
+@header("mylis_file.h")
+pub unsafe fn mylis_file_modified_millis(i8* path) -> i64;

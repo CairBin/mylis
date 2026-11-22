@@ -1,0 +1,28 @@
+import { Gzip } from "Gzip.myl";
+import { Str } from "core/Str";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    string english = "hello hello hello hello hello hello";
+    u8[] packed = Gzip::Compress(english);
+    println_bool(packed.len() < (Str::ByteLen(english) as i32));
+    match Gzip::DecompressText(packed) {
+        Ok(englishText) => { println(englishText); }
+        Err(_) => { println("decompress-error"); }
+    }
+
+    u8[] chinese = Gzip::Compress("中文压缩测试 中文压缩测试");
+    println_i64(chinese.len() as i64);
+    match Gzip::DecompressText(chinese) {
+        Ok(chineseText) => { println(chineseText); }
+        Err(_) => { println("decompress-error"); }
+    }
+
+    u8[] empty = Gzip::Compress("");
+    match Gzip::DecompressText(empty) {
+        Ok(emptyText) => { println_i64(Str::ByteLen(emptyText) as i64); }
+        Err(_) => { println_i64(-1); }
+    }
+    return 0;
+}

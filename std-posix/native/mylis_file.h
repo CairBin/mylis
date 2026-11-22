@@ -25,6 +25,11 @@ int64_t mylis_file_mkdir_all(const char* path);
 int64_t mylis_file_remove_dir(const char* path);
 int64_t mylis_file_remove_dir_all(const char* path);
 int64_t mylis_file_metadata_size(const char* path);
+/* permissions / mtime */
+int64_t mylis_file_mode(const char* path);
+int64_t mylis_file_chmod(const char* path, int32_t mode);
+int64_t mylis_file_modified_millis(const char* path);
+
 int64_t mylis_file_read_dir_count(const char* path);
 char*   mylis_file_read_dir_entry(const char* path, int64_t index);
 void    mylis_file_free_string(char* text);

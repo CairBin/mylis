@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { Str } from "core/Str";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_tcp_connect, mylis_tcp_stream_fd, mylis_tcp_stream_close, mylis_tcp_stream_set_nonblocking, mylis_tcp_stream_set_timeout, mylis_tcp_stream_read, mylis_tcp_stream_write } from "Net_bind.myl";
+import { mylis_tcp_connect, mylis_tcp_stream_fd, mylis_tcp_stream_close, mylis_tcp_stream_set_nonblocking, mylis_tcp_stream_set_timeout, mylis_tcp_stream_read, mylis_tcp_stream_write, mylis_tcp_stream_set_nodelay, mylis_tcp_stream_set_keepalive, mylis_tcp_stream_set_recv_buffer, mylis_tcp_stream_set_send_buffer } from "Net_bind.myl";
 
 pub class TcpStream {
     i64 handle;
@@ -92,6 +92,61 @@ pub class TcpStream {
         i64 rc = 0;
         unsafe {
             rc = mylis_tcp_stream_set_timeout(this.handle, milliseconds);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    // 小包低延迟；适合交互协议，不适合批量吞吐。
+    pub fn setNoDelay(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_tcp_stream_set_nodelay(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setKeepAlive(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_tcp_stream_set_keepalive(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setReceiveBuffer(i32 bytes) -> Result<i64, IoError> {
+        if (bytes <= 0) {
+            return Err(new IoError(22));
+        }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_tcp_stream_set_recv_buffer(this.handle, bytes);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setSendBuffer(i32 bytes) -> Result<i64, IoError> {
+        if (bytes <= 0) {
+            return Err(new IoError(22));
+        }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_tcp_stream_set_send_buffer(this.handle, bytes);
         }
         if (rc < 0) {
             return Err(new IoError((-rc) as i32));

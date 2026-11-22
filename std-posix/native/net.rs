@@ -6,10 +6,12 @@
 use std::ffi::CStr;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, UdpSocket};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int, c_void};
 use std::time::Duration;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(unix)]
+use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(windows)]
 use std::os::windows::io::AsRawSocket;
 
@@ -57,6 +59,14 @@ impl SocketFd for TcpStream {
 impl SocketFd for UdpSocket {
     fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
 }
+#[cfg(unix)]
+impl SocketFd for UnixListener {
+    fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
+}
+#[cfg(unix)]
+impl SocketFd for UnixStream {
+    fn raw_fd(&self) -> i64 { self.as_raw_fd() as i64 }
+}
 #[cfg(windows)]
 impl SocketFd for TcpListener {
     fn raw_fd(&self) -> i64 { self.as_raw_socket() as i64 }
@@ -87,6 +97,99 @@ fn cstr(p: *const c_char) -> Option<&'static str> {
         return None;
     }
     unsafe { CStr::from_ptr(p) }.to_str().ok()
+}
+
+// ---- socket option（跨平台）：优先用 std 稳定方法，缓冲区/keepalive 走原生 setsockopt。 ----
+
+#[cfg(unix)]
+extern "C" {
+    fn setsockopt(
+        fd: c_int,
+        level: c_int,
+        optname: c_int,
+        optval: *const c_void,
+        optlen: c_int,
+    ) -> c_int;
+}
+
+#[cfg(windows)]
+#[link(name = "ws2_32")]
+extern "system" {
+    fn setsockopt(s: usize, level: i32, optname: i32, optval: *const u8, optlen: i32) -> i32;
+    fn WSAGetLastError() -> i32;
+}
+
+#[cfg(target_os = "linux")]
+fn sol_socket() -> i32 { 1 }
+#[cfg(target_os = "linux")]
+fn so_keepalive() -> i32 { 9 }
+#[cfg(target_os = "linux")]
+fn so_recvbuf() -> i32 { 8 }
+#[cfg(target_os = "linux")]
+fn so_sndbuf() -> i32 { 7 }
+#[cfg(target_os = "linux")]
+fn so_reuseaddr() -> i32 { 2 }
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn sol_socket() -> i32 { 0xffff }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn so_keepalive() -> i32 { 0x0008 }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn so_recvbuf() -> i32 { 0x1002 }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn so_sndbuf() -> i32 { 0x1001 }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn so_reuseaddr() -> i32 { 0x0004 }
+
+#[cfg(windows)]
+fn sol_socket() -> i32 { 0xffff }
+#[cfg(windows)]
+fn so_keepalive() -> i32 { 0x0008 }
+#[cfg(windows)]
+fn so_recvbuf() -> i32 { 0x1002 }
+#[cfg(windows)]
+fn so_sndbuf() -> i32 { 0x1001 }
+#[cfg(windows)]
+fn so_reuseaddr() -> i32 { 0x0004 }
+
+fn set_socket_option(fd: i64, level: i32, name: i32, value: i32) -> i64 {
+    if fd <= 0 {
+        return -9;
+    }
+    #[cfg(unix)]
+    {
+        let rc = unsafe {
+            setsockopt(
+                fd as c_int,
+                level,
+                name,
+                &value as *const i32 as *const c_void,
+                std::mem::size_of::<i32>() as c_int,
+            )
+        };
+        if rc == 0 { return 0; }
+        return errno(std::io::Error::last_os_error());
+    }
+    #[cfg(windows)]
+    {
+        let rc = unsafe {
+            setsockopt(
+                fd as usize,
+                level,
+                name,
+                &value as *const i32 as *const u8,
+                std::mem::size_of::<i32>() as i32,
+            )
+        };
+        if rc == 0 { return 0; }
+        let code = unsafe { WSAGetLastError() };
+        return errno(std::io::Error::from_raw_os_error(code));
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (fd, level, name, value);
+        -95
+    }
 }
 
 #[no_mangle]
@@ -342,3 +445,259 @@ pub extern "C" fn mylis_tcp_stream_write(
         Err(e) => errno(e),
     }
 }
+
+// ---- socket options ----
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_stream_set_nodelay(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let s = unsafe { &*(handle as *const TcpStream) };
+    match s.set_nodelay(enabled != 0) {
+        Ok(()) => 0,
+        Err(e) => errno(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_stream_set_keepalive(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let fd = socket_fd(unsafe { &*(handle as *const TcpStream) });
+    set_socket_option(fd, sol_socket(), so_keepalive(), if enabled != 0 { 1 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_stream_set_recv_buffer(handle: i64, bytes: i32) -> i64 {
+    if handle == 0 || bytes <= 0 { return -22; }
+    let fd = socket_fd(unsafe { &*(handle as *const TcpStream) });
+    set_socket_option(fd, sol_socket(), so_recvbuf(), bytes)
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_stream_set_send_buffer(handle: i64, bytes: i32) -> i64 {
+    if handle == 0 || bytes <= 0 { return -22; }
+    let fd = socket_fd(unsafe { &*(handle as *const TcpStream) });
+    set_socket_option(fd, sol_socket(), so_sndbuf(), bytes)
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_listener_set_reuse_address(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let fd = socket_fd(unsafe { &*(handle as *const TcpListener) });
+    set_socket_option(fd, sol_socket(), so_reuseaddr(), if enabled != 0 { 1 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_udp_set_reuse_address(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let fd = socket_fd(unsafe { &*(handle as *const UdpSocket) });
+    set_socket_option(fd, sol_socket(), so_reuseaddr(), if enabled != 0 { 1 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_udp_set_broadcast(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let s = unsafe { &*(handle as *const UdpSocket) };
+    match s.set_broadcast(enabled != 0) {
+        Ok(()) => 0,
+        Err(e) => errno(e),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_udp_set_ttl(handle: i64, ttl: i32) -> i64 {
+    if handle == 0 || ttl <= 0 { return -22; }
+    let s = unsafe { &*(handle as *const UdpSocket) };
+    match s.set_ttl(ttl as u32) {
+        Ok(()) => 0,
+        Err(e) => errno(e),
+    }
+}
+
+// ---- Unix domain socket（POSIX；Windows 返回 EOPNOTSUPP） ----
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_bind(path: *const c_char) -> i64 {
+    let p = match cstr(path) { Some(v) => v, None => return -22 };
+    match UnixListener::bind(p) {
+        Ok(l) => Box::into_raw(Box::new(l)) as i64,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_accept(handle: i64) -> i64 {
+    if handle == 0 { return -9; }
+    let l = unsafe { &*(handle as *const UnixListener) };
+    match l.accept() {
+        Ok((s, _)) => Box::into_raw(Box::new(s)) as i64,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_connect(path: *const c_char) -> i64 {
+    let p = match cstr(path) { Some(v) => v, None => return -22 };
+    match UnixStream::connect(p) {
+        Ok(s) => Box::into_raw(Box::new(s)) as i64,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_fd(handle: i64) -> i64 {
+    if handle == 0 { return -1; }
+    socket_fd(unsafe { &*(handle as *const UnixListener) })
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_fd(handle: i64) -> i64 {
+    if handle == 0 { return -1; }
+    socket_fd(unsafe { &*(handle as *const UnixStream) })
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_close(handle: i64) -> i64 {
+    if handle == 0 { return -9; }
+    unsafe { drop(Box::from_raw(handle as *mut UnixListener)); }
+    0
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_close(handle: i64) -> i64 {
+    if handle == 0 { return -9; }
+    unsafe { drop(Box::from_raw(handle as *mut UnixStream)); }
+    0
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_set_nonblocking(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let l = unsafe { &*(handle as *const UnixListener) };
+    match l.set_nonblocking(enabled != 0) {
+        Ok(()) => 0,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_set_nonblocking(handle: i64, enabled: i32) -> i64 {
+    if handle == 0 { return -9; }
+    let s = unsafe { &*(handle as *const UnixStream) };
+    match s.set_nonblocking(enabled != 0) {
+        Ok(()) => 0,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_set_timeout(handle: i64, milliseconds: i64) -> i64 {
+    if handle == 0 || milliseconds < 0 { return -22; }
+    let s = unsafe { &*(handle as *const UnixStream) };
+    let d = if milliseconds == 0 { None } else { Some(Duration::from_millis(milliseconds as u64)) };
+    if let Err(e) = s.set_read_timeout(d) { return errno(e); }
+    if let Err(e) = s.set_write_timeout(d) { return errno(e); }
+    0
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_read(
+    handle: i64,
+    data: *mut u8,
+    offset: i64,
+    count: i64,
+) -> i64 {
+    if handle == 0 || data.is_null() || offset < 0 || count < 0 { return -22; }
+    let len = match array_len(data) { Some(n) => n, None => return -22 };
+    let start = offset as usize;
+    let n = count as usize;
+    if start > len || n > len - start { return -22; }
+    let s = unsafe { &mut *(handle as *mut UnixStream) };
+    let buf = unsafe { std::slice::from_raw_parts_mut(data.add(8 + start), n) };
+    match s.read(buf) {
+        Ok(v) => v as i64,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_write(
+    handle: i64,
+    data: *const u8,
+    offset: i64,
+    count: i64,
+) -> i64 {
+    if handle == 0 || data.is_null() || offset < 0 || count < 0 { return -22; }
+    let len = match array_len(data) { Some(n) => n, None => return -22 };
+    let start = offset as usize;
+    let n = count as usize;
+    if start > len || n > len - start { return -22; }
+    let s = unsafe { &mut *(handle as *mut UnixStream) };
+    let buf = unsafe { std::slice::from_raw_parts(data.add(8 + start), n) };
+    match s.write(buf) {
+        Ok(v) => v as i64,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(unix)]
+#[no_mangle]
+pub extern "C" fn mylis_unix_remove(path: *const c_char) -> i64 {
+    let p = match cstr(path) { Some(v) => v, None => return -22 };
+    match std::fs::remove_file(p) {
+        Ok(()) => 0,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => errno(e),
+    }
+}
+
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_bind(_path: *const c_char) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_accept(_handle: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_connect(_path: *const c_char) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_fd(_handle: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_fd(_handle: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_close(_handle: i64) -> i64 { 0 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_close(_handle: i64) -> i64 { 0 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_listener_set_nonblocking(_handle: i64, _enabled: i32) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_set_nonblocking(_handle: i64, _enabled: i32) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_set_timeout(_handle: i64, _milliseconds: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_read(_handle: i64, _data: *mut u8, _offset: i64, _count: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_stream_write(_handle: i64, _data: *const u8, _offset: i64, _count: i64) -> i64 { -95 }
+#[cfg(not(unix))]
+#[no_mangle]
+pub extern "C" fn mylis_unix_remove(_path: *const c_char) -> i64 { -95 }

@@ -1,0 +1,311 @@
+// 日期时间：UTC 毫秒时间戳 + 固定偏移时区；支持常见格式化与 ISO 8601 解析。
+// 不内建 IANA 时区数据库；TimeZone.Local() 只反映系统当前偏移，历史 DST 请显式 Fixed。
+import { Time } from "Time.myl";
+import { TimeZone } from "TimeZone.myl";
+import { StringBuilder } from "StringBuilder.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+class CivilDate {
+    i32 year;
+    i32 month;
+    i32 day;
+
+    pub fn init(i32 y, i32 m, i32 d) -> void {
+        this.year = y;
+        this.month = m;
+        this.day = d;
+    }
+}
+
+fn floorDiv(i64 value, i64 divisor) -> i64 {
+    i64 q = value / divisor;
+    i64 r = value % divisor;
+    if (r != 0 && ((r < 0) != (divisor < 0))) {
+        q = q - 1;
+    }
+    return q;
+}
+
+fn floorMod(i64 value, i64 divisor) -> i64 {
+    return value - floorDiv(value, divisor) * divisor;
+}
+
+fn daysFromCivil(i32 year, i32 month, i32 day) -> i64 {
+    i64 y = year as i64;
+    if (month <= 2) { y = y - 1; }
+    i64 era = floorDiv(y, 400);
+    i64 yoe = y - era * 400;
+    i64 m = month as i64;
+    i64 mp = m + 9;
+    if (m > 2) { mp = m - 3; }
+    i64 doy = (153 * mp + 2) / 5 + (day as i64) - 1;
+    i64 doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+fn civilFromDays(i64 days) -> CivilDate {
+    i64 z = days + 719468;
+    i64 era = floorDiv(z, 146097);
+    i64 doe = z - era * 146097;
+    i64 yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    i64 y = yoe + era * 400;
+    i64 doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    i64 mp = (5 * doy + 2) / 153;
+    i64 d = doy - (153 * mp + 2) / 5 + 1;
+    i64 m = mp + 3;
+    if (mp >= 10) { m = mp - 9; }
+    if (m <= 2) { y = y + 1; }
+    return new CivilDate(y as i32, m as i32, d as i32);
+}
+
+fn isLeapYear(i32 year) -> bool {
+    if (year % 4 != 0) { return false; }
+    if (year % 100 != 0) { return true; }
+    return year % 400 == 0;
+}
+
+fn daysInMonth(i32 year, i32 month) -> i32 {
+    if (month == 2) {
+        if (isLeapYear(year)) { return 29; }
+        return 28;
+    }
+    if (month == 4 || month == 6 || month == 9 || month == 11) { return 30; }
+    return 31;
+}
+
+fn pad2(i32 value) -> string {
+    if (value < 10) { return "0" + fmt_i64(value as i64); }
+    return fmt_i64(value as i64);
+}
+
+fn pad3(i32 value) -> string {
+    if (value < 10) { return "00" + fmt_i64(value as i64); }
+    if (value < 100) { return "0" + fmt_i64(value as i64); }
+    return fmt_i64(value as i64);
+}
+
+fn pad4(i32 value) -> string {
+    if (value < 10) { return "000" + fmt_i64(value as i64); }
+    if (value < 100) { return "00" + fmt_i64(value as i64); }
+    if (value < 1000) { return "0" + fmt_i64(value as i64); }
+    return fmt_i64(value as i64);
+}
+
+fn weekdayName(i32 weekday) -> string {
+    if (weekday == 0) { return "Sun"; }
+    if (weekday == 1) { return "Mon"; }
+    if (weekday == 2) { return "Tue"; }
+    if (weekday == 3) { return "Wed"; }
+    if (weekday == 4) { return "Thu"; }
+    if (weekday == 5) { return "Fri"; }
+    return "Sat";
+}
+
+fn readDigits(u8[] data, i64 start, i64 count) -> i32 {
+    if (start < 0 || count <= 0 || start + count > data.len() as i64) {
+        return -1;
+    }
+    i32 value = 0;
+    i64 i = 0;
+    while (i < count) {
+        u8 c = data[start + i];
+        if (c < 48 || c > 57) { return -1; }
+        value = value * 10 + ((c - 48) as i32);
+        i = i + 1;
+    }
+    return value;
+}
+
+pub class DateTime {
+    pub i64 timestampMillis;
+    pub i32 offsetMinutes;
+    pub i32 year;
+    pub i32 month;
+    pub i32 day;
+    pub i32 hour;
+    pub i32 minute;
+    pub i32 second;
+    pub i32 millis;
+    pub i32 weekday;
+
+    pub fn init(i64 timestamp, i32 offset) -> void {
+        this.timestampMillis = timestamp;
+        this.offsetMinutes = offset;
+        i64 localMillis = timestamp + (offset as i64) * 60000;
+        i64 days = floorDiv(localMillis, 86400000);
+        i64 dayMillis = floorMod(localMillis, 86400000);
+        CivilDate civil = civilFromDays(days);
+        this.year = civil.year;
+        this.month = civil.month;
+        this.day = civil.day;
+        this.hour = (dayMillis / 3600000) as i32;
+        this.minute = ((dayMillis % 3600000) / 60000) as i32;
+        this.second = ((dayMillis % 60000) / 1000) as i32;
+        this.millis = (dayMillis % 1000) as i32;
+        this.weekday = floorMod(days + 4, 7) as i32;
+    }
+
+    pub static fn FromMillis(i64 timestamp) -> DateTime {
+        return new DateTime(timestamp, 0);
+    }
+
+    pub static fn FromMillisInZone(i64 timestamp, TimeZone zone) -> DateTime {
+        return new DateTime(timestamp, zone.offsetMinutes);
+    }
+
+    pub static fn Now() -> DateTime {
+        return DateTime::NowInZone(TimeZone::Local());
+    }
+
+    pub static fn NowUtc() -> DateTime {
+        return new DateTime(Time::NowMillis(), 0);
+    }
+
+    pub static fn NowInZone(TimeZone zone) -> DateTime {
+        return new DateTime(Time::NowMillis(), zone.offsetMinutes);
+    }
+
+    pub fn withZone(TimeZone zone) -> DateTime {
+        return new DateTime(this.timestampMillis, zone.offsetMinutes);
+    }
+
+    pub fn addMillis(i64 milliseconds) -> DateTime {
+        return new DateTime(this.timestampMillis + milliseconds, this.offsetMinutes);
+    }
+
+    pub fn addSeconds(i64 seconds) -> DateTime {
+        return this.addMillis(seconds * 1000);
+    }
+
+    pub fn addDays(i64 days) -> DateTime {
+        return this.addMillis(days * 86400000);
+    }
+
+    pub fn zoneOffsetSeconds() -> i64 {
+        return (this.offsetMinutes as i64) * 60;
+    }
+
+    // 格式化 token：yyyy / MM / dd / HH / mm / ss / SSS / EEE / Z / z。
+    pub fn format(string pattern) -> string {
+        u8[] p = Str::Bytes(pattern);
+        StringBuilder out = new StringBuilder();
+        i64 i = 0;
+        while (i < p.len() as i64) {
+            i64 rest = (p.len() as i64) - i;
+            if (rest >= 4 && p[i] == 121 && p[i + 1] == 121 && p[i + 2] == 121 && p[i + 3] == 121) {
+                out.append(pad4(this.year));
+                i = i + 4;
+            } else if (rest >= 3 && p[i] == 83 && p[i + 1] == 83 && p[i + 2] == 83) {
+                out.append(pad3(this.millis));
+                i = i + 3;
+            } else if (rest >= 3 && p[i] == 69 && p[i + 1] == 69 && p[i + 2] == 69) {
+                out.append(weekdayName(this.weekday));
+                i = i + 3;
+            } else if (rest >= 2 && p[i] == 77 && p[i + 1] == 77) {
+                out.append(pad2(this.month));
+                i = i + 2;
+            } else if (rest >= 2 && p[i] == 100 && p[i + 1] == 100) {
+                out.append(pad2(this.day));
+                i = i + 2;
+            } else if (rest >= 2 && p[i] == 72 && p[i + 1] == 72) {
+                out.append(pad2(this.hour));
+                i = i + 2;
+            } else if (rest >= 2 && p[i] == 109 && p[i + 1] == 109) {
+                out.append(pad2(this.minute));
+                i = i + 2;
+            } else if (rest >= 2 && p[i] == 115 && p[i + 1] == 115) {
+                out.append(pad2(this.second));
+                i = i + 2;
+            } else if (p[i] == 90) {
+                if (this.offsetMinutes == 0) {
+                    out.append("Z");
+                } else {
+                    out.append(TimeZone::Fixed(this.offsetMinutes).offsetText());
+                }
+                i = i + 1;
+            } else if (p[i] == 122) {
+                i32 minutes = this.offsetMinutes;
+                string sign = "+";
+                if (minutes < 0) { sign = "-"; minutes = -minutes; }
+                out.append(sign + pad2(minutes / 60) + pad2(minutes % 60));
+                i = i + 1;
+            } else {
+                out.append(Str::Substring(pattern, i as u64, 1));
+                i = i + 1;
+            }
+        }
+        return out.toString();
+    }
+
+    pub fn toIso8601() -> string {
+        return this.format("yyyy-MM-ddTHH:mm:ss.SSSZ");
+    }
+
+    pub fn toDateString() -> string {
+        return this.format("yyyy-MM-dd");
+    }
+
+    pub fn toTimeString() -> string {
+        return this.format("HH:mm:ss.SSS");
+    }
+
+    // 支持 YYYY-MM-DD、YYYY-MM-DDTHH:MM:SS、可选 .SSS、可选 Z / ±HH:MM。
+    pub static fn ParseIso8601(string text) -> Result<DateTime, string> {
+        u8[] b = Str::Bytes(text);
+        i64 n = b.len() as i64;
+        if (n < 10) { return Err("ISO 8601 日期长度不足"); }
+        i32 year = readDigits(b, 0, 4);
+        i32 month = readDigits(b, 5, 2);
+        i32 day = readDigits(b, 8, 2);
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+            return Err("ISO 8601 日期字段非法");
+        }
+        if (b[4] != 45 || b[7] != 45) { return Err("ISO 8601 日期缺少 '-'"); }
+        i32 hour = 0;
+        i32 minute = 0;
+        i32 second = 0;
+        i32 millis = 0;
+        i32 offset = 0;
+        i64 pos = 10;
+        if (pos < n) {
+            if (b[pos] != 84 && b[pos] != 32) { return Err("ISO 8601 日期与时间之间缺少 T"); }
+            pos = pos + 1;
+            if (pos + 8 > n) { return Err("ISO 8601 时间长度不足"); }
+            hour = readDigits(b, pos, 2);
+            minute = readDigits(b, pos + 3, 2);
+            second = readDigits(b, pos + 6, 2);
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+                return Err("ISO 8601 时间字段非法");
+            }
+            if (b[pos + 2] != 58 || b[pos + 5] != 58) { return Err("ISO 8601 时间缺少 ':'"); }
+            pos = pos + 8;
+            if (pos < n && b[pos] == 46) {
+                millis = readDigits(b, pos + 1, 3);
+                if (millis < 0) { return Err("ISO 8601 毫秒字段非法"); }
+                pos = pos + 4;
+            }
+            if (pos < n) {
+                if (b[pos] == 90) {
+                    offset = 0;
+                    pos = pos + 1;
+                } else if (b[pos] == 43 || b[pos] == 45) {
+                    i32 sign = 1;
+                    if (b[pos] == 45) { sign = -1; }
+                    i32 offHour = readDigits(b, pos + 1, 2);
+                    i32 offMinute = readDigits(b, pos + 4, 2);
+                    if (offHour < 0 || offMinute < 0 || offHour > 23 || offMinute > 59) {
+                        return Err("ISO 8601 时区偏移非法");
+                    }
+                    offset = sign * (offHour * 60 + offMinute);
+                    pos = pos + 6;
+                    if (pos > n) { return Err("ISO 8601 时区偏移长度不足"); }
+                }
+            }
+        }
+        if (pos != n) { return Err("ISO 8601 尾部存在非法字符"); }
+        i64 days = daysFromCivil(year, month, day);
+        i64 timestamp = days * 86400000 + (hour as i64) * 3600000 + (minute as i64) * 60000 + (second as i64) * 1000 + (millis as i64) - (offset as i64) * 60000;
+        return Ok(new DateTime(timestamp, offset));
+    }
+}

@@ -1,0 +1,132 @@
+// MD5（纯 Mylis，按字节处理，返回小写十六进制）。
+// MD5 仅用于兼容既有校验值，不应作为新场景的安全哈希；安全场景请用 SHA-256。
+import { Str } from "core/Str";
+import { StringBuilder } from "StringBuilder.myl";
+
+pub class Md5 {
+    pub static fn Hash(string message) -> string {
+        return Md5::HashBytes(Str::Bytes(message));
+    }
+
+    static fn rotl(u32 value, u32 bits) -> u32 {
+        return (value << bits) | (value >> ((32 as u32) - bits));
+    }
+
+    static fn hex(u8[] value) -> string {
+        StringBuilder out = new StringBuilder();
+        string digits = "0123456789abcdef";
+        i64 i = 0;
+        while (i < (value.len() as i64)) {
+            u8 b = value[i];
+            out.append(Str::Substring(digits, ((b >> 4) as u64), 1));
+            out.append(Str::Substring(digits, ((b & 15) as u64), 1));
+            i = i + 1;
+        }
+        return out.toString();
+    }
+
+    pub static fn HashBytes(u8[] data) -> string {
+        u32[] k = [
+            (-680876936) as u32, (-389564586) as u32, (606105819) as u32, (-1044525330) as u32,
+            (-176418897) as u32, (1200080426) as u32, (-1473231341) as u32, (-45705983) as u32,
+            (1770035416) as u32, (-1958414417) as u32, (-42063) as u32, (-1990404162) as u32,
+            (1804603682) as u32, (-40341101) as u32, (-1502002290) as u32, (1236535329) as u32,
+            (-165796510) as u32, (-1069501632) as u32, (643717713) as u32, (-373897302) as u32,
+            (-701558691) as u32, (38016083) as u32, (-660478335) as u32, (-405537848) as u32,
+            (568446438) as u32, (-1019803690) as u32, (-187363961) as u32, (1163531501) as u32,
+            (-1444681467) as u32, (-51403784) as u32, (1735328473) as u32, (-1926607734) as u32,
+            (-378558) as u32, (-2022574463) as u32, (1839030562) as u32, (-35309556) as u32,
+            (-1530992060) as u32, (1272893353) as u32, (-155497632) as u32, (-1094730640) as u32,
+            (681279174) as u32, (-358537222) as u32, (-722521979) as u32, (76029189) as u32,
+            (-640364487) as u32, (-421815835) as u32, (530742520) as u32, (-995338651) as u32,
+            (-198630844) as u32, (1126891415) as u32, (-1416354905) as u32, (-57434055) as u32,
+            (1700485571) as u32, (-1894986606) as u32, (-1051523) as u32, (-2054922799) as u32,
+            (1873313359) as u32, (-30611744) as u32, (-1560198380) as u32, (1309151649) as u32,
+            (-145523070) as u32, (-1120210379) as u32, (718787259) as u32, (-343485551) as u32
+        ];
+        i32[] s = [
+            7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+            5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+            4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+            6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
+        ];
+        u32[] h = [
+            (1732584193) as u32, (-271733879) as u32, (-1732584194) as u32, (271733878) as u32
+        ];
+
+        i64 length = data.len() as i64;
+        i64 total = ((length + 9 + 63) / 64) * 64;
+        u8[] padded = new u8[total];
+        i64 i = 0;
+        while (i < length) {
+            padded[i] = data[i];
+            i = i + 1;
+        }
+        padded[length] = 128 as u8;
+        u64 bitLength = (length as u64) * (8 as u64);
+        i32 j = 0;
+        while (j < 8) {
+            padded[total - 8 + (j as i64)] = (bitLength >> ((j * 8) as u64)) as u8;
+            j = j + 1;
+        }
+
+        i64 block = 0;
+        while (block < total / 64) {
+            u32[] m = new u32[16];
+            i32 t = 0;
+            while (t < 16) {
+                i64 off = block * 64 + (t as i64) * 4;
+                m[t] = (padded[off] as u32)
+                    | ((padded[off + 1] as u32) << 8)
+                    | ((padded[off + 2] as u32) << 16)
+                    | ((padded[off + 3] as u32) << 24);
+                t = t + 1;
+            }
+
+            u32 a = h[0];
+            u32 b = h[1];
+            u32 c = h[2];
+            u32 d = h[3];
+            t = 0;
+            while (t < 64) {
+                u32 f = 0;
+                i32 g = 0;
+                if (t < 16) {
+                    f = (b & c) | ((~b) & d);
+                    g = t;
+                } else if (t < 32) {
+                    f = (d & b) | ((~d) & c);
+                    g = (5 * t + 1) % 16;
+                } else if (t < 48) {
+                    f = b ^ c ^ d;
+                    g = (3 * t + 5) % 16;
+                } else {
+                    f = c ^ (b | (~d));
+                    g = (7 * t) % 16;
+                }
+                u32 temp = d;
+                d = c;
+                c = b;
+                b = b + Md5::rotl(a + f + k[t] + m[g], s[t] as u32);
+                a = temp;
+                t = t + 1;
+            }
+            h[0] = h[0] + a;
+            h[1] = h[1] + b;
+            h[2] = h[2] + c;
+            h[3] = h[3] + d;
+            block = block + 1;
+        }
+
+        u8[] digest = new u8[16];
+        i32 word = 0;
+        while (word < 4) {
+            digest[(word * 4) as i64] = h[word] as u8;
+            digest[(word * 4 + 1) as i64] = (h[word] >> 8) as u8;
+            digest[(word * 4 + 2) as i64] = (h[word] >> 16) as u8;
+            digest[(word * 4 + 3) as i64] = (h[word] >> 24) as u8;
+            word = word + 1;
+        }
+        return Md5::hex(digest);
+    }
+}

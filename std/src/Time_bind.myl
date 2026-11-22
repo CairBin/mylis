@@ -12,3 +12,6 @@ pub unsafe fn mylis_time_now_seconds() -> f64;
 
 @header("mylis_time.h")
 pub unsafe fn mylis_time_sleep_millis(i64 milliseconds) -> void;
+
+@header("mylis_time.h")
+pub unsafe fn mylis_time_local_offset_minutes() -> i64;

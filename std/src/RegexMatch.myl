@@ -1,0 +1,20 @@
+// 正则匹配结果：字节偏移区间。
+import { Str } from "core/Str";
+
+pub class RegexMatch {
+    pub i64 start;
+    pub i64 end;
+
+    pub fn init(i64 begin, i64 finish) -> void {
+        this.start = begin;
+        this.end = finish;
+    }
+
+    pub fn text(string source) -> string {
+        if (this.start < 0 || this.end < this.start) {
+            return "";
+        }
+        return Str::Substring(source, this.start as u64, (this.end - this.start) as u64);
+    }
+}
+

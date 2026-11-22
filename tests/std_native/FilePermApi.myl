@@ -1,0 +1,114 @@
+import { File } from "File.myl";
+import { DirWatcher } from "DirWatcher.myl";
+import { DirEvent } from "DirEvent.myl";
+import { IoError } from "IoError.myl";
+import { Vec } from "Vec.myl";
+import { println_bool, println_i64 } from "Io.myl";
+
+fn printError(IoError error) -> void {
+    println_i64(error.code as i64);
+}
+
+fn main() -> i32 {
+    string directory = "build/tests/dir_watch_api";
+    string filePath = "build/tests/dir_watch_api/a.txt";
+    File::RemoveDirAll(directory);
+    Result<i64, IoError> made = File::MkdirAll(directory);
+    match made {
+        Ok(_) => { }
+        Err(makeError1) => { printError(makeError1); return 1; }
+    }
+
+    Result<File, IoError> created = File::Create(filePath);
+    match created {
+        Ok(file) => {
+            file.writeAllText("one");
+            file.close();
+        }
+        Err(createError1) => { printError(createError1); return 1; }
+    }
+
+    Result<i32, IoError> mode = File::Mode(filePath);
+    match mode {
+        Ok(modeValue) => {
+            println_bool((modeValue & 128) != 0);
+            Result<i64, IoError> changed = File::Chmod(filePath, 256);
+            match changed {
+                Ok(_) => {
+                    Result<i32, IoError> after = File::Mode(filePath);
+                    match after {
+                        Ok(newMode) => { println_bool((newMode & 128) == 0); }
+                        Err(afterModeError) => { printError(afterModeError); }
+                    }
+                }
+                Err(chmodError1) => { printError(chmodError1); }
+            }
+        }
+        Err(outerModeError) => { printError(outerModeError); }
+    }
+
+    Result<i64, IoError> modified = File::ModifiedMillis(filePath);
+    match modified {
+        Ok(modifiedValue) => { println_bool(modifiedValue > 0); }
+        Err(timeError1) => { printError(timeError1); }
+    }
+
+    Result<DirWatcher, IoError> watched = DirWatcher::Watch(directory);
+    match watched {
+        Ok(watcher) => {
+            Result<i64, IoError> removed = File::Remove(filePath);
+            match removed {
+                Ok(_) => {
+                    Result<Vec<DirEvent>, IoError> deletedEvents = watcher.poll();
+                    match deletedEvents {
+                        Ok(events) => {
+                            println_i64(events.len() as i64);
+                            if (events.len() > 0) { println_i64(events.get(0).kind as i64); }
+                        }
+                        Err(pollError1) => { printError(pollError1); }
+                    }
+                }
+                Err(removeError1) => { printError(removeError1); }
+            }
+
+            Result<File, IoError> again = File::Create(filePath);
+            match again {
+                Ok(file) => {
+                    file.writeAllText("one");
+                    file.close();
+                    Result<Vec<DirEvent>, IoError> createdEvents = watcher.poll();
+                    match createdEvents {
+                        Ok(events) => {
+                            println_i64(events.len() as i64);
+                            if (events.len() > 0) { println_i64(events.get(0).kind as i64); }
+                        }
+                        Err(pollError12) => { printError(pollError12); }
+                    }
+
+                    Result<File, IoError> appended = File::Append(filePath);
+                    match appended {
+                        Ok(file2) => {
+                            file2.writeAllText("two-more-bytes");
+                            file2.close();
+                            Result<Vec<DirEvent>, IoError> changedEvents = watcher.poll();
+                            match changedEvents {
+                                Ok(events) => {
+                                    println_i64(events.len() as i64);
+                                    if (events.len() > 0) { println_i64(events.get(0).kind as i64); }
+                                }
+                                Err(pollError13) => { printError(pollError13); }
+                            }
+                        }
+                        Err(appendError1) => { printError(appendError1); }
+                    }
+                }
+                Err(createError12) => { printError(createError12); }
+            }
+            watcher.close();
+        }
+        Err(watchError1) => { printError(watchError1); }
+    }
+
+    File::RemoveDirAll(directory);
+    return 0;
+}

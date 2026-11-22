@@ -1,0 +1,59 @@
+import { Regex } from "Regex.myl";
+import { RegexMatch } from "RegexMatch.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> compiled = Regex::Compile("^hello");
+    match compiled {
+        Ok(firstPattern) => {
+            println_bool(firstPattern.isMatch("hello world"));
+            println_bool(firstPattern.isMatch("well hello"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> wordResult = Regex::Compile("[a-z]+");
+    match wordResult {
+        Ok(wordPattern) => {
+            Option<RegexMatch> found = wordPattern.find("123abc456");
+            match found {
+                Some(firstMatch) => {
+                    println_i64(firstMatch.start);
+                    println_i64(firstMatch.end);
+                    println(firstMatch.text("123abc456"));
+                }
+                None => { println("none"); }
+            }
+            println(wordPattern.replaceAll("abc 12 def", "_"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> altResult = Regex::Compile("(foo|bar)+!");
+    match altResult {
+        Ok(altPattern) => {
+            println_bool(altPattern.isMatch("foobar!"));
+            println_bool(altPattern.isMatch("foobaz!"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> numberResult = Regex::Compile("\\d+");
+    match numberResult {
+        Ok(numberPattern) => {
+            println_bool(numberPattern.isMatch("x42"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> endResult = Regex::Compile("world$");
+    match endResult {
+        Ok(endPattern) => {
+            println_bool(endPattern.isMatch("hello world"));
+            println_bool(endPattern.isMatch("world hello"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+    return 0;
+}

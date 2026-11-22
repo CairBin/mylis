@@ -1,0 +1,49 @@
+import { UnixListener } from "UnixListener.myl";
+import { UnixStream } from "UnixStream.myl";
+import { IoError } from "IoError.myl";
+import { println_bool, println_i64 } from "Io.myl";
+
+fn isOk(Result<i64, IoError> value) -> bool {
+    match value {
+        Ok(_) => { return true; }
+        Err(_) => { return false; }
+    }
+}
+
+fn printError(IoError error) -> void {
+    println_i64(error.code as i64);
+}
+
+fn main() -> i32 {
+    string path = "build/tests/unix_api.sock";
+    UnixListener::Remove(path);
+    Result<UnixListener, IoError> bound = UnixListener::Bind(path);
+    match bound {
+        Ok(listener) => {
+            Result<UnixStream, IoError> client = UnixStream::Connect(path);
+            match client {
+                Ok(stream) => {
+                    println_bool(isOk(stream.writeAllText("uds")));
+                    Result<UnixStream, IoError> accepted = listener.accept();
+                    match accepted {
+                        Ok(server) => {
+                            Result<u8[], IoError> data = server.read(3);
+                            match data {
+                                Ok(bytes) => { println_i64(bytes.len() as i64); }
+                                Err(readError) => { printError(readError); }
+                            }
+                            server.close();
+                        }
+                        Err(acceptError) => { printError(acceptError); }
+                    }
+                    stream.close();
+                }
+                Err(connectError) => { printError(connectError); }
+            }
+            listener.close();
+        }
+        Err(bindError) => { printError(bindError); }
+    }
+    UnixListener::Remove(path);
+    return 0;
+}

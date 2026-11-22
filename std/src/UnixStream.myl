@@ -1,0 +1,117 @@
+// POSIX Unix domain stream socket；Windows 原生后端统一返回 EOPNOTSUPP(-95)。
+import { IoError } from "IoError.myl";
+import { Str } from "core/Str";
+import { myrt_str_ptr } from "core/Mylrt_bind";
+import { mylis_unix_connect, mylis_unix_stream_fd, mylis_unix_stream_close, mylis_unix_stream_set_nonblocking, mylis_unix_stream_set_timeout, mylis_unix_stream_read, mylis_unix_stream_write } from "Net_bind.myl";
+
+pub class UnixStream {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    pub static fn Connect(string path) -> Result<UnixStream, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_unix_connect(myrt_str_ptr(path));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new UnixStream(h));
+    }
+
+    pub fn read(i64 maxBytes) -> Result<u8[], IoError> {
+        if (maxBytes <= 0) {
+            return Err(new IoError(22));
+        }
+        u8[] data = new u8[maxBytes];
+        i64 got = 0;
+        unsafe {
+            got = mylis_unix_stream_read(this.handle, data, 0, maxBytes);
+        }
+        if (got < 0) {
+            return Err(new IoError((-got) as i32));
+        }
+        if (got == 0) {
+            return Ok(new u8[0]);
+        }
+        if (got < maxBytes) {
+            u8[] trimmed = new u8[got];
+            i64 i = 0;
+            while (i < got) {
+                trimmed[i] = data[i];
+                i = i + 1;
+            }
+            return Ok(trimmed);
+        }
+        return Ok(data);
+    }
+
+    pub fn writeAllBytes(u8[] data) -> Result<i64, IoError> {
+        i64 total = 0;
+        i64 len = data.len() as i64;
+        while (total < len) {
+            i64 n = 0;
+            unsafe {
+                n = mylis_unix_stream_write(this.handle, data, total, len - total);
+            }
+            if (n < 0) {
+                return Err(new IoError((-n) as i32));
+            }
+            if (n == 0) {
+                break;
+            }
+            total = total + n;
+        }
+        return Ok(total);
+    }
+
+    pub fn writeAllText(string text) -> Result<i64, IoError> {
+        return this.writeAllBytes(Str::Bytes(text));
+    }
+
+    pub fn setNonblocking(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_unix_stream_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setTimeout(i64 milliseconds) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_unix_stream_set_timeout(this.handle, milliseconds);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn nativeHandle() -> i64 {
+        return this.handle;
+    }
+
+    pub fn nativeFd() -> i64 {
+        i64 fd = -1;
+        unsafe {
+            fd = mylis_unix_stream_fd(this.handle);
+        }
+        return fd;
+    }
+
+    pub fn close() -> void {
+        unsafe {
+            mylis_unix_stream_close(this.handle);
+        }
+        this.handle = -1;
+    }
+}

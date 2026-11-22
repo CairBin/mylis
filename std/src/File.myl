@@ -6,7 +6,7 @@ import { Str } from "core/Str";
 import { myrt_str_ptr, myrt_str_cstr } from "core/Mylrt_bind";
 import { FileTask } from "FileTask.myl";
 import { FileHandler } from "FileHandler.myl";
-import { mylis_file_open, mylis_file_close, mylis_file_size, mylis_file_exists, mylis_file_remove, mylis_file_rename, mylis_file_read, mylis_file_write, mylis_file_seek, mylis_file_flush, mylis_file_is_dir, mylis_file_mkdir, mylis_file_mkdir_all, mylis_file_remove_dir, mylis_file_remove_dir_all, mylis_file_metadata_size, mylis_file_read_dir_count, mylis_file_read_dir_entry, mylis_file_free_string, mylis_file_tell, mylis_file_read_all_bytes_async, mylis_file_write_all_bytes_async } from "File_bind.myl";
+import { mylis_file_open, mylis_file_close, mylis_file_size, mylis_file_exists, mylis_file_remove, mylis_file_rename, mylis_file_read, mylis_file_write, mylis_file_seek, mylis_file_flush, mylis_file_is_dir, mylis_file_mkdir, mylis_file_mkdir_all, mylis_file_remove_dir, mylis_file_remove_dir_all, mylis_file_metadata_size, mylis_file_read_dir_count, mylis_file_read_dir_entry, mylis_file_free_string, mylis_file_tell, mylis_file_read_all_bytes_async, mylis_file_write_all_bytes_async, mylis_file_mode, mylis_file_chmod, mylis_file_modified_millis } from "File_bind.myl";
 
 pub class File {
     i64 handle;
@@ -214,6 +214,44 @@ pub class File {
             rc = mylis_file_is_dir(myrt_str_ptr(path));
         }
         return rc == 1;
+    }
+
+    // POSIX 返回 0o7777 以内的 mode；Windows 只映射只读位（0o444 / 0o666）。
+    pub static fn Mode(string path) -> Result<i32, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_file_mode(myrt_str_ptr(path));
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n as i32);
+    }
+
+    pub static fn Chmod(string path, i32 mode) -> Result<i64, IoError> {
+        if (mode < 0 || mode > 4095) {
+            return Err(new IoError(22));
+        }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_file_chmod(myrt_str_ptr(path), mode);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    // 文件最后修改时间（Unix 毫秒）；modification time 不可用时返回负 errno。
+    pub static fn ModifiedMillis(string path) -> Result<i64, IoError> {
+        i64 n = 0;
+        unsafe {
+            n = mylis_file_modified_millis(myrt_str_ptr(path));
+        }
+        if (n < 0) {
+            return Err(new IoError((-n) as i32));
+        }
+        return Ok(n);
     }
 
     pub static fn Size(string path) -> Result<i64, IoError> {

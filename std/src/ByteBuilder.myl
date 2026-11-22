@@ -1,0 +1,87 @@
+// 可变字节缓冲：供缓冲 I/O、哈希、正则等纯 std 代码复用。
+pub class ByteBuilder {
+    u8[] data;
+    i64 count;
+    i64 capacity;
+
+    pub fn init() -> void {
+        this.capacity = 64;
+        this.data = new u8[this.capacity];
+        this.count = 0;
+    }
+
+    fn grow(i64 need) -> void {
+        i64 next = this.capacity;
+        while (next < need) {
+            next = next * 2;
+        }
+        u8[] expanded = new u8[next];
+        i64 i = 0;
+        while (i < this.count) {
+            expanded[i] = this.data[i];
+            i = i + 1;
+        }
+        this.data = expanded;
+        this.capacity = next;
+    }
+
+    pub fn append(u8 value) -> void {
+        if (this.count + 1 > this.capacity) {
+            this.grow(this.count + 1);
+        }
+        this.data[this.count] = value;
+        this.count = this.count + 1;
+    }
+
+    pub fn appendBytes(u8[] value) -> void {
+        this.appendRange(value, 0, value.len() as i64);
+    }
+
+    pub fn appendRange(u8[] value, i64 start, i64 length) -> void {
+        if (start < 0 || length <= 0) {
+            return;
+        }
+        i64 end = start + length;
+        if (end > value.len() as i64) {
+            end = value.len() as i64;
+        }
+        i64 n = end - start;
+        if (n <= 0) {
+            return;
+        }
+        if (this.count + n > this.capacity) {
+            this.grow(this.count + n);
+        }
+        i64 i = 0;
+        while (i < n) {
+            this.data[this.count + i] = value[start + i];
+            i = i + 1;
+        }
+        this.count = this.count + n;
+    }
+
+    pub fn byteAt(i64 index) -> u8 {
+        if (index < 0 || index >= this.count) {
+            return 0;
+        }
+        return this.data[index];
+    }
+
+    pub fn len() -> i64 {
+        return this.count;
+    }
+
+    pub fn clear() -> void {
+        this.count = 0;
+    }
+
+    pub fn toArray() -> u8[] {
+        u8[] out = new u8[this.count];
+        i64 i = 0;
+        while (i < this.count) {
+            out[i] = this.data[i];
+            i = i + 1;
+        }
+        return out;
+    }
+}

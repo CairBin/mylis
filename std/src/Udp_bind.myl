@@ -22,3 +22,12 @@ pub unsafe fn mylis_udp_fd(i64 handle) -> i64;
 
 @header("mylis_net.h")
 pub unsafe fn mylis_udp_close(i64 handle) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_udp_set_reuse_address(i64 handle, i32 enabled) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_udp_set_broadcast(i64 handle, i32 enabled) -> i64;
+
+@header("mylis_net.h")
+pub unsafe fn mylis_udp_set_ttl(i64 handle, i32 ttl) -> i64;

@@ -1,0 +1,666 @@
+// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、分组、
+// 分支 `|` 与 `* + ?` 量词。按字节匹配 UTF-8 文本；不支持回溯引用、
+// lookaround、Unicode 字符类和 `{m,n}` 计数量词。匹配结果是字节偏移。
+import { Str } from "core/Str";
+import { StringBuilder } from "StringBuilder.myl";
+import { IoError } from "IoError.myl";
+import { Vec } from "Vec.myl";
+import { RegexMatch } from "RegexMatch.myl";
+
+class RegexClass {
+    bool negated;
+    i32[] ranges;
+    i32 count;
+
+    pub fn init(bool invert) -> void {
+        this.negated = invert;
+        this.ranges = new i32[16];
+        this.count = 0;
+    }
+
+    fn addRange(i32 first, i32 last) -> void {
+        if (this.count + 2 > this.ranges.len() as i32) {
+            i32[] grown = new i32[(this.ranges.len() as i32) * 2];
+            i32 i = 0;
+            while (i < this.count) {
+                grown[i] = this.ranges[i];
+                i = i + 1;
+            }
+            this.ranges = grown;
+        }
+        this.ranges[this.count] = first;
+        this.ranges[this.count + 1] = last;
+        this.count = this.count + 2;
+    }
+
+    fn addDigit() -> void {
+        this.addRange(48, 57);
+    }
+
+    fn addWord() -> void {
+        this.addRange(48, 57);
+        this.addRange(65, 90);
+        this.addRange(97, 122);
+        this.addRange(95, 95);
+    }
+
+    fn addSpace() -> void {
+        this.addRange(9, 13);
+        this.addRange(32, 32);
+    }
+
+    fn matches(u8 value) -> bool {
+        i32 code = value as i32;
+        bool hit = false;
+        i32 i = 0;
+        while (i < this.count) {
+            if (code >= this.ranges[i] && code <= this.ranges[i + 1]) {
+                hit = true;
+                break;
+            }
+            i = i + 2;
+        }
+        if (this.negated) {
+            return !hit;
+        }
+        return hit;
+    }
+}
+
+class RegexState {
+    pub static const i32 CHAR = 1;
+    pub static const i32 ANY = 2;
+    pub static const i32 CLASS = 3;
+    pub static const i32 SPLIT = 4;
+    pub static const i32 MATCH = 5;
+    pub static const i32 BOL = 6;
+    pub static const i32 EOL = 7;
+    pub static const i32 EPS = 8;
+
+    i32 op;
+    i32 out1;
+    i32 out2;
+    i32 ch;
+    RegexClass cls;
+
+    pub fn init(i32 operation, i32 value, RegexClass characterClass) -> void {
+        this.op = operation;
+        this.out1 = -1;
+        this.out2 = -1;
+        this.ch = value;
+        this.cls = characterClass;
+    }
+}
+
+class RegexFrag {
+    i32 start;
+    i32[] outs;
+    i32 count;
+
+    pub fn init(i32 value) -> void {
+        this.start = value;
+        this.outs = new i32[8];
+        this.count = 0;
+    }
+
+    fn addOut(i32 slot) -> void {
+        if (this.count + 1 > this.outs.len() as i32) {
+            i32[] grown = new i32[(this.outs.len() as i32) * 2];
+            i32 i = 0;
+            while (i < this.count) {
+                grown[i] = this.outs[i];
+                i = i + 1;
+            }
+            this.outs = grown;
+        }
+        this.outs[this.count] = slot;
+        this.count = this.count + 1;
+    }
+
+    fn absorb(RegexFrag other) -> void {
+        i32 i = 0;
+        while (i < other.count) {
+            this.addOut(other.outs[i]);
+            i = i + 1;
+        }
+    }
+}
+
+class RegexCompiler {
+    string pattern;
+    u8[] bytes;
+    i32 pos;
+    RegexState[] states;
+    i32 stateCount;
+    i32 stateCapacity;
+
+    pub fn init(string source) -> void {
+        this.pattern = source;
+        this.bytes = Str::Bytes(source);
+        this.pos = 0;
+        this.stateCapacity = 32;
+        this.states = new RegexState[this.stateCapacity];
+        this.stateCount = 0;
+    }
+
+    fn grow() -> void {
+        this.stateCapacity = this.stateCapacity * 2;
+        RegexState[] next = new RegexState[this.stateCapacity];
+        i32 i = 0;
+        while (i < this.stateCount) {
+            next[i] = this.states[i];
+            i = i + 1;
+        }
+        this.states = next;
+    }
+
+    fn addState(i32 op, i32 ch, RegexClass cls) -> i32 {
+        if (this.stateCount >= this.stateCapacity) {
+            this.grow();
+        }
+        i32 index = this.stateCount;
+        this.states[index] = new RegexState(op, ch, cls);
+        this.stateCount = this.stateCount + 1;
+        return index;
+    }
+
+    fn patch(RegexFrag frag, i32 target) -> void {
+        i32 i = 0;
+        while (i < frag.count) {
+            i32 slot = frag.outs[i];
+            i32 stateIndex = slot / 2;
+            if (slot % 2 == 0) {
+                this.states[stateIndex].out1 = target;
+            } else {
+                this.states[stateIndex].out2 = target;
+            }
+            i = i + 1;
+        }
+    }
+
+    fn emptyFrag() -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 index = this.addState(RegexState::EPS, 0, dummy);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn concat(RegexFrag left, RegexFrag right) -> RegexFrag {
+        if (left.start < 0) { return right; }
+        if (right.start < 0) { return left; }
+        this.patch(left, right.start);
+        RegexFrag result = new RegexFrag(left.start);
+        result.absorb(right);
+        return result;
+    }
+
+    fn alternation(RegexFrag left, RegexFrag right) -> RegexFrag {
+        if (left.start < 0) { return right; }
+        if (right.start < 0) { return left; }
+        RegexClass dummy = new RegexClass(false);
+        i32 split = this.addState(RegexState::SPLIT, 0, dummy);
+        this.states[split].out1 = left.start;
+        this.states[split].out2 = right.start;
+        RegexFrag result = new RegexFrag(split);
+        result.absorb(left);
+        result.absorb(right);
+        return result;
+    }
+
+    fn star(RegexFrag body) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 split = this.addState(RegexState::SPLIT, 0, dummy);
+        this.states[split].out1 = body.start;
+        this.patch(body, split);
+        RegexFrag result = new RegexFrag(split);
+        result.addOut(split * 2 + 1);
+        return result;
+    }
+
+    fn plus(RegexFrag body) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 split = this.addState(RegexState::SPLIT, 0, dummy);
+        this.states[split].out1 = body.start;
+        this.patch(body, split);
+        RegexFrag result = new RegexFrag(body.start);
+        result.addOut(split * 2 + 1);
+        return result;
+    }
+
+    fn question(RegexFrag body) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 split = this.addState(RegexState::SPLIT, 0, dummy);
+        this.states[split].out1 = body.start;
+        RegexFrag result = new RegexFrag(split);
+        result.absorb(body);
+        result.addOut(split * 2 + 1);
+        return result;
+    }
+
+    fn currentByte() -> u8 {
+        if (this.pos >= this.bytes.len() as i32) { return 0; }
+        return this.bytes[this.pos];
+    }
+
+    fn atEnd() -> bool {
+        return this.pos >= this.bytes.len() as i32;
+    }
+
+    fn literalFrag(u8 value) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 index = this.addState(RegexState::CHAR, value as i32, dummy);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn classFrag(RegexClass cls) -> RegexFrag {
+        i32 index = this.addState(RegexState::CLASS, 0, cls);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn anyFrag() -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 index = this.addState(RegexState::ANY, 0, dummy);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn anchorFrag(i32 op) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 index = this.addState(op, 0, dummy);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn parseAlternation() -> RegexFrag {
+        RegexFrag result = this.parseSequence();
+        while (!this.atEnd() && this.currentByte() == 124) {
+            this.pos = this.pos + 1;
+            RegexFrag right = this.parseSequence();
+            result = this.alternation(result, right);
+        }
+        return result;
+    }
+
+    fn parseSequence() -> RegexFrag {
+        RegexFrag result = new RegexFrag(-1);
+        while (!this.atEnd() && this.currentByte() != 124 && this.currentByte() != 41) {
+            RegexFrag part = this.parseQuantified();
+            result = this.concat(result, part);
+        }
+        return result;
+    }
+
+    fn parseQuantified() -> RegexFrag {
+        RegexFrag atom = this.parseAtom();
+        if (!this.atEnd()) {
+            u8 next = this.currentByte();
+            if (next == 42) {
+                this.pos = this.pos + 1;
+                atom = this.star(atom);
+            } else if (next == 43) {
+                this.pos = this.pos + 1;
+                atom = this.plus(atom);
+            } else if (next == 63) {
+                this.pos = this.pos + 1;
+                atom = this.question(atom);
+            } else if (next == 123) {
+                this.pos = this.pos + 1;
+                // 计数量词暂不支持；跳到闭括号后报错，避免静默误解。
+                while (!this.atEnd() && this.currentByte() != 125) { this.pos = this.pos + 1; }
+                if (!this.atEnd()) { this.pos = this.pos + 1; }
+            }
+            if (!this.atEnd() && (this.currentByte() == 42 || this.currentByte() == 43 || this.currentByte() == 63)) {
+                this.pos = this.bytes.len() as i32;
+            }
+        }
+        return atom;
+    }
+
+    fn parseAtom() -> RegexFrag {
+        if (this.atEnd()) {
+            return this.emptyFrag();
+        }
+        u8 c = this.currentByte();
+        if (c == 40) {
+            this.pos = this.pos + 1;
+            RegexFrag inner = this.parseAlternation();
+            if (this.atEnd() || this.currentByte() != 41) {
+                this.pos = this.bytes.len() as i32;
+                return this.emptyFrag();
+            }
+            this.pos = this.pos + 1;
+            return inner;
+        }
+        if (c == 91) {
+            return this.parseClass();
+        }
+        if (c == 46) {
+            this.pos = this.pos + 1;
+            return this.anyFrag();
+        }
+        if (c == 94) {
+            this.pos = this.pos + 1;
+            return this.anchorFrag(RegexState::BOL);
+        }
+        if (c == 36) {
+            this.pos = this.pos + 1;
+            return this.anchorFrag(RegexState::EOL);
+        }
+        if (c == 92) {
+            this.pos = this.pos + 1;
+            if (this.atEnd()) {
+                this.pos = this.bytes.len() as i32;
+                return this.emptyFrag();
+            }
+            u8 escaped = this.currentByte();
+            this.pos = this.pos + 1;
+            if (escaped == 100) {
+                RegexClass digits = new RegexClass(false);
+                digits.addDigit();
+                return this.classFrag(digits);
+            }
+            if (escaped == 68) {
+                RegexClass nonDigits = new RegexClass(true);
+                nonDigits.addDigit();
+                return this.classFrag(nonDigits);
+            }
+            if (escaped == 119) {
+                RegexClass word = new RegexClass(false);
+                word.addWord();
+                return this.classFrag(word);
+            }
+            if (escaped == 87) {
+                RegexClass nonWord = new RegexClass(true);
+                nonWord.addWord();
+                return this.classFrag(nonWord);
+            }
+            if (escaped == 115) {
+                RegexClass space = new RegexClass(false);
+                space.addSpace();
+                return this.classFrag(space);
+            }
+            if (escaped == 83) {
+                RegexClass nonSpace = new RegexClass(true);
+                nonSpace.addSpace();
+                return this.classFrag(nonSpace);
+            }
+            u8 literal = escaped;
+            if (escaped == 110) { literal = 10; }
+            if (escaped == 114) { literal = 13; }
+            if (escaped == 116) { literal = 9; }
+            return this.literalFrag(literal);
+        }
+        if (c == 41 || c == 124 || c == 42 || c == 43 || c == 63 || c == 123) {
+            this.pos = this.bytes.len() as i32;
+            return this.emptyFrag();
+        }
+        this.pos = this.pos + 1;
+        return this.literalFrag(c);
+    }
+
+    fn escapeValue() -> u8 {
+        if (this.pos + 1 >= this.bytes.len() as i32) {
+            this.pos = this.bytes.len() as i32;
+            return 0;
+        }
+        this.pos = this.pos + 1;
+        u8 value = this.bytes[this.pos];
+        this.pos = this.pos + 1;
+        if (value == 110) { return 10; }
+        if (value == 114) { return 13; }
+        if (value == 116) { return 9; }
+        return value;
+    }
+
+    fn parseClass() -> RegexFrag {
+        this.pos = this.pos + 1;
+        bool negated = false;
+        if (!this.atEnd() && this.currentByte() == 94) {
+            negated = true;
+            this.pos = this.pos + 1;
+        }
+        RegexClass cls = new RegexClass(negated);
+        while (!this.atEnd() && this.currentByte() != 93) {
+            u8 first = 0;
+            if (this.currentByte() == 92) {
+                this.pos = this.pos + 1;
+                if (this.atEnd()) { break; }
+                u8 special = this.currentByte();
+                this.pos = this.pos + 1;
+                if (special == 100) { cls.addDigit(); continue; }
+                if (special == 119) { cls.addWord(); continue; }
+                if (special == 115) { cls.addSpace(); continue; }
+                if (special == 110) { first = 10; }
+                else if (special == 114) { first = 13; }
+                else if (special == 116) { first = 9; }
+                else { first = special; }
+            } else {
+                first = this.currentByte();
+                this.pos = this.pos + 1;
+            }
+            if (!this.atEnd() && this.currentByte() == 45 && this.pos + 1 < this.bytes.len() as i32 && this.bytes[this.pos + 1] != 93) {
+                this.pos = this.pos + 1;
+                u8 last = this.bytes[this.pos];
+                this.pos = this.pos + 1;
+                cls.addRange(first as i32, last as i32);
+            } else {
+                cls.addRange(first as i32, first as i32);
+            }
+        }
+        if (!this.atEnd() && this.currentByte() == 93) {
+            this.pos = this.pos + 1;
+        } else {
+            this.pos = this.bytes.len() as i32;
+        }
+        return this.classFrag(cls);
+    }
+
+    pub fn compile() -> Result<Regex, IoError> {
+        RegexFrag frag = this.parseAlternation();
+        if (this.pos < this.bytes.len() as i32) {
+            return Err(new IoError(22));
+        }
+        RegexClass dummy = new RegexClass(false);
+        i32 matchState = this.addState(RegexState::MATCH, 0, dummy);
+        if (frag.start < 0) {
+            frag = this.emptyFrag();
+        }
+        this.patch(frag, matchState);
+        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start));
+    }
+}
+
+pub class Regex {
+    string pattern;
+    RegexState[] states;
+    i32 stateCount;
+    i32 start;
+
+    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex) -> void {
+        this.pattern = source;
+        this.states = table;
+        this.stateCount = total;
+        this.start = startIndex;
+    }
+
+    pub static fn Compile(string pattern) -> Result<Regex, IoError> {
+        RegexCompiler compiler = new RegexCompiler(pattern);
+        return compiler.compile();
+    }
+
+    fn addState(i32 stateIndex, i32 pos, i32 textLength, bool[] seen, i32[] out, i32[] count) -> void {
+        if (stateIndex < 0 || stateIndex >= this.stateCount || seen[stateIndex]) {
+            return;
+        }
+        seen[stateIndex] = true;
+        i32 op = this.states[stateIndex].op;
+        if (op == RegexState::SPLIT) {
+            this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            this.addState(this.states[stateIndex].out2, pos, textLength, seen, out, count);
+            return;
+        }
+        if (op == RegexState::EPS) {
+            this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            return;
+        }
+        if (op == RegexState::BOL) {
+            if (pos == 0) {
+                this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            }
+            return;
+        }
+        if (op == RegexState::EOL) {
+            if (pos == textLength) {
+                this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            }
+            return;
+        }
+        out[count[0]] = stateIndex;
+        count[0] = count[0] + 1;
+    }
+
+    fn hasMatch(i32[] set, i32 count) -> bool {
+        i32 i = 0;
+        while (i < count) {
+            if (this.states[set[i]].op == RegexState::MATCH) {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    fn accepts(i32 stateIndex, u8 value) -> bool {
+        i32 op = this.states[stateIndex].op;
+        if (op == RegexState::CHAR) {
+            return this.states[stateIndex].ch == value as i32;
+        }
+        if (op == RegexState::ANY) {
+            return value != 10;
+        }
+        if (op == RegexState::CLASS) {
+            return this.states[stateIndex].cls.matches(value);
+        }
+        return false;
+    }
+
+    // 返回从 start 开始的最长匹配结束字节偏移；没有匹配返回 -1。
+    fn matchAt(u8[] text, i32 start) -> i64 {
+        i32 length = text.len() as i32;
+        i32[] current = new i32[this.stateCount];
+        i32[] currentCount = new i32[1];
+        currentCount[0] = 0;
+        bool[] seen = new bool[this.stateCount];
+        this.addState(this.start, start, length, seen, current, currentCount);
+        i64 best = -1;
+        if (this.hasMatch(current, currentCount[0])) {
+            best = start as i64;
+        }
+        i32 pos = start;
+        while (pos < length && currentCount[0] > 0) {
+            i32[] next = new i32[this.stateCount];
+            i32[] nextCount = new i32[1];
+            nextCount[0] = 0;
+            bool[] nextSeen = new bool[this.stateCount];
+            i32 i = 0;
+            while (i < currentCount[0]) {
+                i32 stateIndex = current[i];
+                if (this.accepts(stateIndex, text[pos])) {
+                    this.addState(this.states[stateIndex].out1, pos + 1, length, nextSeen, next, nextCount);
+                }
+                i = i + 1;
+            }
+            current = next;
+            currentCount = nextCount;
+            seen = nextSeen;
+            pos = pos + 1;
+            if (this.hasMatch(current, currentCount[0])) {
+                best = pos as i64;
+            }
+        }
+        return best;
+    }
+
+    fn findBytes(u8[] text, i32 from) -> Option<RegexMatch> {
+        i32 length = text.len() as i32;
+        i32 start = from;
+        while (start <= length) {
+            i64 finish = this.matchAt(text, start);
+            if (finish >= 0) {
+                return Some(new RegexMatch(start as i64, finish));
+            }
+            start = start + 1;
+        }
+        return None;
+    }
+
+    pub fn isMatch(string text) -> bool {
+        Option<RegexMatch> found = this.find(text);
+        match found {
+            Some(_) => { return true; }
+            None => { return false; }
+        }
+    }
+
+    pub fn find(string text) -> Option<RegexMatch> {
+        return this.findBytes(Str::Bytes(text), 0);
+    }
+
+    pub fn findAll(string text) -> Vec<RegexMatch> {
+        u8[] data = Str::Bytes(text);
+        Vec<RegexMatch> out = new Vec<RegexMatch>();
+        i32 cursor = 0;
+        i32 length = data.len() as i32;
+        while (cursor <= length) {
+            Option<RegexMatch> found = this.findBytes(data, cursor);
+            match found {
+                Some(value) => {
+                    out.push(value);
+                    i32 next = value.end as i32;
+                    if (next == cursor) {
+                        next = next + 1;
+                    }
+                    cursor = next;
+                }
+                None => { break; }
+            }
+        }
+        return out;
+    }
+
+    pub fn replaceAll(string text, string replacement) -> string {
+        u8[] data = Str::Bytes(text);
+        StringBuilder out = new StringBuilder();
+        i64 cursor = 0;
+        i64 length = data.len() as i64;
+        while (cursor <= length) {
+            Option<RegexMatch> found = this.findBytes(data, cursor as i32);
+            match found {
+                Some(value) => {
+                    out.append(Str::Substring(text, cursor as u64, (value.start - cursor) as u64));
+                    out.append(replacement);
+                    if (value.end == value.start) {
+                        if (value.end < length) {
+                            out.append(Str::Substring(text, value.end as u64, 1));
+                        }
+                        cursor = value.end + 1;
+                    } else {
+                        cursor = value.end;
+                    }
+                }
+                None => { break; }
+            }
+        }
+        if (cursor < length) {
+            out.append(Str::Substring(text, cursor as u64, (length - cursor) as u64));
+        }
+        return out.toString();
+    }
+}

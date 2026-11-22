@@ -1,0 +1,36 @@
+import { DateTime } from "DateTime.myl";
+import { TimeZone } from "TimeZone.myl";
+import { Time } from "Time.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    DateTime utcEpoch = DateTime::FromMillis(0);
+    println(utcEpoch.toIso8601());
+    println_i64(utcEpoch.weekday as i64);
+    println_i64(utcEpoch.year as i64);
+
+    DateTime utcValue = DateTime::FromMillis(1700000000000);
+    println(utcValue.toIso8601());
+    DateTime shanghai = utcValue.withZone(TimeZone::Fixed(480));
+    println(shanghai.toIso8601());
+    println(shanghai.format("EEE yyyy-MM-dd HH:mm:ss"));
+
+    DateTime nextDay = utcValue.addDays(1);
+    println(nextDay.toIso8601());
+    DateTime earlier = DateTime::FromMillis(-1);
+    println(earlier.toIso8601());
+
+    Result<DateTime, string> parsed = DateTime::ParseIso8601("2024-02-29T12:34:56.789+08:00");
+    match parsed {
+        Ok(value) => {
+            println(value.toIso8601());
+            println_i64(value.timestampMillis);
+            println_i64(value.offsetMinutes as i64);
+        }
+        Err(message) => { println(message); }
+    }
+
+    i64 offset = Time::LocalOffsetMinutes();
+    println_bool(offset >= -720 && offset <= 840);
+    return 0;
+}

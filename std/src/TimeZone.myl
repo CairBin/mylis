@@ -1,0 +1,48 @@
+// 固定偏移时区。Local() 读取操作系统当前偏移；历史时间/DST 切换请显式用 Fixed。
+import { Time } from "Time.myl";
+import { fmt_i64 } from "core/Fmt";
+
+pub class TimeZone {
+    pub i32 offsetMinutes;
+    pub string name;
+
+    pub fn init(i32 minutes, string value) -> void {
+        this.offsetMinutes = minutes;
+        this.name = value;
+    }
+
+    pub static fn Utc() -> TimeZone {
+        return new TimeZone(0, "UTC");
+    }
+
+    pub static fn Local() -> TimeZone {
+        i64 minutes = Time::LocalOffsetMinutes();
+        return new TimeZone(minutes as i32, "local");
+    }
+
+    pub static fn Fixed(i32 minutes) -> TimeZone {
+        return new TimeZone(minutes, "fixed");
+    }
+
+    pub fn offsetSeconds() -> i64 {
+        return (this.offsetMinutes as i64) * 60;
+    }
+
+    pub fn offsetText() -> string {
+        i32 minutes = this.offsetMinutes;
+        string sign = "+";
+        if (minutes < 0) {
+            sign = "-";
+            minutes = -minutes;
+        }
+        i32 hours = minutes / 60;
+        i32 rest = minutes % 60;
+        string hh = "";
+        if (hours < 10) { hh = "0"; }
+        hh = hh + fmt_i64(hours as i64);
+        string mm = "";
+        if (rest < 10) { mm = "0"; }
+        mm = mm + fmt_i64(rest as i64);
+        return sign + hh + ":" + mm;
+    }
+}

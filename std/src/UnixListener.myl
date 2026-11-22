@@ -1,0 +1,75 @@
+// POSIX Unix domain listener；Windows 原生后端统一返回 EOPNOTSUPP(-95)。
+import { IoError } from "IoError.myl";
+import { UnixStream } from "UnixStream.myl";
+import { myrt_str_ptr } from "core/Mylrt_bind";
+import { mylis_unix_bind, mylis_unix_accept, mylis_unix_listener_fd, mylis_unix_listener_close, mylis_unix_listener_set_nonblocking, mylis_unix_remove } from "Net_bind.myl";
+
+pub class UnixListener {
+    i64 handle;
+
+    pub fn init(i64 h) -> void {
+        this.handle = h;
+    }
+
+    pub static fn Bind(string path) -> Result<UnixListener, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_unix_bind(myrt_str_ptr(path));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new UnixListener(h));
+    }
+
+    pub fn accept() -> Result<UnixStream, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_unix_accept(this.handle);
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new UnixStream(h));
+    }
+
+    pub fn setNonblocking(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_unix_listener_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn nativeFd() -> i64 {
+        i64 fd = -1;
+        unsafe {
+            fd = mylis_unix_listener_fd(this.handle);
+        }
+        return fd;
+    }
+
+    pub fn close() -> void {
+        unsafe {
+            mylis_unix_listener_close(this.handle);
+        }
+        this.handle = -1;
+    }
+
+    // 删除 socket 文件；不存在时也视为成功。
+    pub static fn Remove(string path) -> Result<i64, IoError> {
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_unix_remove(myrt_str_ptr(path));
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+}

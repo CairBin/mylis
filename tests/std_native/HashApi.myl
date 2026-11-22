@@ -1,0 +1,19 @@
+import { Sha256 } from "Sha256.myl";
+import { Sha1 } from "Sha1.myl";
+import { Md5 } from "Md5.myl";
+import { println } from "Io.myl";
+
+fn main() -> i32 {
+    println(Sha256::Hash(""));
+    println(Sha256::Hash("abc"));
+    println(Sha256::Hash("hello"));
+    println(Sha256::Hash("中文"));
+    println(Sha1::Hash(""));
+    println(Sha1::Hash("abc"));
+    println(Sha1::Hash("中文"));
+    println(Md5::Hash(""));
+    println(Md5::Hash("abc"));
+    println(Md5::Hash("The quick brown fox jumps over the lazy dog"));
+    println(Md5::Hash("中文"));
+    return 0;
+}

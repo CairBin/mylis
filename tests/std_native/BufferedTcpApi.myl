@@ -1,0 +1,82 @@
+import { TcpListener } from "TcpListener.myl";
+import { TcpStream } from "TcpStream.myl";
+import { BufferedTcpStream } from "BufferedTcpStream.myl";
+import { UdpSocket } from "UdpSocket.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+
+fn isOk(Result<i64, IoError> value) -> bool {
+    match value {
+        Ok(_) => { return true; }
+        Err(_) => { return false; }
+    }
+}
+
+fn printError(IoError error) -> void {
+    println_i64(error.code as i64);
+}
+
+fn main() -> i32 {
+    Result<TcpListener, IoError> tcpBound = TcpListener::Bind("127.0.0.1:0");
+    match tcpBound {
+        Ok(tcpListener) => {
+            i64 port = tcpListener.localPort();
+            string address = Str::Concat("127.0.0.1:", fmt_i64(port));
+            Result<TcpStream, IoError> tcpClient = TcpStream::Connect(address);
+            match tcpClient {
+                Ok(clientStream) => {
+                    println_bool(isOk(clientStream.setNoDelay(true)));
+                    println_bool(isOk(clientStream.setKeepAlive(true)));
+                    println_bool(isOk(clientStream.setReceiveBuffer(65536)));
+                    println_bool(isOk(clientStream.setSendBuffer(65536)));
+
+                    BufferedTcpStream writer = new BufferedTcpStream(clientStream, 4096, 8192);
+                    writer.setAutoFlush(false);
+                    Result<i64, IoError> wrote = writer.writeAllText("hello\nworld\n");
+                    match wrote {
+                        Ok(_) => {
+                            println_bool(isOk(writer.flush()));
+                            Result<TcpStream, IoError> tcpAccepted = tcpListener.accept();
+                            match tcpAccepted {
+                                Ok(serverStream) => {
+                                    BufferedTcpStream reader = BufferedTcpStream::Wrap(serverStream);
+                                    Result<string, IoError> line1 = reader.readLine();
+                                    Result<string, IoError> line2 = reader.readLine();
+                                    match line1 {
+                                        Ok(lineValue1) => { println(lineValue1); }
+                                        Err(lineError1) => { printError(lineError1); }
+                                    }
+                                    match line2 {
+                                        Ok(lineValue2) => { println(lineValue2); }
+                                        Err(lineError2) => { printError(lineError2); }
+                                    }
+                                    serverStream.close();
+                                }
+                                Err(acceptError) => { printError(acceptError); }
+                            }
+                            writer.close();
+                        }
+                        Err(writeError) => { printError(writeError); }
+                    }
+                }
+                Err(clientError) => { printError(clientError); }
+            }
+            tcpListener.close();
+        }
+        Err(bindError) => { printError(bindError); }
+    }
+
+    Result<UdpSocket, IoError> udpBound = UdpSocket::Bind("127.0.0.1:0");
+    match udpBound {
+        Ok(udpSocket) => {
+            println_bool(isOk(udpSocket.setBroadcast(true)));
+            println_bool(isOk(udpSocket.setTtl(64)));
+            udpSocket.close();
+        }
+        Err(udpError) => { printError(udpError); }
+    }
+
+    return 0;
+}

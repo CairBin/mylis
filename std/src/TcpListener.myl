@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { TcpStream } from "TcpStream.myl";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_tcp_bind, mylis_tcp_listener_fd, mylis_tcp_listener_port, mylis_tcp_accept, mylis_tcp_listener_close, mylis_tcp_listener_set_nonblocking } from "Net_bind.myl";
+import { mylis_tcp_bind, mylis_tcp_listener_fd, mylis_tcp_listener_port, mylis_tcp_accept, mylis_tcp_listener_close, mylis_tcp_listener_set_nonblocking, mylis_tcp_listener_set_reuse_address } from "Net_bind.myl";
 
 pub class TcpListener {
     i64 handle;
@@ -49,6 +49,21 @@ pub class TcpListener {
         }
         unsafe {
             rc = mylis_tcp_listener_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    // 注意：SO_REUSEADDR 需要在 bind 前设置；当前 Bind 已完成绑定，
+    // 此方法主要用于已有监听器句柄的兼容路径。
+    pub fn setReuseAddress(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_tcp_listener_set_reuse_address(this.handle, flag);
         }
         if (rc < 0) {
             return Err(new IoError((-rc) as i32));

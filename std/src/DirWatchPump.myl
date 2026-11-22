@@ -1,0 +1,64 @@
+// 把 DirWatcher 接入 EventLoop：每 100ms 轮询一次，在主线程派发 DirEvent。
+import { DirWatcher } from "DirWatcher.myl";
+import { DirWatchHandler } from "DirWatchHandler.myl";
+import { DirEvent } from "DirEvent.myl";
+import { Vec } from "Vec.myl";
+import { IoError } from "IoError.myl";
+
+pub class DirWatchPump {
+    DirWatcher watcher;
+    DirWatchHandler handler;
+    i32 errorCode;
+    bool closed;
+
+    pub fn init(DirWatcher value, DirWatchHandler hd) -> void {
+        this.watcher = value;
+        this.handler = hd;
+        this.errorCode = 0;
+        this.closed = false;
+    }
+
+    pub static fn Watch(string path, DirWatchHandler hd) -> Result<DirWatchPump, IoError> {
+        Result<DirWatcher, IoError> watched = DirWatcher::Watch(path);
+        match watched {
+            Ok(value) => { return Ok(new DirWatchPump(value, hd)); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    pub fn pump() -> void {
+        if (this.closed) {
+            return;
+        }
+        Result<Vec<DirEvent>, IoError> events = this.watcher.poll();
+        match events {
+            Ok(changes) => {
+                i64 i = 0;
+                while (i < changes.len()) {
+                    this.handler.onDirEvent(changes.get(i));
+                    i = i + 1;
+                }
+            }
+            Err(error) => {
+                this.errorCode = error.code;
+            }
+        }
+    }
+
+    pub fn hasPending() -> bool {
+        return !this.closed;
+    }
+
+    pub fn nextTimeoutMillis() -> i64 {
+        return 100;
+    }
+
+    pub fn lastErrorCode() -> i32 {
+        return this.errorCode;
+    }
+
+    pub fn shutdown() -> void {
+        this.watcher.close();
+        this.closed = true;
+    }
+}

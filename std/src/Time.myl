@@ -1,5 +1,5 @@
 // std 时间：wall clock、单调时钟与 sleep；实际实现由 hosted native 后端提供。
-import { mylis_time_now_millis, mylis_time_now_nanos, mylis_time_monotonic_millis, mylis_time_now_seconds, mylis_time_sleep_millis } from "Time_bind.myl";
+import { mylis_time_now_millis, mylis_time_now_nanos, mylis_time_monotonic_millis, mylis_time_now_seconds, mylis_time_sleep_millis, mylis_time_local_offset_minutes } from "Time_bind.myl";
 
 pub class Time {
     // Unix 纪元以来的毫秒数。
@@ -33,6 +33,15 @@ pub class Time {
         f64 value = 0.0;
         unsafe {
             value = mylis_time_now_seconds();
+        }
+        return value;
+    }
+
+    // 当前系统本地时区偏移（分钟）；例如中国标准时间为 +480。
+    pub static fn LocalOffsetMinutes() -> i64 {
+        i64 value = 0;
+        unsafe {
+            value = mylis_time_local_offset_minutes();
         }
         return value;
     }

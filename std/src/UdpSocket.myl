@@ -3,7 +3,7 @@ import { IoError } from "IoError.myl";
 import { UdpPacket } from "UdpPacket.myl";
 import { Str } from "core/Str";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_udp_bind, mylis_udp_port, mylis_udp_send, mylis_udp_recv, mylis_udp_recv_from, mylis_udp_set_nonblocking, mylis_udp_fd, mylis_udp_close } from "Udp_bind.myl";
+import { mylis_udp_bind, mylis_udp_port, mylis_udp_send, mylis_udp_recv, mylis_udp_recv_from, mylis_udp_set_nonblocking, mylis_udp_fd, mylis_udp_close, mylis_udp_set_reuse_address, mylis_udp_set_broadcast, mylis_udp_set_ttl } from "Udp_bind.myl";
 
 pub class UdpSocket {
     i64 handle;
@@ -82,6 +82,46 @@ pub class UdpSocket {
         }
         unsafe {
             rc = mylis_udp_set_nonblocking(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setReuseAddress(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_udp_set_reuse_address(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setBroadcast(bool enabled) -> Result<i64, IoError> {
+        i32 flag = 0;
+        if (enabled) { flag = 1; }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_udp_set_broadcast(this.handle, flag);
+        }
+        if (rc < 0) {
+            return Err(new IoError((-rc) as i32));
+        }
+        return Ok(rc);
+    }
+
+    pub fn setTtl(i32 ttl) -> Result<i64, IoError> {
+        if (ttl <= 0) {
+            return Err(new IoError(22));
+        }
+        i64 rc = 0;
+        unsafe {
+            rc = mylis_udp_set_ttl(this.handle, ttl);
         }
         if (rc < 0) {
             return Err(new IoError((-rc) as i32));
