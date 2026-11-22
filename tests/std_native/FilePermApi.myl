@@ -1,9 +1,10 @@
 import { File } from "File.myl";
+import { Path } from "Path.myl";
 import { DirWatcher } from "DirWatcher.myl";
 import { DirEvent } from "DirEvent.myl";
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
-import { println_bool, println_i64 } from "Io.myl";
+import { println, println_bool, println_i64 } from "Io.myl";
 
 fn printError(IoError error) -> void {
     println_i64(error.code as i64);
@@ -107,6 +108,72 @@ fn main() -> i32 {
             watcher.close();
         }
         Err(watchError1) => { printError(watchError1); }
+    }
+
+    string nested = Path::Join(directory, "sub");
+    Result<i64, IoError> nestedMade = File::MkdirAll(nested);
+    match nestedMade {
+        Ok(_) => { }
+        Err(nestedError) => { printError(nestedError); return 1; }
+    }
+    string nestedFile = Path::Join(nested, "seed.txt");
+    Result<File, IoError> seed = File::Create(nestedFile);
+    match seed {
+        Ok(seedFile) => {
+            seedFile.writeAllText("seed");
+            seedFile.close();
+        }
+        Err(seedError) => { printError(seedError); return 1; }
+    }
+
+    // 非递归监听只看到根目录，不会因嵌套文件变化产生事件。
+    Result<DirWatcher, IoError> shallow = DirWatcher::Watch(directory);
+    match shallow {
+        Ok(shallowWatcher) => {
+            Result<File, IoError> appender = File::Append(nestedFile);
+            match appender {
+                Ok(appendFile) => {
+                    appendFile.writeAllText("more");
+                    appendFile.close();
+                    Result<Vec<DirEvent>, IoError> nestedEvents = shallowWatcher.poll();
+                    match nestedEvents {
+                        Ok(events) => { println_i64(events.len() as i64); }
+                        Err(nestedPollError) => { printError(nestedPollError); }
+                    }
+                }
+                Err(appendNestedError) => { printError(appendNestedError); }
+            }
+            shallowWatcher.close();
+        }
+        Err(shallowError) => { printError(shallowError); }
+    }
+
+    // 递归监听能看到子目录里的文件修改。
+    Result<DirWatcher, IoError> deep = DirWatcher::WatchRecursive(directory);
+    match deep {
+        Ok(deepWatcher) => {
+            Result<File, IoError> appender2 = File::Append(nestedFile);
+            match appender2 {
+                Ok(appendFile2) => {
+                    appendFile2.writeAllText("again");
+                    appendFile2.close();
+                    Result<Vec<DirEvent>, IoError> deepEvents = deepWatcher.poll();
+                    match deepEvents {
+                        Ok(events) => {
+                            println_i64(events.len() as i64);
+                            if (events.len() > 0) {
+                                println_i64(events.get(0).kind as i64);
+                                println(events.get(0).name);
+                            }
+                        }
+                        Err(deepPollError) => { printError(deepPollError); }
+                    }
+                }
+                Err(appender2Error) => { printError(appender2Error); }
+            }
+            deepWatcher.close();
+        }
+        Err(deepError) => { printError(deepError); }
     }
 
     File::RemoveDirAll(directory);

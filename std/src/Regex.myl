@@ -133,6 +133,7 @@ class RegexCompiler {
     RegexState[] states;
     i32 stateCount;
     i32 stateCapacity;
+    bool failed;
 
     pub fn init(string source) -> void {
         this.pattern = source;
@@ -141,6 +142,13 @@ class RegexCompiler {
         this.stateCapacity = 32;
         this.states = new RegexState[this.stateCapacity];
         this.stateCount = 0;
+        this.failed = false;
+    }
+
+    fn fail() -> RegexFrag {
+        this.failed = true;
+        this.pos = this.bytes.len() as i32;
+        return this.emptyFrag();
     }
 
     fn grow() -> void {
@@ -419,17 +427,15 @@ class RegexCompiler {
                 if (!this.atEnd() && this.currentByte() == 125) {
                     this.pos = this.pos + 1;
                 } else {
-                    this.pos = this.bytes.len() as i32;
-                    return this.emptyFrag();
+                    return this.fail();
                 }
                 if (!hasDigits || minimum > 1000 || (maximum >= 0 && maximum < minimum) || maximum > 1000) {
-                    this.pos = this.bytes.len() as i32;
-                    return this.emptyFrag();
+                    return this.fail();
                 }
                 atom = this.repeatFrag(atom, minimum, maximum);
             }
             if (!this.atEnd() && (this.currentByte() == 42 || this.currentByte() == 43 || this.currentByte() == 63)) {
-                this.pos = this.bytes.len() as i32;
+                return this.fail();
             }
         }
         return atom;
@@ -444,8 +450,7 @@ class RegexCompiler {
             this.pos = this.pos + 1;
             RegexFrag inner = this.parseAlternation();
             if (this.atEnd() || this.currentByte() != 41) {
-                this.pos = this.bytes.len() as i32;
-                return this.emptyFrag();
+                return this.fail();
             }
             this.pos = this.pos + 1;
             return inner;
@@ -468,8 +473,7 @@ class RegexCompiler {
         if (c == 92) {
             this.pos = this.pos + 1;
             if (this.atEnd()) {
-                this.pos = this.bytes.len() as i32;
-                return this.emptyFrag();
+                return this.fail();
             }
             u8 escaped = this.currentByte();
             this.pos = this.pos + 1;
@@ -510,8 +514,7 @@ class RegexCompiler {
             return this.literalFrag(literal);
         }
         if (c == 41 || c == 124 || c == 42 || c == 43 || c == 63 || c == 123) {
-            this.pos = this.bytes.len() as i32;
-            return this.emptyFrag();
+            return this.fail();
         }
         this.pos = this.pos + 1;
         return this.literalFrag(c);
@@ -569,14 +572,14 @@ class RegexCompiler {
         if (!this.atEnd() && this.currentByte() == 93) {
             this.pos = this.pos + 1;
         } else {
-            this.pos = this.bytes.len() as i32;
+            return this.fail();
         }
         return this.classFrag(cls);
     }
 
     pub fn compile() -> Result<Regex, IoError> {
         RegexFrag frag = this.parseAlternation();
-        if (this.pos < this.bytes.len() as i32) {
+        if (this.failed || this.pos < this.bytes.len() as i32) {
             return Err(new IoError(22));
         }
         RegexClass dummy = new RegexClass(false);

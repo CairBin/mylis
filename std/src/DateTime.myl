@@ -250,7 +250,8 @@ pub class DateTime {
         return this.format("HH:mm:ss.SSS");
     }
 
-    // 支持 YYYY-MM-DD、YYYY-MM-DDTHH:MM:SS、可选 .SSS、可选 Z / ±HH:MM。
+    // 支持 YYYY-MM-DD、YYYY-MM-DDTHH:MM:SS、可选 .或, 小数秒（1-9 位）、
+    // 可选 Z / ±HH / ±HHMM / ±HH:MM 时区偏移。
     pub static fn ParseIso8601(string text) -> Result<DateTime, string> {
         u8[] b = Str::Bytes(text);
         i64 n = b.len() as i64;
@@ -280,26 +281,48 @@ pub class DateTime {
             }
             if (b[pos + 2] != 58 || b[pos + 5] != 58) { return Err("ISO 8601 时间缺少 ':'"); }
             pos = pos + 8;
-            if (pos < n && b[pos] == 46) {
-                millis = readDigits(b, pos + 1, 3);
-                if (millis < 0) { return Err("ISO 8601 毫秒字段非法"); }
-                pos = pos + 4;
+            if (pos < n && (b[pos] == 46 || b[pos] == 44)) {
+                pos = pos + 1;
+                i32 digits = 0;
+                while (pos < n && b[pos] >= 48 && b[pos] <= 57) {
+                    if (digits < 3) {
+                        millis = millis * 10 + ((b[pos] - 48) as i32);
+                    }
+                    digits = digits + 1;
+                    pos = pos + 1;
+                }
+                if (digits == 0) { return Err("ISO 8601 小数秒为空"); }
+                if (digits > 9) { return Err("ISO 8601 小数秒超过 9 位"); }
+                while (digits < 3) {
+                    millis = millis * 10;
+                    digits = digits + 1;
+                }
             }
             if (pos < n) {
-                if (b[pos] == 90) {
+                if (b[pos] == 90 || b[pos] == 122) {
                     offset = 0;
                     pos = pos + 1;
                 } else if (b[pos] == 43 || b[pos] == 45) {
                     i32 sign = 1;
                     if (b[pos] == 45) { sign = -1; }
-                    i32 offHour = readDigits(b, pos + 1, 2);
-                    i32 offMinute = readDigits(b, pos + 4, 2);
-                    if (offHour < 0 || offMinute < 0 || offHour > 23 || offMinute > 59) {
-                        return Err("ISO 8601 时区偏移非法");
+                    pos = pos + 1;
+                    if (pos + 2 > n) { return Err("ISO 8601 时区偏移长度不足"); }
+                    i32 offHour = readDigits(b, pos, 2);
+                    if (offHour < 0) { return Err("ISO 8601 时区偏移非法"); }
+                    pos = pos + 2;
+                    i32 offMinute = 0;
+                    if (pos < n && b[pos] == 58) {
+                        pos = pos + 1;
+                        if (pos + 2 > n) { return Err("ISO 8601 时区偏移长度不足"); }
+                        offMinute = readDigits(b, pos, 2);
+                        if (offMinute < 0) { return Err("ISO 8601 时区偏移非法"); }
+                        pos = pos + 2;
+                    } else if (pos + 2 <= n && b[pos] >= 48 && b[pos] <= 57 && b[pos + 1] >= 48 && b[pos + 1] <= 57) {
+                        offMinute = readDigits(b, pos, 2);
+                        pos = pos + 2;
                     }
+                    if (offHour > 23 || offMinute > 59) { return Err("ISO 8601 时区偏移非法"); }
                     offset = sign * (offHour * 60 + offMinute);
-                    pos = pos + 6;
-                    if (pos > n) { return Err("ISO 8601 时区偏移长度不足"); }
                 }
             }
         }

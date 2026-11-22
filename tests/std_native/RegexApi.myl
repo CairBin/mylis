@@ -87,5 +87,17 @@ fn main() -> i32 {
         Err(_) => { println("compile-error"); }
     }
 
+    Result<Regex, IoError> badBrace = Regex::Compile("a{{");
+    match badBrace {
+        Ok(_) => { println("unexpected-ok"); }
+        Err(_) => { println("bad-brace-error"); }
+    }
+
+    Result<Regex, IoError> badClass = Regex::Compile("[abc");
+    match badClass {
+        Ok(_) => { println("unexpected-ok"); }
+        Err(_) => { println("bad-class-error"); }
+    }
+
     return 0;
 }

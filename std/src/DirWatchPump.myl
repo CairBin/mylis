@@ -26,6 +26,14 @@ pub class DirWatchPump {
         }
     }
 
+    pub static fn WatchRecursive(string path, DirWatchHandler hd) -> Result<DirWatchPump, IoError> {
+        Result<DirWatcher, IoError> watched = DirWatcher::WatchRecursive(path);
+        match watched {
+            Ok(value) => { return Ok(new DirWatchPump(value, hd)); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
     pub fn pump() -> void {
         if (this.closed) {
             return;

@@ -1,4 +1,5 @@
 // 轮询式目录监听：基于名字、mtime 和大小快照做差异比较。
+// 默认只看根目录；WatchRecursive 会递归到子目录（最多 32 层，跳过不可读子目录）。
 // 不依赖 inotify/ReadDirectoryChangesW；适合低频配置/文件目录，不保证捕获同一毫秒内
 // 同大小内容的修改。需要事件循环集成时用 DirWatchPump。
 import { IoError } from "IoError.myl";
@@ -25,15 +26,26 @@ pub class DirWatcher {
     pub string path;
     Vec<DirWatchEntry> entries;
     bool closed;
+    bool recursive;
 
     pub fn init(string value) -> void {
         this.path = value;
         this.entries = new Vec<DirWatchEntry>();
         this.closed = false;
+        this.recursive = false;
     }
 
     pub static fn Watch(string path) -> Result<DirWatcher, IoError> {
+        return DirWatcher::watchWith(path, false);
+    }
+
+    pub static fn WatchRecursive(string path) -> Result<DirWatcher, IoError> {
+        return DirWatcher::watchWith(path, true);
+    }
+
+    static fn watchWith(string path, bool recursive) -> Result<DirWatcher, IoError> {
         DirWatcher watcher = new DirWatcher(path);
+        watcher.recursive = recursive;
         Result<Vec<DirWatchEntry>, IoError> snapshot = watcher.snapshot();
         match snapshot {
             Ok(entries) => {
@@ -44,15 +56,31 @@ pub class DirWatcher {
         }
     }
 
+    pub fn setRecursive(bool value) -> void {
+        this.recursive = value;
+    }
+
     fn snapshot() -> Result<Vec<DirWatchEntry>, IoError> {
-        Result<Vec<string>, IoError> listed = File::ReadDir(this.path);
+        Vec<DirWatchEntry> out = new Vec<DirWatchEntry>();
+        Result<i64, IoError> walked = this.walk(this.path, "", out, 0, true);
+        match walked {
+            Ok(_) => { return Ok(out); }
+            Err(error) => { return Err(error); }
+        }
+    }
+
+    fn walk(string directory, string prefix, Vec<DirWatchEntry> out, i32 depth, bool required) -> Result<i64, IoError> {
+        Result<Vec<string>, IoError> listed = File::ReadDir(directory);
         match listed {
             Ok(names) => {
-                Vec<DirWatchEntry> out = new Vec<DirWatchEntry>();
                 i64 i = 0;
                 while (i < names.len()) {
                     string name = names.get(i);
-                    string full = Path::Join(this.path, name);
+                    string relative = name;
+                    if (prefix != "") {
+                        relative = prefix + "/" + name;
+                    }
+                    string full = Path::Join(directory, name);
                     i64 modified = 0;
                     i64 size = 0;
                     bool isDir = File::IsDir(full);
@@ -66,12 +94,24 @@ pub class DirWatcher {
                         Ok(sizeValue) => { size = sizeValue; }
                         Err(_) => { i = i + 1; continue; }
                     }
-                    out.push(new DirWatchEntry(name, modified, size, isDir));
+                    out.push(new DirWatchEntry(relative, modified, size, isDir));
+                    if (this.recursive && isDir && depth < 32) {
+                        Result<i64, IoError> nested = this.walk(full, relative, out, depth + 1, false);
+                        match nested {
+                            Ok(_) => { }
+                            Err(_) => { }
+                        }
+                    }
                     i = i + 1;
                 }
-                return Ok(out);
+                return Ok(0);
             }
-            Err(error) => { return Err(error); }
+            Err(error) => {
+                if (required) {
+                    return Err(error);
+                }
+                return Ok(0);
+            }
         }
     }
 
