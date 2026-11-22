@@ -1,0 +1,29 @@
+// 正则捕获结果：组 0 为整个匹配，组 1..N 为显式捕获组。
+import { RegexMatch } from "RegexMatch.myl";
+
+pub class RegexCaptures {
+    i32[] slots;
+
+    pub fn init(i32[] values) -> void {
+        this.slots = values;
+    }
+
+    pub fn groupCount() -> i32 {
+        return (this.slots.len() as i32) / 2 - 1;
+    }
+
+    pub fn group(i32 index) -> Option<RegexMatch> {
+        if (index < 0 || index > this.groupCount()) { return None; }
+        i32 first = this.slots[index * 2];
+        i32 last = this.slots[index * 2 + 1];
+        if (first < 0 || last < first) { return None; }
+        return Some(new RegexMatch(first as i64, last as i64));
+    }
+
+    pub fn text(string source, i32 index) -> string {
+        match this.group(index) {
+            Some(value) => { return value.text(source); }
+            None => { return ""; }
+        }
+    }
+}

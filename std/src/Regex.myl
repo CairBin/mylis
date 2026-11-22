@@ -1,11 +1,13 @@
-// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、分组、
-// 分支 `|` 与 `* + ?` 量词。按字节匹配 UTF-8 文本；不支持回溯引用、
-// lookaround、Unicode 字符类和 `{m,n}` 计数量词。匹配结果是字节偏移。
+// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、捕获组、
+// 非捕获组 `(?:...)`、分支 `|`、`* + ?` 与 `{m,n}` 计数量词。按字节匹配
+// UTF-8 文本；不支持反向引用、lookaround 和 Unicode 字符类。匹配结果是字节偏移。
+// find/findAll 走 Thompson NFA；findCaptures 走回溯，采用左优先贪婪语义。
 import { Str } from "core/Str";
 import { StringBuilder } from "StringBuilder.myl";
 import { IoError } from "IoError.myl";
 import { Vec } from "Vec.myl";
 import { RegexMatch } from "RegexMatch.myl";
+import { RegexCaptures } from "RegexCaptures.myl";
 
 class RegexClass {
     bool negated;
@@ -76,6 +78,7 @@ class RegexState {
     pub static const i32 BOL = 6;
     pub static const i32 EOL = 7;
     pub static const i32 EPS = 8;
+    pub static const i32 SAVE = 9;
 
     i32 op;
     i32 out1;
@@ -134,6 +137,7 @@ class RegexCompiler {
     i32 stateCount;
     i32 stateCapacity;
     bool failed;
+    i32 groupCount;
 
     pub fn init(string source) -> void {
         this.pattern = source;
@@ -143,6 +147,7 @@ class RegexCompiler {
         this.states = new RegexState[this.stateCapacity];
         this.stateCount = 0;
         this.failed = false;
+        this.groupCount = 1;
     }
 
     fn fail() -> RegexFrag {
@@ -192,6 +197,18 @@ class RegexCompiler {
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
+    }
+
+    fn saveGroup(RegexFrag body, i32 group) -> RegexFrag {
+        if (body.start < 0) { body = this.emptyFrag(); }
+        RegexClass dummy = new RegexClass(false);
+        i32 startState = this.addState(RegexState::SAVE, group * 2, dummy);
+        i32 endState = this.addState(RegexState::SAVE, group * 2 + 1, dummy);
+        this.states[startState].out1 = body.start;
+        this.patch(body, endState);
+        RegexFrag result = new RegexFrag(startState);
+        result.addOut(endState * 2);
+        return result;
     }
 
     fn concat(RegexFrag left, RegexFrag right) -> RegexFrag {
@@ -448,11 +465,29 @@ class RegexCompiler {
         u8 c = this.currentByte();
         if (c == 40) {
             this.pos = this.pos + 1;
+            bool capture = true;
+            if (!this.atEnd() && this.currentByte() == 63) {
+                this.pos = this.pos + 1;
+                if (!this.atEnd() && this.currentByte() == 58) {
+                    capture = false;
+                    this.pos = this.pos + 1;
+                } else {
+                    return this.fail();
+                }
+            }
+            i32 group = 0;
+            if (capture) {
+                group = this.groupCount;
+                this.groupCount = this.groupCount + 1;
+            }
             RegexFrag inner = this.parseAlternation();
             if (this.atEnd() || this.currentByte() != 41) {
                 return this.fail();
             }
             this.pos = this.pos + 1;
+            if (capture) {
+                return this.saveGroup(inner, group);
+            }
             return inner;
         }
         if (c == 91) {
@@ -584,11 +619,9 @@ class RegexCompiler {
         }
         RegexClass dummy = new RegexClass(false);
         i32 matchState = this.addState(RegexState::MATCH, 0, dummy);
-        if (frag.start < 0) {
-            frag = this.emptyFrag();
-        }
+        frag = this.saveGroup(frag, 0);
         this.patch(frag, matchState);
-        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start));
+        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start, this.groupCount));
     }
 }
 
@@ -597,18 +630,21 @@ pub class Regex {
     RegexState[] states;
     i32 stateCount;
     i32 start;
+    i32 groupCount;
 
-    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex) -> void {
+    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex, i32 groups) -> void {
         this.pattern = source;
         this.states = table;
         this.stateCount = total;
         this.start = startIndex;
+        this.groupCount = groups;
     }
 
     pub static fn Compile(string pattern) -> Result<Regex, IoError> {
         RegexCompiler compiler = new RegexCompiler(pattern);
         return compiler.compile();
     }
+
 
     fn addState(i32 stateIndex, i32 pos, i32 textLength, bool[] seen, i32[] out, i32[] count) -> void {
         if (stateIndex < 0 || stateIndex >= this.stateCount || seen[stateIndex]) {
@@ -621,7 +657,7 @@ pub class Regex {
             this.addState(this.states[stateIndex].out2, pos, textLength, seen, out, count);
             return;
         }
-        if (op == RegexState::EPS) {
+        if (op == RegexState::EPS || op == RegexState::SAVE) {
             this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
             return;
         }
@@ -701,6 +737,68 @@ pub class Regex {
             }
         }
         return best;
+    }
+
+    fn dfs(u8[] text, i32 state, i32 pos, i32[] captures, i32[] budget) -> bool {
+        if (budget[0] <= 0) { return false; }
+        budget[0] = budget[0] - 1;
+        if (state < 0 || state >= this.stateCount) { return false; }
+        i32 op = this.states[state].op;
+        if (op == RegexState::MATCH) {
+            captures[1] = pos;
+            return true;
+        }
+        if (op == RegexState::SAVE) {
+            i32 slot = this.states[state].ch;
+            if (slot < 0 || slot >= captures.len() as i32) { return false; }
+            i32 old = captures[slot];
+            captures[slot] = pos;
+            bool matched = this.dfs(text, this.states[state].out1, pos, captures, budget);
+            if (matched) { return true; }
+            captures[slot] = old;
+            return false;
+        }
+        if (op == RegexState::SPLIT) {
+            if (this.dfs(text, this.states[state].out1, pos, captures, budget)) { return true; }
+            return this.dfs(text, this.states[state].out2, pos, captures, budget);
+        }
+        if (op == RegexState::BOL) {
+            if (pos == 0) { return this.dfs(text, this.states[state].out1, pos, captures, budget); }
+            return false;
+        }
+        if (op == RegexState::EOL) {
+            if (pos == text.len() as i32) { return this.dfs(text, this.states[state].out1, pos, captures, budget); }
+            return false;
+        }
+        if (op == RegexState::EPS) {
+            return this.dfs(text, this.states[state].out1, pos, captures, budget);
+        }
+        if (pos >= text.len() as i32) { return false; }
+        if (!this.accepts(state, text[pos])) { return false; }
+        return this.dfs(text, this.states[state].out1, pos + 1, captures, budget);
+    }
+
+    // 返回捕获组结果；采用左优先/贪婪回溯语义，组 0 是整个匹配。
+    pub fn findCaptures(string text) -> Option<RegexCaptures> {
+        u8[] data = Str::Bytes(text);
+        i32 length = data.len() as i32;
+        i32 start = 0;
+        while (start <= length) {
+            i32[] captures = new i32[this.groupCount * 2];
+            i32 i = 0;
+            while (i < this.groupCount * 2) {
+                captures[i] = -1;
+                i = i + 1;
+            }
+            i32[] budget = new i32[1];
+            budget[0] = 200000 + length * 4 + this.stateCount * 8;
+            if (budget[0] > 1000000) { budget[0] = 1000000; }
+            if (this.dfs(data, this.start, start, captures, budget)) {
+                return Some(new RegexCaptures(captures));
+            }
+            start = start + 1;
+        }
+        return None;
     }
 
     fn findBytes(u8[] text, i32 from) -> Option<RegexMatch> {

@@ -1,5 +1,6 @@
 import { Regex } from "Regex.myl";
 import { RegexMatch } from "RegexMatch.myl";
+import { RegexCaptures } from "RegexCaptures.myl";
 import { IoError } from "IoError.myl";
 import { println, println_bool, println_i64 } from "Io.myl";
 
@@ -97,6 +98,120 @@ fn main() -> i32 {
     match badClass {
         Ok(_) => { println("unexpected-ok"); }
         Err(_) => { println("bad-class-error"); }
+    }
+
+    Result<Regex, IoError> captureResult = Regex::Compile("(a+)(b+)");
+    match captureResult {
+        Ok(capturePattern) => {
+            Option<RegexCaptures> found = capturePattern.findCaptures("xxaaabbbxx");
+            match found {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("xxaaabbbxx", 0));
+                    println(caps.text("xxaaabbbxx", 1));
+                    println(caps.text("xxaaabbbxx", 2));
+                }
+                None => { println("capture-none"); }
+            }
+        }
+        Err(_) => { println("capture-compile-error"); }
+    }
+
+    Result<Regex, IoError> nestedResult = Regex::Compile("((a)(b))");
+    match nestedResult {
+        Ok(nestedPattern) => {
+            Option<RegexCaptures> nestedFound = nestedPattern.findCaptures("ab");
+            match nestedFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("ab", 1));
+                    println(caps.text("ab", 2));
+                    println(caps.text("ab", 3));
+                }
+                None => { println("nested-none"); }
+            }
+        }
+        Err(_) => { println("nested-compile-error"); }
+    }
+
+    Result<Regex, IoError> optionalResult = Regex::Compile("(a)?(b)");
+    match optionalResult {
+        Ok(optionalPattern) => {
+            Option<RegexCaptures> optionalFound = optionalPattern.findCaptures("b");
+            match optionalFound {
+                Some(caps) => {
+                    match caps.group(1) {
+                        Some(_) => { println("optional-present"); }
+                        None => { println("optional-none"); }
+                    }
+                    println(caps.text("b", 2));
+                }
+                None => { println("optional-none"); }
+            }
+        }
+        Err(_) => { println("optional-compile-error"); }
+    }
+
+    Result<Regex, IoError> nonCaptureResult = Regex::Compile("(?:foo|bar)+!");
+    match nonCaptureResult {
+        Ok(nonCapturePattern) => {
+            Option<RegexCaptures> nonCaptureFound = nonCapturePattern.findCaptures("foobar!");
+            match nonCaptureFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("foobar!", 0));
+                }
+                None => { println("noncapture-none"); }
+            }
+        }
+        Err(_) => { println("noncapture-compile-error"); }
+    }
+
+    Result<Regex, IoError> backtrackResult = Regex::Compile("(a|ab)c");
+    match backtrackResult {
+        Ok(backtrackPattern) => {
+            Option<RegexCaptures> backtrackFound = backtrackPattern.findCaptures("abc");
+            match backtrackFound {
+                Some(caps) => {
+                    println(caps.text("abc", 0));
+                    println(caps.text("abc", 1));
+                }
+                None => { println("backtrack-none"); }
+            }
+        }
+        Err(_) => { println("backtrack-compile-error"); }
+    }
+
+    Result<Regex, IoError> repeatCaptureResult = Regex::Compile("(ab)+");
+    match repeatCaptureResult {
+        Ok(repeatPattern) => {
+            Option<RegexCaptures> repeatFound = repeatPattern.findCaptures("abab");
+            match repeatFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("abab", 0));
+                    println(caps.text("abab", 1));
+                }
+                None => { println("repeat-none"); }
+            }
+        }
+        Err(_) => { println("repeat-compile-error"); }
+    }
+
+    Result<Regex, IoError> nestedRepeatResult = Regex::Compile("((a)+)");
+    match nestedRepeatResult {
+        Ok(nestedRepeatPattern) => {
+            Option<RegexCaptures> nestedRepeatFound = nestedRepeatPattern.findCaptures("aaa");
+            match nestedRepeatFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("aaa", 1));
+                    println(caps.text("aaa", 2));
+                }
+                None => { println("nested-repeat-none"); }
+            }
+        }
+        Err(_) => { println("nested-repeat-compile-error"); }
     }
 
     return 0;

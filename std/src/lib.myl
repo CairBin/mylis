@@ -24,6 +24,7 @@ pub import "Deque.myl";
 pub import "Text.myl";
 pub import "StringBuilder.myl";
 pub import "RegexMatch.myl";
+pub import "RegexCaptures.myl";
 pub import "Sha256.myl";
 pub import "Sha1.myl";
 pub import "Md5.myl";
