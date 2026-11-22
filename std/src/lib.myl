@@ -58,6 +58,8 @@ pub import "TcpStreamHandler.myl";
 pub import "UdpHandler.myl";
 pub import "FdHandler.myl";
 pub import "EventPump.myl";
+pub import "TimerHandler.myl";
+pub import "TimerPump.myl";
 pub import "EventLoop.myl";
 pub import "TcpEventLoop.myl";
 pub import "UdpEventLoop.myl";

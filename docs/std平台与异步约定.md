@@ -155,6 +155,7 @@ interface FdHandler {
 interface EventPump {
     fn pump() -> void;
     fn hasPending() -> bool;
+    fn nextTimeoutMillis() -> i64;
     fn shutdown() -> void;
 }
 
@@ -196,6 +197,20 @@ class UdpEventLoop {
     pub fn addSocket(UdpSocket socket, UdpHandler handler) -> void;
     pub fn removeSocket(UdpSocket socket) -> void;
 }
+
+interface TimerHandler {
+    fn onTimer(i64 id) -> void;
+}
+
+class TimerPump {
+    pub fn addOnce(i64 delayMillis, TimerHandler handler) -> i64;
+    pub fn addRepeating(i64 intervalMillis, TimerHandler handler) -> i64;
+    pub fn cancel(i64 id) -> void;
+    pub fn pump() -> void;
+    pub fn hasPending() -> bool;
+    pub fn nextTimeoutMillis() -> i64;
+    pub fn shutdown() -> void;
+}
 ```
 
 ### 4.2 平台后端
@@ -207,6 +222,8 @@ class UdpEventLoop {
 - 所有后端只产出事件，不执行 Mylis 回调。
 - 默认只注册读就绪；`TcpEventLoop.setWriteInterest(stream, true)` 后注册写就绪并触发 `onWritable`。
 - `TcpStreamHandler.onError` 分发 TCP 流错误；`TcpListenerHandler.onListenerError` 分发监听器错误；`UdpHandler.onUdpError` 分发 UDP socket 错误。
+- `TimerPump` 通过 `EventPump.nextTimeoutMillis()` 把最近到期时间反馈给 `EventLoop`；没有定时器时事件循环仍按 100ms 上限等待。
+- `TimerPump` 使用 `Time.MonotonicMillis()`，一次性定时器触发后移除，周期定时器触发后按 `now + interval` 重排；回调在主线程执行。
 
 ### 4.3 文件异步（当前最小实现）
 

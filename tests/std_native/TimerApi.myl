@@ -1,0 +1,59 @@
+import { EventLoop } from "EventLoop.myl";
+import { EventPump } from "EventPump.myl";
+import { TimerPump } from "TimerPump.myl";
+import { TimerHandler } from "TimerHandler.myl";
+import { println, println_bool } from "Io.myl";
+
+class OnceHandler {
+    EventLoop loop;
+
+    pub fn init(EventLoop value) -> void {
+        this.loop = value;
+    }
+
+    pub fn onTimer(i64 id) -> void {
+        println("once");
+        this.loop.stop();
+    }
+}
+
+class TickHandler {
+    TimerPump timers;
+    TimerHandler once;
+    i32 ticks;
+
+    pub fn init(TimerPump value, TimerHandler first) -> void {
+        this.timers = value;
+        this.once = first;
+        this.ticks = 0;
+    }
+
+    pub fn onTimer(i64 id) -> void {
+        this.ticks = this.ticks + 1;
+        println("tick");
+        if (this.ticks >= 2) {
+            this.timers.cancel(id);
+            this.timers.addOnce(5, this.once);
+        }
+    }
+}
+
+fn main() -> i32 {
+    EventLoop loop = new EventLoop();
+    TimerPump timers = new TimerPump();
+    EventPump pump = timers;
+    loop.addPump(pump);
+
+    OnceHandler once = new OnceHandler(loop);
+    TimerHandler onceHandler = once;
+    TickHandler tick = new TickHandler(timers, onceHandler);
+    TimerHandler tickHandler = tick;
+
+    i64 id = timers.addRepeating(10, tickHandler);
+    println_bool(id > 0);
+    loop.run();
+    println_bool(timers.hasPending());
+
+    loop.close();
+    return 0;
+}

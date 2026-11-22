@@ -207,7 +207,7 @@ pub fn main() -> i32 {
 
 `Text` 提供切分/拼接/按行拆分、空白切分、整数/32 位整数/浮点与布尔解析；`Path` 提供路径拼接、取文件名/目录/扩展名/词干与 `Normalize`；`Math` 提供 `Sqrt64/Pow64/Abs64/Min64/Max64/Clamp64/Floor64/Ceil64/Round64/Trunc64/Fmod64/Sign64` 与 `PI` / `E`，位于 `std` 并允许绑定 libm。
 
-std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell，以及最小异步 `ReadAllBytesAsync` / `WriteAllBytesAsync`）、`FileTask` / `FileHandler`、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` / `FdHandler` / `EventPump` / `FilePump` / `TcpEventLoop` / `UdpEventLoop` / `EventLoop`。这些 hosted 接口由 `std-posix/native` 与 Windows MSVC 的 `std-win32/native` 侧车提供（Rust staticlib，C ABI；Windows 事件循环为 Winsock `WSAPoll`），不进入 `core` 或 GC；`--std` 会自动加入头文件路径和六个 native 库。
+std 还提供显式迭代器 `Iterator<T>` 与各容器迭代器、`PriorityQueue`、`Csv`、`Base64`、`Json`、`Time`、`Random`、`Log`、`Process`、`Worker`、`WorkerServer`、`WorkerHandler`、`WorkerPool`、`WorkerTaskResult`、`WorkerReply`、`WorkerResultHandler`；hosted `Stdio`（stdin/argv/环境变量/退出）、`File`（读写、目录、元数据、seek/tell，以及最小异步 `ReadAllBytesAsync` / `WriteAllBytesAsync`）、`FileTask` / `FileHandler`、`IoError` / `TcpListener` / `TcpStream` / `UdpSocket` / `TcpListenerHandler` / `TcpStreamHandler` / `UdpHandler` / `FdHandler` / `EventPump` / `FilePump` / `TcpEventLoop` / `UdpEventLoop` / `TimerHandler` / `TimerPump` / `EventLoop`。这些 hosted 接口由 `std-posix/native` 与 Windows MSVC 的 `std-win32/native` 侧车提供（Rust staticlib，C ABI；Windows 事件循环为 Winsock `WSAPoll`），不进入 `core` 或 GC；`--std` 会自动加入头文件路径和六个 native 库。
 
 ---
 
@@ -546,7 +546,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batc
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests_windows_batch.ps1 -Backend std
 ```
 
-MinGW 的 PowerShell 回归不依赖 Git Bash/MSYS，避开 Cygwin fork 在大仓库测试中的随机崩溃；正向用例逐个编译、运行并比对 `.expected`，反向用例检查错误码。`run_tests_windows_batch.ps1` 按 `-BatchSize` 切分用例，每批启动独立 `pwsh.exe`/`powershell.exe`，子进程未输出汇总时自动减半重试，适合 8GB 内存宿主跑 AST 全量。`-Backend llvm` 会使用 default LLVM 路径（clang 编 IR、gcc 链接），速度明显更慢，可按需单独跑。`-Backend std` 用 `--std --backend mir` 跑 Windows 的五个原生侧车冒烟：`WindowsStdApi`、`FileApi`、`TcpApi`、`UdpApi`、`EventLoopApi`。需要单批调试时仍可直接调 `run_tests_windows.ps1 -Start/-Count`。
+MinGW 的 PowerShell 回归不依赖 Git Bash/MSYS，避开 Cygwin fork 在大仓库测试中的随机崩溃；正向用例逐个编译、运行并比对 `.expected`，反向用例检查错误码。`run_tests_windows_batch.ps1` 按 `-BatchSize` 切分用例，每批启动独立 `pwsh.exe`/`powershell.exe`，子进程未输出汇总时自动减半重试，适合 8GB 内存宿主跑 AST 全量。`-Backend llvm` 会使用 default LLVM 路径（clang 编 IR、gcc 链接），速度明显更慢，可按需单独跑。`-Backend std` 用 `--std --backend mir` 跑 Windows 的八个原生侧车冒烟：`WindowsStdApi`、`FileApi`、`AsyncFileApi`、`TcpApi`、`UdpApi`、`EventLoopApi`、`UdpLoopApi`、`TimerApi`。需要单批调试时仍可直接调 `run_tests_windows.ps1 -Start/-Count`。
 
 MSVC 的 `tools/test_windows.ps1` 会：
 
@@ -555,7 +555,7 @@ MSVC 的 `tools/test_windows.ps1` 会：
 - 构建 `bin/`；
 - 编译并运行 hello、`u64` 模式、`FmtSpec`，分别测试默认 LLVM、MIR-C、AST-C；
 - 生成并消费一个本地 `.mylib`；
-- 运行 Windows 原生 std 测试：`WindowsStdApi`；File；Windows Process；TCP / EventLoop（LLVM、MIR、AST）；UDP / UDP EventLoop（MIR、AST）；Worker、WorkerPool、WorkerReply、WorkerReplyInvalid、WorkerPoolReply 协议；`WorkerFlakyApi` 重复 5 次；进程与 Worker 写超时（`WindowsWriteTimeoutApi`、`WindowsWorkerWriteTimeoutApi`）。写超时用 MSVC 现场编译一个不读 stdin 的 sleeper 子进程；
+- 运行 Windows 原生 std 测试：`WindowsStdApi`；File、AsyncFile；Windows Process；TCP / EventLoop（LLVM、MIR、AST）；UDP / UDP EventLoop（MIR、AST）；Timer；Worker、WorkerPool、WorkerReply、WorkerReplyInvalid、WorkerPoolReply 协议；`WorkerFlakyApi` 重复 5 次；进程与 Worker 写超时（`WindowsWriteTimeoutApi`、`WindowsWorkerWriteTimeoutApi`）。写超时用 MSVC 现场编译一个不读 stdin 的 sleeper 子进程；
 - 执行 `make dist`，解开 zip 后用包内 `mylc.exe` 再跑一次，验证 `core/`、`std/src/`、`build/mylrt.lib`、`build/mylgc.lib` 和 `build/std-win32/native/` 六个 std 库都在。
 
 常用参数：
@@ -623,7 +623,7 @@ make ci          # 本地 CI：Linux/macOS 跑完整 make test；Windows 按 TOO
 make TOOLCHAIN_FAMILY=mingw release-check  # Windows：dist + 包结构/清单/哈希检查 + Arith/WindowsStdApi 冒烟
 bash tests/run_package_tests.sh  # 嵌套模块、std 包依赖（含复制到项目 lib/）、导入可见性、原生载荷 LLVM 声明/真实链接、mixed native/MIR、泛型 .mylib（需 clang 15+）
 bash tools/check_std.sh         # std 包自洽检查
-bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Process/Worker，MIR/AST/LLVM 声明
+bash tests/run_std_native_tests.sh  # Stdio/File/FileDir/Iter/Container/HashMap/BTree/CSV/Base64/Json/Time/Tcp/Udp/EventLoop/Timer/Process/Worker，MIR/AST/LLVM 声明
 MYLIS_BACKEND=ast bash tests/run_tests.sh  # 同一套正向/反向用例跑 AST-C 回退后端
 mylc test        # 只跑 tests/ 下的 .expected 比对
 ```

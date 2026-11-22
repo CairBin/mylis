@@ -1,0 +1,168 @@
+// 定时器泵：把一次性/周期定时器作为 EventPump 挂入通用 EventLoop。
+// 只依赖单调时钟，不依赖 fd；回调在主线程执行。
+import { TimerHandler } from "TimerHandler.myl";
+import { Time } from "Time.myl";
+
+class TimerEntry {
+    i64 id;
+    i64 due;
+    i64 interval;
+    bool repeating;
+    TimerHandler handler;
+
+    pub fn init(i64 timerId, i64 dueMillis, i64 intervalMillis, bool repeat, TimerHandler h) -> void {
+        this.id = timerId;
+        this.due = dueMillis;
+        this.interval = intervalMillis;
+        this.repeating = repeat;
+        this.handler = h;
+    }
+}
+
+pub class TimerPump {
+    TimerEntry[] entries;
+    i32 count;
+    i32 capacity;
+    i64 nextId;
+    bool closed;
+
+    pub fn init() -> void {
+        this.capacity = 8;
+        this.entries = new TimerEntry[this.capacity];
+        this.count = 0;
+        this.nextId = 1;
+        this.closed = false;
+    }
+
+    fn grow() -> void {
+        this.capacity = this.capacity * 2;
+        TimerEntry[] next = new TimerEntry[this.capacity];
+        i32 i = 0;
+        while (i < this.count) {
+            next[i] = this.entries[i];
+            i = i + 1;
+        }
+        this.entries = next;
+    }
+
+    fn find(i64 id) -> i32 {
+        i32 i = 0;
+        while (i < this.count) {
+            if (this.entries[i].id == id) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    fn removeAt(i32 index) -> void {
+        i32 i = index;
+        while (i + 1 < this.count) {
+            this.entries[i] = this.entries[i + 1];
+            i = i + 1;
+        }
+        this.count = this.count - 1;
+    }
+
+    fn addTimer(i64 delayMillis, i64 intervalMillis, bool repeating, TimerHandler handler) -> i64 {
+        if (this.closed) {
+            return -1;
+        }
+        if (delayMillis < 0) {
+            delayMillis = 0;
+        }
+        if (repeating && intervalMillis < 1) {
+            intervalMillis = 1;
+        }
+        if (this.count >= this.capacity) {
+            this.grow();
+        }
+        i64 id = this.nextId;
+        this.nextId = this.nextId + 1;
+        i64 due = Time::MonotonicMillis() + delayMillis;
+        this.entries[this.count] = new TimerEntry(id, due, intervalMillis, repeating, handler);
+        this.count = this.count + 1;
+        return id;
+    }
+
+    // 一次性定时器，delayMillis 后触发一次。
+    pub fn addOnce(i64 delayMillis, TimerHandler handler) -> i64 {
+        return this.addTimer(delayMillis, 0, false, handler);
+    }
+
+    // 周期定时器，首次在 intervalMillis 后触发，之后按同一间隔重复。
+    pub fn addRepeating(i64 intervalMillis, TimerHandler handler) -> i64 {
+        return this.addTimer(intervalMillis, intervalMillis, true, handler);
+    }
+
+    pub fn cancel(i64 id) -> void {
+        i32 idx = this.find(id);
+        if (idx >= 0) {
+            this.removeAt(idx);
+        }
+    }
+
+    pub fn pump() -> void {
+        if (this.closed || this.count == 0) {
+            return;
+        }
+        i64 now = Time::MonotonicMillis();
+        TimerEntry[] due = new TimerEntry[this.count];
+        i32 dueCount = 0;
+        i32 i = 0;
+        while (i < this.count) {
+            TimerEntry entry = this.entries[i];
+            if (entry.due <= now) {
+                due[dueCount] = entry;
+                dueCount = dueCount + 1;
+                if (entry.repeating) {
+                    entry.due = now + entry.interval;
+                } else {
+                    this.removeAt(i);
+                    i = i - 1;
+                }
+            }
+            i = i + 1;
+        }
+        i = 0;
+        while (i < dueCount && !this.closed) {
+            TimerEntry entry = due[i];
+            if (!entry.repeating || this.find(entry.id) >= 0) {
+                entry.handler.onTimer(entry.id);
+            }
+            i = i + 1;
+        }
+    }
+
+    pub fn hasPending() -> bool {
+        return this.count > 0;
+    }
+
+    // 返回距离最近一次到期还有多少毫秒；没有定时器时返回 -1。
+    pub fn nextTimeoutMillis() -> i64 {
+        if (this.count == 0) {
+            return -1;
+        }
+        i64 now = Time::MonotonicMillis();
+        i64 minimum = -1;
+        i32 i = 0;
+        while (i < this.count) {
+            i64 delta = this.entries[i].due - now;
+            if (delta < 0) {
+                delta = 0;
+            }
+            if (minimum < 0 || delta < minimum) {
+                minimum = delta;
+            }
+            i = i + 1;
+        }
+        return minimum;
+    }
+
+    pub fn shutdown() -> void {
+        this.closed = true;
+        this.count = 0;
+        this.entries = new TimerEntry[this.capacity];
+    }
+}

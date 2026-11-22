@@ -100,6 +100,23 @@ pub class EventLoop {
         return false;
     }
 
+    // 让定时器泵把下一次到期时间反馈给事件后端；没有时间要求时保持 100ms。
+    fn nextPumpTimeout() -> i32 {
+        i32 timeout = 100;
+        i32 i = 0;
+        while (i < this.pumpCount) {
+            EventPump pump = this.pumps[i].pump;
+            if (pump.hasPending()) {
+                i64 next = pump.nextTimeoutMillis();
+                if (next >= 0 && next < (timeout as i64)) {
+                    timeout = next as i32;
+                }
+            }
+            i = i + 1;
+        }
+        return timeout;
+    }
+
     fn pumpAll() -> void {
         i32 i = 0;
         while (i < this.pumpCount) {
@@ -171,9 +188,10 @@ pub class EventLoop {
             }
             i64[] fds = new i64[cap];
             i64[] revents = new i64[cap];
+            i32 timeout = this.nextPumpTimeout();
             i32 rc = 0;
             unsafe {
-                rc = mylis_event_wait(this.eventHandle, 100, fds, revents, n);
+                rc = mylis_event_wait(this.eventHandle, timeout, fds, revents, n);
             }
             if (rc < 0) {
                 this.stopped = true;

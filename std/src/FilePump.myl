@@ -106,6 +106,10 @@ pub class FilePump {
         return this.count > 0;
     }
 
+    pub fn nextTimeoutMillis() -> i64 {
+        return -1;
+    }
+
     pub fn shutdown() -> void {
         while (this.count > 0) {
             this.tasks[this.count - 1].cancel();

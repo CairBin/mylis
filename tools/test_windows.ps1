@@ -431,6 +431,7 @@ int main(void) {
         Invoke-StdCase "WindowsStdApi" @("mir") "WindowsStdApi"
         Invoke-StdCase "EventLoopApi" $backends "EventLoopApi"
         Invoke-StdCase "UdpLoopApi" $backends "UdpLoopApi"
+        Invoke-StdCase "TimerApi" $backends "TimerApi"
         Invoke-StdCase "AsyncFileApi" @("mir") "AsyncFileApi"
         Invoke-StdCase "TcpApi" $backends "TcpApi"
         Invoke-StdCase "UdpApi" @("mir", "ast") "UdpApi"

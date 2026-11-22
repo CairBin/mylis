@@ -456,6 +456,26 @@ run_async_file_case() {
   echo "  ok   AsyncFileApi（$backend）"
 }
 
+run_timer_case() {
+  local backend=$1
+  local exe="$OUT/TimerApi_$backend"
+  if ! "$ROOT/build/mylc" --std --backend "$backend" tests/std_native/TimerApi.myl -o "$exe" >"$OUT/timer-$backend.build.log" 2>&1; then
+    echo "FAIL TimerApi（$backend 编译失败）"
+    sed -n '1,20p' "$OUT/timer-$backend.build.log"
+    return 1
+  fi
+  if ! timeout 30 "$exe" >"$OUT/TimerApi.actual" 2>"$OUT/timer-$backend.err"; then
+    echo "FAIL TimerApi（$backend 运行失败）"
+    sed -n '1,10p' "$OUT/timer-$backend.err"
+    return 1
+  fi
+  if ! diff -u tests/std_native/TimerApi.expected "$OUT/TimerApi.actual"; then
+    echo "FAIL TimerApi（$backend 输出不一致）"
+    return 1
+  fi
+  echo "  ok   TimerApi（$backend）"
+}
+
 run_case mir
 run_case ast
 run_std_flag_case
@@ -692,5 +712,7 @@ else
 fi
 run_async_file_case mir
 run_async_file_case ast
+run_timer_case mir
+run_timer_case ast
 
 echo "std native 测试通过"

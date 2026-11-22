@@ -2,5 +2,7 @@
 pub interface EventPump {
     fn pump() -> void;
     fn hasPending() -> bool;
+    // 距离下一次需要 pump 的毫秒数；-1 表示没有时间要求，由 EventLoop 使用默认等待。
+    fn nextTimeoutMillis() -> i64;
     fn shutdown() -> void;
 }

@@ -1,0 +1,4 @@
+// 定时器回调接口；回调在挂载 TimerPump 的 EventLoop 主线程执行。
+pub interface TimerHandler {
+    fn onTimer(i64 id) -> void;
+}
