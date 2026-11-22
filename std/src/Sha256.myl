@@ -8,11 +8,11 @@ pub class Sha256 {
         return Sha256::HashBytes(Str::Bytes(message));
     }
 
-    static fn rotr(u32 value, u32 bits) -> u32 {
+    static fn Rotr(u32 value, u32 bits) -> u32 {
         return (value >> bits) | (value << ((32 as u32) - bits));
     }
 
-    static fn hex(u8[] value) -> string {
+    static fn Hex(u8[] value) -> string {
         StringBuilder out = new StringBuilder();
         string digits = "0123456789abcdef";
         i64 i = 0;
@@ -79,11 +79,11 @@ pub class Sha256 {
             }
             t = 16;
             while (t < 64) {
-                u32 s0 = Sha256::rotr(w[t - 15], 7)
-                    ^ Sha256::rotr(w[t - 15], 18)
+                u32 s0 = Sha256::Rotr(w[t - 15], 7)
+                    ^ Sha256::Rotr(w[t - 15], 18)
                     ^ (w[t - 15] >> 3);
-                u32 s1 = Sha256::rotr(w[t - 2], 17)
-                    ^ Sha256::rotr(w[t - 2], 19)
+                u32 s1 = Sha256::Rotr(w[t - 2], 17)
+                    ^ Sha256::Rotr(w[t - 2], 19)
                     ^ (w[t - 2] >> 10);
                 w[t] = w[t - 16] + s0 + w[t - 7] + s1;
                 t = t + 1;
@@ -99,10 +99,10 @@ pub class Sha256 {
             u32 hh = h[7];
             t = 0;
             while (t < 64) {
-                u32 s1 = Sha256::rotr(e, 6) ^ Sha256::rotr(e, 11) ^ Sha256::rotr(e, 25);
+                u32 s1 = Sha256::Rotr(e, 6) ^ Sha256::Rotr(e, 11) ^ Sha256::Rotr(e, 25);
                 u32 ch = (e & f) ^ ((~e) & g);
                 u32 temp1 = hh + s1 + ch + k[t] + w[t];
-                u32 s0 = Sha256::rotr(a, 2) ^ Sha256::rotr(a, 13) ^ Sha256::rotr(a, 22);
+                u32 s0 = Sha256::Rotr(a, 2) ^ Sha256::Rotr(a, 13) ^ Sha256::Rotr(a, 22);
                 u32 maj = (a & b) ^ (a & c) ^ (b & c);
                 u32 temp2 = s0 + maj;
                 hh = g;
@@ -135,6 +135,6 @@ pub class Sha256 {
             digest[(word * 4 + 3) as i64] = h[word] as u8;
             word = word + 1;
         }
-        return Sha256::hex(digest);
+        return Sha256::Hex(digest);
     }
 }

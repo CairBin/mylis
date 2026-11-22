@@ -7,11 +7,11 @@ pub class Sha1 {
         return Sha1::HashBytes(Str::Bytes(message));
     }
 
-    static fn rotl(u32 value, u32 bits) -> u32 {
+    static fn Rotl(u32 value, u32 bits) -> u32 {
         return (value << bits) | (value >> ((32 as u32) - bits));
     }
 
-    static fn hex(u8[] value) -> string {
+    static fn Hex(u8[] value) -> string {
         StringBuilder out = new StringBuilder();
         string digits = "0123456789abcdef";
         i64 i = 0;
@@ -64,7 +64,7 @@ pub class Sha1 {
             t = 16;
             while (t < 80) {
                 u32 value = w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16];
-                w[t] = Sha1::rotl(value, 1);
+                w[t] = Sha1::Rotl(value, 1);
                 t = t + 1;
             }
 
@@ -90,10 +90,10 @@ pub class Sha1 {
                     f = b ^ c ^ d;
                     kk = k[3];
                 }
-                u32 temp = Sha1::rotl(a, 5) + f + e + kk + w[t];
+                u32 temp = Sha1::Rotl(a, 5) + f + e + kk + w[t];
                 e = d;
                 d = c;
-                c = Sha1::rotl(b, 30);
+                c = Sha1::Rotl(b, 30);
                 b = a;
                 a = temp;
                 t = t + 1;
@@ -115,6 +115,6 @@ pub class Sha1 {
             digest[(word * 4 + 3) as i64] = h[word] as u8;
             word = word + 1;
         }
-        return Sha1::hex(digest);
+        return Sha1::Hex(digest);
     }
 }

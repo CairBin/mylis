@@ -178,19 +178,19 @@ class GzipMatch {
 }
 
 pub class Gzip {
-    static fn appendU16(ByteBuilder out, i32 value) -> void {
+    static fn AppendU16(ByteBuilder out, i32 value) -> void {
         out.append((value & 255) as u8);
         out.append(((value >> 8) & 255) as u8);
     }
 
-    static fn appendU32(ByteBuilder out, u32 value) -> void {
+    static fn AppendU32(ByteBuilder out, u32 value) -> void {
         out.append((value & (255 as u32)) as u8);
         out.append(((value >> 8) & (255 as u32)) as u8);
         out.append(((value >> 16) & (255 as u32)) as u8);
         out.append(((value >> 24) & (255 as u32)) as u8);
     }
 
-    static fn readU32(u8[] data, i64 offset) -> u32 {
+    static fn ReadU32(u8[] data, i64 offset) -> u32 {
         return (data[offset] as u32)
             | ((data[offset + 1] as u32) << 8)
             | ((data[offset + 2] as u32) << 16)
@@ -218,8 +218,8 @@ pub class Gzip {
         i64 offset = 0;
         if (length == 0) {
             out.append(1 as u8);
-            Gzip::appendU16(out, 0);
-            Gzip::appendU16(out, 65535);
+            Gzip::AppendU16(out, 0);
+            Gzip::AppendU16(out, 65535);
         }
         while (offset < length) {
             i32 chunk = 65535;
@@ -230,8 +230,8 @@ pub class Gzip {
             u8 blockHeader = 0 as u8;
             if (finalBlock) { blockHeader = 1 as u8; }
             out.append(blockHeader);
-            Gzip::appendU16(out, chunk);
-            Gzip::appendU16(out, 65535 - chunk);
+            Gzip::AppendU16(out, chunk);
+            Gzip::AppendU16(out, 65535 - chunk);
             i32 i = 0;
             while (i < chunk) {
                 out.append(data[offset + (i as i64)]);
@@ -240,12 +240,12 @@ pub class Gzip {
             offset = offset + (chunk as i64);
         }
         u32 crc = Crc32::Of(data);
-        Gzip::appendU32(out, crc);
-        Gzip::appendU32(out, length as u32);
+        Gzip::AppendU32(out, crc);
+        Gzip::AppendU32(out, length as u32);
         return out.toArray();
     }
 
-    static fn fixedTable() -> HuffmanTable {
+    static fn FixedTable() -> HuffmanTable {
         HuffmanTable table = new HuffmanTable(9);
         i32 symbol = 0;
         while (symbol < 288) {
@@ -270,7 +270,7 @@ pub class Gzip {
         return table;
     }
 
-    static fn fixedDistanceTable() -> HuffmanTable {
+    static fn FixedDistanceTable() -> HuffmanTable {
         HuffmanTable table = new HuffmanTable(5);
         i32 symbol = 0;
         while (symbol < 30) {
@@ -280,7 +280,7 @@ pub class Gzip {
         return table;
     }
 
-    static fn buildHuffman(i32[] lengths) -> HuffmanTable {
+    static fn BuildHuffman(i32[] lengths) -> HuffmanTable {
         i32 limit = lengths.len() as i32;
         i32 maxBits = 0;
         i32 i = 0;
@@ -317,26 +317,26 @@ pub class Gzip {
         return table;
     }
 
-    static fn inflateHuffman(GzipBits bits, HuffmanTable literals, HuffmanTable distances, ByteBuilder out) -> i32 {
+    static fn InflateHuffman(GzipBits bits, HuffmanTable literals, HuffmanTable distances, ByteBuilder out) -> i32 {
         bool done = false;
         while (!done) {
-            i32 symbol = Gzip::decode(literals, bits);
+            i32 symbol = Gzip::Decode(literals, bits);
             if (symbol < 0) { return -1; }
             if (symbol < 256) {
                 out.append(symbol as u8);
             } else if (symbol == 256) {
                 done = true;
             } else {
-                i32 lengthSymbol = symbol - 257;
-                if (lengthSymbol < 0 || lengthSymbol > 28) { return -1; }
-                i32 extra = Gzip::lengthExtra(lengthSymbol);
-                i32 base = Gzip::lengthBase(lengthSymbol);
+                i32 LengthSymbol = symbol - 257;
+                if (LengthSymbol < 0 || LengthSymbol > 28) { return -1; }
+                i32 extra = Gzip::LengthExtra(LengthSymbol);
+                i32 base = Gzip::LengthBase(LengthSymbol);
                 i32 matchLength = base + (bits.readBits(extra) as i32);
-                i32 distanceCode = Gzip::decode(distances, bits);
+                i32 distanceCode = Gzip::Decode(distances, bits);
                 if (distanceCode < 0) { return -1; }
-                i32 distanceExtra = Gzip::distanceExtra(distanceCode);
-                i32 distanceBase = Gzip::distanceBase(distanceCode);
-                i32 distance = distanceBase + (bits.readBits(distanceExtra) as i32);
+                i32 DistanceExtra = Gzip::DistanceExtra(distanceCode);
+                i32 DistanceBase = Gzip::DistanceBase(distanceCode);
+                i32 distance = DistanceBase + (bits.readBits(DistanceExtra) as i32);
                 if (distance <= 0 || (distance as i64) > out.len()) { return -1; }
                 i32 k = 0;
                 while (k < matchLength) {
@@ -348,7 +348,7 @@ pub class Gzip {
         return 0;
     }
 
-    static fn decode(HuffmanTable table, GzipBits bits) -> i32 {
+    static fn Decode(HuffmanTable table, GzipBits bits) -> i32 {
         i32 value = 0;
         i32 i = 0;
         while (i < table.maxBits) {
@@ -363,7 +363,7 @@ pub class Gzip {
         i32 extra = table.maxBits - length;
         i32 j = 0;
         while (j < extra) {
-            // decode 需要“回退”多读的位；GzipBits 提供 rewind。
+            // Decode 需要“回退”多读的位；GzipBits 提供 rewind。
             bits.rewind(1);
             j = j + 1;
         }
@@ -379,7 +379,7 @@ pub class Gzip {
         return stored;
     }
 
-    static fn findMatch(u8[] data, i64 pos) -> GzipMatch {
+    static fn FindMatch(u8[] data, i64 pos) -> GzipMatch {
         i64 length = data.len() as i64;
         i32 bestLength = 0;
         i32 bestDistance = 0;
@@ -404,7 +404,7 @@ pub class Gzip {
         return new GzipMatch(bestLength, bestDistance);
     }
 
-    static fn writeLiteralSymbol(GzipBitWriter bits, i32 symbol) -> void {
+    static fn WriteLiteralSymbol(GzipBitWriter bits, i32 symbol) -> void {
         i32 code = 0;
         i32 count = 0;
         if (symbol <= 143) {
@@ -423,16 +423,16 @@ pub class Gzip {
         bits.writeHuffman(code as u32, count);
     }
 
-    static fn writeDistance(GzipBitWriter bits, i32 symbol) -> void {
+    static fn WriteDistance(GzipBitWriter bits, i32 symbol) -> void {
         bits.writeHuffman(symbol as u32, 5);
     }
 
-    static fn lengthSymbol(i32 length) -> i32 {
+    static fn LengthSymbol(i32 length) -> i32 {
         if (length >= 258) { return 28; }
         i32 symbol = 0;
         while (symbol < 28) {
-            i32 extra = Gzip::lengthExtra(symbol);
-            i32 base = Gzip::lengthBase(symbol);
+            i32 extra = Gzip::LengthExtra(symbol);
+            i32 base = Gzip::LengthBase(symbol);
             i32 max = base + ((1 << extra) - 1);
             if (length <= max) { return symbol; }
             symbol = symbol + 1;
@@ -440,11 +440,11 @@ pub class Gzip {
         return 28;
     }
 
-    static fn distanceSymbol(i32 distance) -> i32 {
+    static fn DistanceSymbol(i32 distance) -> i32 {
         i32 symbol = 0;
         while (symbol < 29) {
-            i32 extra = Gzip::distanceExtra(symbol);
-            i32 base = Gzip::distanceBase(symbol);
+            i32 extra = Gzip::DistanceExtra(symbol);
+            i32 base = Gzip::DistanceBase(symbol);
             i32 max = base + ((1 << extra) - 1);
             if (distance <= max) { return symbol; }
             symbol = symbol + 1;
@@ -471,33 +471,33 @@ pub class Gzip {
         i64 pos = 0;
         i64 length = data.len() as i64;
         while (pos < length) {
-            GzipMatch foundMatch = Gzip::findMatch(data, pos);
+            GzipMatch foundMatch = Gzip::FindMatch(data, pos);
             if (foundMatch.length >= 3) {
-                i32 lengthIndex = Gzip::lengthSymbol(foundMatch.length);
-                Gzip::writeLiteralSymbol(bits, 257 + lengthIndex);
-                i32 lengthBase = Gzip::lengthBase(lengthIndex);
-                i32 lengthExtra = Gzip::lengthExtra(lengthIndex);
-                bits.writeBits((foundMatch.length - lengthBase) as u32, lengthExtra);
-                i32 distanceIndex = Gzip::distanceSymbol(foundMatch.distance);
-                Gzip::writeDistance(bits, distanceIndex);
-                i32 distanceBase = Gzip::distanceBase(distanceIndex);
-                i32 distanceExtra = Gzip::distanceExtra(distanceIndex);
-                bits.writeBits((foundMatch.distance - distanceBase) as u32, distanceExtra);
+                i32 lengthIndex = Gzip::LengthSymbol(foundMatch.length);
+                Gzip::WriteLiteralSymbol(bits, 257 + lengthIndex);
+                i32 LengthBase = Gzip::LengthBase(lengthIndex);
+                i32 LengthExtra = Gzip::LengthExtra(lengthIndex);
+                bits.writeBits((foundMatch.length - LengthBase) as u32, LengthExtra);
+                i32 distanceIndex = Gzip::DistanceSymbol(foundMatch.distance);
+                Gzip::WriteDistance(bits, distanceIndex);
+                i32 DistanceBase = Gzip::DistanceBase(distanceIndex);
+                i32 DistanceExtra = Gzip::DistanceExtra(distanceIndex);
+                bits.writeBits((foundMatch.distance - DistanceBase) as u32, DistanceExtra);
                 pos = pos + (foundMatch.length as i64);
             } else {
-                Gzip::writeLiteralSymbol(bits, data[pos] as i32);
+                Gzip::WriteLiteralSymbol(bits, data[pos] as i32);
                 pos = pos + 1;
             }
         }
-        Gzip::writeLiteralSymbol(bits, 256);
+        Gzip::WriteLiteralSymbol(bits, 256);
         u8[] body = bits.finish();
         i32 i = 0;
         while (i < body.len()) {
             out.append(body[i]);
             i = i + 1;
         }
-        Gzip::appendU32(out, Crc32::Of(data));
-        Gzip::appendU32(out, length as u32);
+        Gzip::AppendU32(out, Crc32::Of(data));
+        Gzip::AppendU32(out, length as u32);
         return out.toArray();
     }
 
@@ -545,7 +545,7 @@ pub class Gzip {
                     i = i + 1;
                 }
             } else if (blockType == 1) {
-                if (Gzip::inflateHuffman(bits, Gzip::fixedTable(), Gzip::fixedDistanceTable(), out) != 0) {
+                if (Gzip::InflateHuffman(bits, Gzip::FixedTable(), Gzip::FixedDistanceTable(), out) != 0) {
                     return Err(new IoError(22));
                 }
             } else if (blockType == 2) {
@@ -559,12 +559,12 @@ pub class Gzip {
                     codeLengths[order[c]] = bits.readBits(3) as i32;
                     c = c + 1;
                 }
-                HuffmanTable codeTable = Gzip::buildHuffman(codeLengths);
+                HuffmanTable codeTable = Gzip::BuildHuffman(codeLengths);
                 i32 total = hlit + hdist;
                 i32[] lengths = new i32[total];
                 i32 index = 0;
                 while (index < total) {
-                    i32 symbol = Gzip::decode(codeTable, bits);
+                    i32 symbol = Gzip::Decode(codeTable, bits);
                     if (symbol < 0) { return Err(new IoError(22)); }
                     if (symbol <= 15) {
                         lengths[index] = symbol;
@@ -608,7 +608,7 @@ pub class Gzip {
                     distLengths[j] = lengths[hlit + j];
                     j = j + 1;
                 }
-                if (Gzip::inflateHuffman(bits, Gzip::buildHuffman(litLengths), Gzip::buildHuffman(distLengths), out) != 0) {
+                if (Gzip::InflateHuffman(bits, Gzip::BuildHuffman(litLengths), Gzip::BuildHuffman(distLengths), out) != 0) {
                     return Err(new IoError(22));
                 }
             } else {
@@ -617,8 +617,8 @@ pub class Gzip {
         }
         bits.align();
         if (bits.bytePos + 8 > length) { return Err(new IoError(22)); }
-        u32 expectedCrc = Gzip::readU32(data, bits.bytePos);
-        u32 expectedSize = Gzip::readU32(data, bits.bytePos + 4);
+        u32 expectedCrc = Gzip::ReadU32(data, bits.bytePos);
+        u32 expectedSize = Gzip::ReadU32(data, bits.bytePos + 4);
         u8[] result = out.toArray();
         if (Crc32::Of(result) != expectedCrc || (result.len() as u32) != expectedSize) {
             return Err(new IoError(22));
@@ -633,7 +633,7 @@ pub class Gzip {
         }
     }
 
-    static fn lengthBase(i32 symbol) -> i32 {
+    static fn LengthBase(i32 symbol) -> i32 {
         if (symbol < 8) { return 3 + symbol; }
         if (symbol < 12) { return 11 + (symbol - 8) * 2; }
         if (symbol < 16) { return 19 + (symbol - 12) * 4; }
@@ -643,7 +643,7 @@ pub class Gzip {
         return 258;
     }
 
-    static fn lengthExtra(i32 symbol) -> i32 {
+    static fn LengthExtra(i32 symbol) -> i32 {
         if (symbol < 8) { return 0; }
         if (symbol < 12) { return 1; }
         if (symbol < 16) { return 2; }
@@ -653,7 +653,7 @@ pub class Gzip {
         return 0;
     }
 
-    static fn distanceBase(i32 symbol) -> i32 {
+    static fn DistanceBase(i32 symbol) -> i32 {
         if (symbol < 4) { return 1 + symbol; }
         if (symbol < 6) { return 5 + (symbol - 4) * 2; }
         if (symbol < 8) { return 9 + (symbol - 6) * 4; }
@@ -670,7 +670,7 @@ pub class Gzip {
         return 16385 + (symbol - 28) * 8192;
     }
 
-    static fn distanceExtra(i32 symbol) -> i32 {
+    static fn DistanceExtra(i32 symbol) -> i32 {
         if (symbol < 4) { return 0; }
         if (symbol < 6) { return 1; }
         if (symbol < 8) { return 2; }
@@ -687,7 +687,7 @@ pub class Gzip {
         return 13;
     }
 
-    static fn decodeDistance(GzipBits bits) -> i32 {
+    static fn DecodeDistance(GzipBits bits) -> i32 {
         // 固定距离编码是 5 位 canonical 码；读取 5 位后按位反转得到码值。
         u32 raw = bits.readBits(5);
         i32 code = 0;

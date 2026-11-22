@@ -36,14 +36,14 @@ pub class DirWatcher {
     }
 
     pub static fn Watch(string path) -> Result<DirWatcher, IoError> {
-        return DirWatcher::watchWith(path, false);
+        return DirWatcher::WatchWith(path, false);
     }
 
     pub static fn WatchRecursive(string path) -> Result<DirWatcher, IoError> {
-        return DirWatcher::watchWith(path, true);
+        return DirWatcher::WatchWith(path, true);
     }
 
-    static fn watchWith(string path, bool recursive) -> Result<DirWatcher, IoError> {
+    static fn WatchWith(string path, bool recursive) -> Result<DirWatcher, IoError> {
         DirWatcher watcher = new DirWatcher(path);
         watcher.recursive = recursive;
         Result<Vec<DirWatchEntry>, IoError> snapshot = watcher.snapshot();
@@ -115,7 +115,7 @@ pub class DirWatcher {
         }
     }
 
-    static fn indexOf(Vec<DirWatchEntry> values, string name) -> i64 {
+    static fn IndexOf(Vec<DirWatchEntry> values, string name) -> i64 {
         i64 i = 0;
         while (i < values.len()) {
             if (values.get(i).name == name) {
@@ -138,7 +138,7 @@ pub class DirWatcher {
                 i64 i = 0;
                 while (i < next.len()) {
                     DirWatchEntry current = next.get(i);
-                    i64 oldIndex = DirWatcher::indexOf(this.entries, current.name);
+                    i64 oldIndex = DirWatcher::IndexOf(this.entries, current.name);
                     if (oldIndex < 0) {
                         events.push(new DirEvent(DirEvent::CREATED, current.name, Path::Join(this.path, current.name)));
                     } else {
@@ -152,7 +152,7 @@ pub class DirWatcher {
                 i = 0;
                 while (i < this.entries.len()) {
                     DirWatchEntry previous = this.entries.get(i);
-                    if (DirWatcher::indexOf(next, previous.name) < 0) {
+                    if (DirWatcher::IndexOf(next, previous.name) < 0) {
                         events.push(new DirEvent(DirEvent::DELETED, previous.name, Path::Join(this.path, previous.name)));
                     }
                     i = i + 1;

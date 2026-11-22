@@ -8,11 +8,11 @@ pub class Md5 {
         return Md5::HashBytes(Str::Bytes(message));
     }
 
-    static fn rotl(u32 value, u32 bits) -> u32 {
+    static fn Rotl(u32 value, u32 bits) -> u32 {
         return (value << bits) | (value >> ((32 as u32) - bits));
     }
 
-    static fn hex(u8[] value) -> string {
+    static fn Hex(u8[] value) -> string {
         StringBuilder out = new StringBuilder();
         string digits = "0123456789abcdef";
         i64 i = 0;
@@ -107,7 +107,7 @@ pub class Md5 {
                 u32 temp = d;
                 d = c;
                 c = b;
-                b = b + Md5::rotl(a + f + k[t] + m[g], s[t] as u32);
+                b = b + Md5::Rotl(a + f + k[t] + m[g], s[t] as u32);
                 a = temp;
                 t = t + 1;
             }
@@ -127,6 +127,6 @@ pub class Md5 {
             digest[(word * 4 + 3) as i64] = (h[word] >> 24) as u8;
             word = word + 1;
         }
-        return Md5::hex(digest);
+        return Md5::Hex(digest);
     }
 }
