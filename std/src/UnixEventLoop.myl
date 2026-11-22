@@ -1,5 +1,5 @@
 // Unix domain socket 的事件循环适配：组合通用 EventLoop + UDS handler。
-// 仅 POSIX 可用；Windows 下 UnixListener/UnixStream 会以 -95 返回不支持。
+// POSIX 与 Windows AF_UNIX 可用；Windows 需要系统支持 AF_UNIX。
 import { EventLoop } from "EventLoop.myl";
 import { FdHandler } from "FdHandler.myl";
 import { UnixListener } from "UnixListener.myl";

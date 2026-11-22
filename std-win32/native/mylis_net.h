@@ -42,7 +42,7 @@ int64_t mylis_udp_set_reuse_address(int64_t handle, int32_t enabled);
 int64_t mylis_udp_set_broadcast(int64_t handle, int32_t enabled);
 int64_t mylis_udp_set_ttl(int64_t handle, int32_t ttl);
 
-/* Unix domain socket (POSIX; Windows returns -95) */
+/* Unix domain socket (POSIX / Windows AF_UNIX) */
 int64_t mylis_unix_bind(const char* path);
 int64_t mylis_unix_accept(int64_t handle);
 int64_t mylis_unix_connect(const char* path);

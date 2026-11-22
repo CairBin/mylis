@@ -1,4 +1,4 @@
-// POSIX Unix domain listener；Windows 原生后端统一返回 EOPNOTSUPP(-95)。
+// Unix domain listener；POSIX 与 Windows AF_UNIX 可用。
 import { IoError } from "IoError.myl";
 import { UnixStream } from "UnixStream.myl";
 import { myrt_str_ptr } from "core/Mylrt_bind";
