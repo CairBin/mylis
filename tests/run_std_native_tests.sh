@@ -739,6 +739,10 @@ run_stdflag_named_case BufferedTcpApi mir
 run_stdflag_named_case BufferedTcpApi ast
 run_stdflag_named_case UnixSocketApi mir
 run_stdflag_named_case UnixSocketApi ast
+run_stdflag_named_case UnixEventLoopApi mir
+run_stdflag_named_case UnixEventLoopApi ast
+run_stdflag_named_case TcpReuseApi mir
+run_stdflag_named_case TcpReuseApi ast
 run_stdflag_named_case FilePermApi mir
 run_stdflag_named_case FilePermApi ast
 run_stdflag_named_case DateTimeApi mir

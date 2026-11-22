@@ -1,0 +1,111 @@
+import { EventLoop } from "EventLoop.myl";
+import { UnixEventLoop } from "UnixEventLoop.myl";
+import { UnixListenerHandler } from "UnixListenerHandler.myl";
+import { UnixStreamHandler } from "UnixStreamHandler.myl";
+import { UnixListener } from "UnixListener.myl";
+import { UnixStream } from "UnixStream.myl";
+import { IoError } from "IoError.myl";
+import { println, println_i64, println_bool } from "Io.myl";
+
+class UdsStreamHandler {
+    EventLoop loop;
+    UnixEventLoop uds;
+
+    pub fn init(EventLoop l, UnixEventLoop u) -> void {
+        this.loop = l;
+        this.uds = u;
+    }
+
+    pub fn onReadable(UnixStream stream) -> void {
+        println("read");
+        Result<u8[], IoError> result = stream.read(4);
+        match result {
+            Ok(data) => { println_i64(data.len() as i64); }
+            Err(error) => { println_i64(error.code as i64); }
+        }
+        this.uds.setWriteInterest(stream, true);
+    }
+
+    pub fn onWritable(UnixStream stream) -> void {
+        println("writable");
+        Result<i64, IoError> written = stream.writeAllText("pong");
+        match written {
+            Ok(_) => { }
+            Err(error) => { println_i64(error.code as i64); }
+        }
+        this.uds.setWriteInterest(stream, false);
+        this.loop.stop();
+    }
+
+    pub fn onError(UnixStream stream, IoError error) -> void {
+        println_i64(error.code as i64);
+        this.loop.stop();
+    }
+}
+
+class UdsListenerHandler {
+    EventLoop loop;
+    UnixEventLoop uds;
+
+    pub fn init(EventLoop l, UnixEventLoop u) -> void {
+        this.loop = l;
+        this.uds = u;
+    }
+
+    pub fn onAccept(UnixListener listener) -> void {
+        println("accept");
+        Result<UnixStream, IoError> accepted = listener.accept();
+        match accepted {
+            Ok(stream) => {
+                UdsStreamHandler handler = new UdsStreamHandler(this.loop, this.uds);
+                UnixStreamHandler interfaceHandler = handler;
+                this.uds.addStream(stream, interfaceHandler);
+            }
+            Err(error) => { println_i64(error.code as i64); }
+        }
+    }
+
+    pub fn onListenerError(UnixListener listener, IoError error) -> void {
+        println_i64(error.code as i64);
+        this.loop.stop();
+    }
+}
+
+fn main() -> i32 {
+    string path = "build/tests/unix_loop.sock";
+    UnixListener::Remove(path);
+    Result<UnixListener, IoError> bound = UnixListener::Bind(path);
+    match bound {
+        Ok(listener) => {
+            Result<UnixStream, IoError> client = UnixStream::Connect(path);
+            match client {
+                Ok(c) => {
+                    c.writeAllText("ping");
+                    EventLoop loop = new EventLoop();
+                    UnixEventLoop uds = new UnixEventLoop(loop);
+                    UdsListenerHandler handler = new UdsListenerHandler(loop, uds);
+                    UnixListenerHandler interfaceHandler = handler;
+                    uds.addListener(listener, interfaceHandler);
+                    loop.run();
+
+                    Result<u8[], IoError> pong = c.read(4);
+                    match pong {
+                        Ok(data) => {
+                            println_i64(data.len() as i64);
+                            println_bool(data[0] == 112);
+                        }
+                        Err(error) => { println_i64(error.code as i64); }
+                    }
+                    uds.removeListener(listener);
+                    loop.close();
+                    c.close();
+                }
+                Err(error) => { println_i64(error.code as i64); }
+            }
+            listener.close();
+        }
+        Err(error) => { println_i64(error.code as i64); }
+    }
+    UnixListener::Remove(path);
+    return 0;
+}

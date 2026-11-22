@@ -6,10 +6,11 @@
 use std::ffi::CStr;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, UdpSocket};
+use std::net::ToSocketAddrs;
 use std::os::raw::{c_char, c_int, c_void};
 use std::time::Duration;
 #[cfg(unix)]
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(windows)]
@@ -129,6 +130,8 @@ fn so_recvbuf() -> i32 { 8 }
 fn so_sndbuf() -> i32 { 7 }
 #[cfg(target_os = "linux")]
 fn so_reuseaddr() -> i32 { 2 }
+#[cfg(target_os = "linux")]
+fn so_reuseport() -> i32 { 15 }
 
 #[cfg(all(unix, not(target_os = "linux")))]
 fn sol_socket() -> i32 { 0xffff }
@@ -140,6 +143,8 @@ fn so_recvbuf() -> i32 { 0x1002 }
 fn so_sndbuf() -> i32 { 0x1001 }
 #[cfg(all(unix, not(target_os = "linux")))]
 fn so_reuseaddr() -> i32 { 0x0004 }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn so_reuseport() -> i32 { 0x0200 }
 
 #[cfg(windows)]
 fn sol_socket() -> i32 { 0xffff }
@@ -189,6 +194,96 @@ fn set_socket_option(fd: i64, level: i32, name: i32, value: i32) -> i64 {
     {
         let _ = (fd, level, name, value);
         -95
+    }
+}
+
+#[cfg(unix)]
+extern "C" {
+    fn socket(domain: c_int, socket_type: c_int, protocol: c_int) -> c_int;
+    fn bind(fd: c_int, address: *const u8, length: u32) -> c_int;
+    fn listen(fd: c_int, backlog: c_int) -> c_int;
+    fn close(fd: c_int) -> c_int;
+}
+
+#[cfg(unix)]
+#[repr(C)]
+struct SockAddrIn {
+    family: u16,
+    port: u16,
+    address: u32,
+    zero: [u8; 8],
+}
+
+#[cfg(unix)]
+fn bind_reuse_unix(address: &str) -> i64 {
+    let parsed = match address.to_socket_addrs() {
+        Ok(mut values) => match values.next() {
+            Some(std::net::SocketAddr::V4(v4)) => v4,
+            _ => return -22,
+        },
+        Err(e) => return errno(e),
+    };
+    let fd = unsafe { socket(2, 1, 0) };
+    if fd < 0 { return errno(std::io::Error::last_os_error()); }
+    let value: i32 = 1;
+    let opt = unsafe {
+        setsockopt(
+            fd,
+            sol_socket(),
+            so_reuseaddr(),
+            &value as *const i32 as *const c_void,
+            std::mem::size_of::<i32>() as c_int,
+        )
+    };
+    if opt != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { close(fd); }
+        return code;
+    }
+    // Linux 用 SO_REUSEPORT 允许多个监听器同时绑定同一地址；不支持的平台忽略。
+    let _ = unsafe {
+        setsockopt(
+            fd,
+            sol_socket(),
+            so_reuseport(),
+            &value as *const i32 as *const c_void,
+            std::mem::size_of::<i32>() as c_int,
+        )
+    };
+    let addr = SockAddrIn {
+        family: 2,
+        port: parsed.port().to_be(),
+        address: u32::from(*parsed.ip()).to_be(),
+        zero: [0; 8],
+    };
+    let rc = unsafe { bind(fd, &addr as *const SockAddrIn as *const u8, std::mem::size_of::<SockAddrIn>() as u32) };
+    if rc != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { close(fd); }
+        return code;
+    }
+    let rc = unsafe { listen(fd, 128) };
+    if rc != 0 {
+        let code = errno(std::io::Error::last_os_error());
+        unsafe { close(fd); }
+        return code;
+    }
+    let listener = unsafe { TcpListener::from_raw_fd(fd) };
+    Box::into_raw(Box::new(listener)) as i64
+}
+
+#[no_mangle]
+pub extern "C" fn mylis_tcp_bind_reuse(address: *const c_char) -> i64 {
+    let a = match cstr(address) { Some(v) => v, None => return -22 };
+    #[cfg(unix)]
+    {
+        return bind_reuse_unix(a);
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows 的 std 没有预绑定 socket 设置入口；退回普通绑定。
+        let _ = a;
+        return mylis_tcp_bind(address);
     }
 }
 

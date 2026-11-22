@@ -1,0 +1,24 @@
+import { TcpListener } from "TcpListener.myl";
+import { IoError } from "IoError.myl";
+import { Str } from "core/Str";
+import { fmt_i64 } from "core/Fmt";
+import { println_bool, println_i64 } from "Io.myl";
+
+fn main() -> i32 {
+    Result<TcpListener, IoError> first = TcpListener::BindReuse("127.0.0.1:0");
+    match first {
+        Ok(one) => {
+            i64 port = one.localPort();
+            println_bool(port > 0);
+            string address = Str::Concat("127.0.0.1:", fmt_i64(port));
+            Result<TcpListener, IoError> second = TcpListener::BindReuse(address);
+            match second {
+                Ok(two) => { println_bool(true); two.close(); }
+                Err(error) => { println_i64(error.code as i64); }
+            }
+            one.close();
+        }
+        Err(error) => { println_i64(error.code as i64); }
+    }
+    return 0;
+}

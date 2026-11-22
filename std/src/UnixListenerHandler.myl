@@ -1,0 +1,8 @@
+// EventLoop 的 Unix 监听器回调：只处理 onAccept / onListenerError。
+import { UnixListener } from "UnixListener.myl";
+import { IoError } from "IoError.myl";
+
+pub interface UnixListenerHandler {
+    fn onAccept(UnixListener listener) -> void;
+    fn onListenerError(UnixListener listener, IoError error) -> void;
+}

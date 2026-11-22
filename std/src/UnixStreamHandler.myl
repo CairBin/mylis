@@ -1,0 +1,9 @@
+// EventLoop 的 Unix 连接回调：只处理 onReadable / onWritable / onError。
+import { UnixStream } from "UnixStream.myl";
+import { IoError } from "IoError.myl";
+
+pub interface UnixStreamHandler {
+    fn onReadable(UnixStream stream) -> void;
+    fn onWritable(UnixStream stream) -> void;
+    fn onError(UnixStream stream, IoError error) -> void;
+}

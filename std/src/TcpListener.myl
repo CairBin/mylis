@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { TcpStream } from "TcpStream.myl";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_tcp_bind, mylis_tcp_listener_fd, mylis_tcp_listener_port, mylis_tcp_accept, mylis_tcp_listener_close, mylis_tcp_listener_set_nonblocking, mylis_tcp_listener_set_reuse_address } from "Net_bind.myl";
+import { mylis_tcp_bind, mylis_tcp_bind_reuse, mylis_tcp_listener_fd, mylis_tcp_listener_port, mylis_tcp_accept, mylis_tcp_listener_close, mylis_tcp_listener_set_nonblocking, mylis_tcp_listener_set_reuse_address } from "Net_bind.myl";
 
 pub class TcpListener {
     i64 handle;
@@ -15,6 +15,19 @@ pub class TcpListener {
         i64 h = 0;
         unsafe {
             h = mylis_tcp_bind(myrt_str_ptr(address));
+        }
+        if (h < 0) {
+            return Err(new IoError((-h) as i32));
+        }
+        return Ok(new TcpListener(h));
+    }
+
+    // 在 bind 前设置 SO_REUSEADDR，适合需要快速重启/多进程复用的监听器。
+    // Windows 当前退回普通 Bind（std 不暴露预绑定 socket 设置入口）。
+    pub static fn BindReuse(string address) -> Result<TcpListener, IoError> {
+        i64 h = 0;
+        unsafe {
+            h = mylis_tcp_bind_reuse(myrt_str_ptr(address));
         }
         if (h < 0) {
             return Err(new IoError((-h) as i32));

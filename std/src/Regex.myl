@@ -278,6 +278,90 @@ class RegexCompiler {
         return frag;
     }
 
+    fn collectState(i32 index, bool[] seen, i32[] order, i32[] count) -> void {
+        if (index < 0 || index >= this.stateCount || seen[index]) {
+            return;
+        }
+        seen[index] = true;
+        order[count[0]] = index;
+        count[0] = count[0] + 1;
+        i32 op = this.states[index].op;
+        if (op == RegexState::SPLIT) {
+            this.collectState(this.states[index].out1, seen, order, count);
+            this.collectState(this.states[index].out2, seen, order, count);
+        } else {
+            this.collectState(this.states[index].out1, seen, order, count);
+        }
+    }
+
+    fn cloneFrag(RegexFrag body) -> RegexFrag {
+        if (body.start < 0) { return body; }
+        bool[] seen = new bool[this.stateCount];
+        i32[] order = new i32[this.stateCount];
+        i32[] count = new i32[1];
+        count[0] = 0;
+        this.collectState(body.start, seen, order, count);
+        i32[] map = new i32[this.stateCount];
+        i32 i = 0;
+        while (i < this.stateCount) {
+            map[i] = -1;
+            i = i + 1;
+        }
+        i = 0;
+        while (i < count[0]) {
+            i32 oldIndex = order[i];
+            RegexClass cls = this.states[oldIndex].cls;
+            i32 newIndex = this.addState(this.states[oldIndex].op, this.states[oldIndex].ch, cls);
+            map[oldIndex] = newIndex;
+            i = i + 1;
+        }
+        i = 0;
+        while (i < count[0]) {
+            i32 oldIndex = order[i];
+            i32 newIndex = map[oldIndex];
+            i32 oldOut1 = this.states[oldIndex].out1;
+            i32 oldOut2 = this.states[oldIndex].out2;
+            if (oldOut1 >= 0 && map[oldOut1] >= 0) {
+                this.states[newIndex].out1 = map[oldOut1];
+            }
+            if (oldOut2 >= 0 && map[oldOut2] >= 0) {
+                this.states[newIndex].out2 = map[oldOut2];
+            }
+            i = i + 1;
+        }
+        RegexFrag result = new RegexFrag(map[body.start]);
+        i = 0;
+        while (i < body.count) {
+            i32 slot = body.outs[i];
+            i32 oldState = slot / 2;
+            i32 mappedState = map[oldState];
+            if (mappedState >= 0) {
+                result.addOut(mappedState * 2 + (slot % 2));
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    fn repeatFrag(RegexFrag body, i32 minimum, i32 maximum) -> RegexFrag {
+        RegexFrag result = new RegexFrag(-1);
+        i32 i = 0;
+        while (i < minimum) {
+            result = this.concat(result, this.cloneFrag(body));
+            i = i + 1;
+        }
+        if (maximum < 0) {
+            result = this.concat(result, this.star(this.cloneFrag(body)));
+        } else {
+            i = minimum;
+            while (i < maximum) {
+                result = this.concat(result, this.question(this.cloneFrag(body)));
+                i = i + 1;
+            }
+        }
+        return result;
+    }
+
     fn parseAlternation() -> RegexFrag {
         RegexFrag result = this.parseSequence();
         while (!this.atEnd() && this.currentByte() == 124) {
@@ -312,9 +396,37 @@ class RegexCompiler {
                 atom = this.question(atom);
             } else if (next == 123) {
                 this.pos = this.pos + 1;
-                // 计数量词暂不支持；跳到闭括号后报错，避免静默误解。
-                while (!this.atEnd() && this.currentByte() != 125) { this.pos = this.pos + 1; }
-                if (!this.atEnd()) { this.pos = this.pos + 1; }
+                i32 minimum = 0;
+                bool hasDigits = false;
+                while (!this.atEnd() && this.currentByte() >= 48 && this.currentByte() <= 57) {
+                    minimum = minimum * 10 + ((this.currentByte() - 48) as i32);
+                    hasDigits = true;
+                    this.pos = this.pos + 1;
+                }
+                i32 maximum = minimum;
+                if (!this.atEnd() && this.currentByte() == 44) {
+                    this.pos = this.pos + 1;
+                    if (!this.atEnd() && this.currentByte() >= 48 && this.currentByte() <= 57) {
+                        maximum = 0;
+                        while (!this.atEnd() && this.currentByte() >= 48 && this.currentByte() <= 57) {
+                            maximum = maximum * 10 + ((this.currentByte() - 48) as i32);
+                            this.pos = this.pos + 1;
+                        }
+                    } else {
+                        maximum = -1;
+                    }
+                }
+                if (!this.atEnd() && this.currentByte() == 125) {
+                    this.pos = this.pos + 1;
+                } else {
+                    this.pos = this.bytes.len() as i32;
+                    return this.emptyFrag();
+                }
+                if (!hasDigits || minimum > 1000 || (maximum >= 0 && maximum < minimum) || maximum > 1000) {
+                    this.pos = this.bytes.len() as i32;
+                    return this.emptyFrag();
+                }
+                atom = this.repeatFrag(atom, minimum, maximum);
             }
             if (!this.atEnd() && (this.currentByte() == 42 || this.currentByte() == 43 || this.currentByte() == 63)) {
                 this.pos = this.bytes.len() as i32;

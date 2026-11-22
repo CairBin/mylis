@@ -4,6 +4,9 @@
 pub unsafe fn mylis_tcp_bind(i8* address) -> i64;
 
 @header("mylis_net.h")
+pub unsafe fn mylis_tcp_bind_reuse(i8* address) -> i64;
+
+@header("mylis_net.h")
 pub unsafe fn mylis_tcp_listener_port(i64 handle) -> i64;
 
 @header("mylis_net.h")

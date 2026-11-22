@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 int64_t mylis_tcp_bind(const char* address);
+int64_t mylis_tcp_bind_reuse(const char* address);
 int64_t mylis_tcp_listener_port(int64_t handle);
 int64_t mylis_tcp_accept(int64_t handle);
 int64_t mylis_tcp_connect(const char* address);

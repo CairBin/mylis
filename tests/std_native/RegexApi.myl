@@ -55,5 +55,37 @@ fn main() -> i32 {
         }
         Err(_) => { println("compile-error"); }
     }
+
+    Result<Regex, IoError> boundedResult = Regex::Compile("^a{{2,4}}$");
+    match boundedResult {
+        Ok(boundedPattern) => {
+            println_bool(boundedPattern.isMatch("aa"));
+            println_bool(boundedPattern.isMatch("aaaa"));
+            println_bool(boundedPattern.isMatch("aaaaa"));
+            println_bool(boundedPattern.isMatch("a"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> openResult = Regex::Compile("^a{{2,}}$");
+    match openResult {
+        Ok(openPattern) => {
+            println_bool(openPattern.isMatch("aa"));
+            println_bool(openPattern.isMatch("aaaaa"));
+            println_bool(openPattern.isMatch("a"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
+    Result<Regex, IoError> zeroResult = Regex::Compile("^a{{0,2}}$");
+    match zeroResult {
+        Ok(zeroPattern) => {
+            println_bool(zeroPattern.isMatch(""));
+            println_bool(zeroPattern.isMatch("aa"));
+            println_bool(zeroPattern.isMatch("aaa"));
+        }
+        Err(_) => { println("compile-error"); }
+    }
+
     return 0;
 }
