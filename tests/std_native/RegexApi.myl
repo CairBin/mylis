@@ -667,5 +667,35 @@ fn main() -> i32 {
         }
         Err(_) => { println("split-boundary-compile-error"); }
     }
+
+    Result<Regex, IoError> namedRefResult = Regex::Compile("(?<letter>a)\\k<letter>");
+    match namedRefResult {
+        Ok(namedRefPattern) => {
+            println_bool(namedRefPattern.isMatch("aa"));
+            println_bool(namedRefPattern.isMatch("ab"));
+        }
+        Err(_) => { println("named-ref-compile-error"); }
+    }
+
+    Result<Regex, IoError> namedWordRefResult = Regex::Compile("(?<word>\\w+)-\\k<word>");
+    match namedWordRefResult {
+        Ok(namedWordRefPattern) => {
+            println_bool(namedWordRefPattern.isMatch("abc-abc"));
+            println_bool(namedWordRefPattern.isMatch("abc-abd"));
+        }
+        Err(_) => { println("named-word-ref-compile-error"); }
+    }
+
+    Result<Regex, IoError> unknownNamedRefResult = Regex::Compile("\\k<missing>(?<missing>a)");
+    match unknownNamedRefResult {
+        Ok(_) => { println("named-ref-unknown-supported"); }
+        Err(_) => { println("named-ref-error"); }
+    }
+
+    Result<Regex, IoError> forwardNamedRefResult = Regex::Compile("\\k<later>(?<later>a)");
+    match forwardNamedRefResult {
+        Ok(_) => { println("named-ref-forward-supported"); }
+        Err(_) => { println("named-ref-forward-error"); }
+    }
     return 0;
 }

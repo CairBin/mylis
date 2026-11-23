@@ -146,3 +146,9 @@ _a_ _b_
 [ ]
 [b]
 []
+true
+false
+true
+false
+named-ref-error
+named-ref-forward-error
