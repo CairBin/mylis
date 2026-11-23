@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { Str } from "core/Str";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_unix_connect, mylis_unix_stream_fd, mylis_unix_stream_close, mylis_unix_stream_set_nonblocking, mylis_unix_stream_set_timeout, mylis_unix_stream_read, mylis_unix_stream_write } from "Net_bind.myl";
+import { mylis_unix_connect, mylis_unix_stream_fd, mylis_unix_stream_close, mylis_unix_stream_set_nonblocking, mylis_unix_stream_set_timeout, mylis_unix_stream_read, mylis_unix_stream_write } from "Unix_bind.myl";
 
 pub class UnixStream {
     i64 handle;

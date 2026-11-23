@@ -6,7 +6,7 @@
 - `native/io.rs`：stdio/argv/env/exit 后端，`libmylis_io.a`
 - `native/process.rs`：shell 进程后端，`libmylis_process.a`；Run 同步捕获输出，Spawn 提供 pid/wait/kill/close，Popen/Popen2 提供单向或双向字节管道；ProcessPipe 还支持按行读取、超时读取、超时写入和强制 terminate，供 Worker/WorkerPool 使用。Windows 下命令为可执行文件路径时直接 spawn，否则回退 `cmd /C`。
 - `native/time.rs`：时间与 sleep 后端，`libmylis_time.a`
-- `native/net.rs`：TCP/UDP 后端，`libmylis_net.a`
+- `native/net.rs`：网络后端入口，`libmylis_net.a`；TCP/UDP/Unix 与公共 socket 辅助按协议拆在 `native/net/`
 - `native/event.rs`：Linux epoll / 其他 POSIX poll 事件后端，`libmylis_event.a`
 - `native/mylis_*.h`：对应 C header
 
@@ -28,4 +28,4 @@ bash tools/build_std_native.sh
 
 非嵌入 native 不随源码包自动传播；推荐用 `--std`，它会按当前平台自动加入头文件路径和六个库。手工编译时才显式写 `-I` / `--link`。
 
-Windows 的 MSVC 侧车见 `std-win32/`：`file.rs`、`io.rs`、`process.rs`、`time.rs`、`net.rs` 都是 shim，复用本包 `native/*.rs` 的跨平台实现；`event.rs` 为独立的 Winsock `WSAPoll` 后端。本包自身只用于 POSIX 目标。
+Windows 的 MSVC 侧车见 `std-win32/`：`file.rs`、`io.rs`、`process.rs`、`time.rs`、`net.rs` 都是 shim，复用本包 `native/*.rs`（网络域为 `native/net/`）的跨平台实现；`event.rs` 为独立的 Winsock `WSAPoll` 后端。本包自身只用于 POSIX 目标。

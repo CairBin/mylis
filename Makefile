@@ -362,14 +362,14 @@ $(BIN_MYLS): $(wildcard mylc/src/*.rs) $(wildcard mylc/src/*/*.rs) mylc/Cargo.to
 # ---- Windows std native 侧车 ----
 # PowerShell 5.1 在 rustc 子进程结束后可能不自动退出；用 -Command 显式收尾，并保留失败退出码。
 ifeq ($(OS),Windows_NT)
-$(STD_WIN_STAMP): $(wildcard std-win32/native/*.rs) $(wildcard std-win32/native/*.h) $(wildcard std-posix/native/*.rs) tools/build_std_native.ps1 | build
+$(STD_WIN_STAMP): $(wildcard std-win32/native/*.rs) $(wildcard std-win32/native/*.h) $(wildcard std-win32/native/net/*.rs) $(wildcard std-posix/native/*.rs) $(wildcard std-posix/native/net/*.rs) tools/build_std_native.ps1 | build
 	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { & 'tools/build_std_native.ps1' -Target '$(CARGO_TARGET)' -Out '$(subst /,\,$(STD_WIN_DIR))' } catch { Write-Error $$_ ; exit 1 }; exit 0 }"
 	@echo built > "$(call W,$@)"
 
 std-native-win: $(STD_WIN_STAMP)
 std-native: $(STD_WIN_STAMP)
 else
-$(STD_POSIX_STAMP): $(wildcard std-posix/native/*.rs) $(wildcard std-posix/native/*.h) tools/build_std_native.sh | build
+$(STD_POSIX_STAMP): $(wildcard std-posix/native/*.rs) $(wildcard std-posix/native/*.h) $(wildcard std-posix/native/net/*.rs) tools/build_std_native.sh | build
 	@bash tools/build_std_native.sh
 	@echo built > "$@"
 

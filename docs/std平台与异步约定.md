@@ -18,9 +18,9 @@
 ```text
 std                    # 公共 Mylis API：File / FilePump / TcpListener / TcpEventLoop / UdpSocket / UdpEventLoop / EventLoop / IoError
 std-posix              # POSIX 侧车包；native/ 下是 POSIX 与跨平台 Rust 实现
-std-posix/native       # file.rs / io.rs / process.rs / time.rs / net.rs / event.rs
+std-posix/native       # file.rs / io.rs / process.rs / time.rs / net.rs + net/（tcp/udp/unix）/ event.rs
 std-win32              # Windows MSVC / MinGW 侧车包；native/ 下是同名 shim 与 WSAPoll 事件后端
-std-win32/native       # file/io/process/time/net.rs 复用 std-posix 实现；event.rs 独立
+std-win32/native       # file/io/process/time/net.rs 复用 std-posix 实现；net.rs 指向 std-posix/native/net/；event.rs 独立
 ```
 
 当前规则：
@@ -131,7 +131,7 @@ class TcpStream {
 - `WouldBlock` 是合法结果，不视为致命错误；事件循环据此重试。
 - UDP 提供 `UdpSocket` 的 `Bind` / `localPort` / `sendTo` / `sendText` / `recv` / `recvFrom` / `close`；`recvFrom` 返回 `UdpPacket(data, from)`。
 - 当前编译器不支持 `Result<void, E>`，`setNonblocking` / `setTimeout` 返回 `Result<i64, IoError>`。
-- POSIX native 实现在 `std-posix/native/net.rs`；Windows 由 `std-win32/native/net.rs` shim 复用同一跨平台实现并走 Winsock。`--std` 会自动链接 `libmylis_net.a` / `mylis_net.lib` 与对应系统库（MinGW 为 `-lws2_32` 等）。
+- POSIX native 网络实现位于 `std-posix/native/net/`（TCP/UDP/Unix 分文件）；Windows 由 `std-win32/native/net.rs` shim 复用同一跨平台实现并走 Winsock。`--std` 会自动链接 `libmylis_net.a` / `mylis_net.lib` 与对应系统库（MinGW 为 `-lws2_32` 等）。
 
 ## 4. 异步模型
 
@@ -345,7 +345,7 @@ native_abi = "gnu"
 - Windows 打包脚本把 `std/` 与 `std-win32/` 复制到发布目录，并构建 `build/std-win32/native/mylis_*.lib`；
 - 测试/示例通过 `MYLIS_PATH` 定位 `std/src`；
 - 当前 `std` 直接用 `@header("mylrt.h")` 绑定运行时，例如 `std/src/Io_bind.myl`；
-- File / TCP 的 native 后端在 `std-posix/native/file.rs` / `net.rs`（Rust staticlib），Windows 由 `std-win32/native` 的同名 shim 复用；`--std` 会自动选择当前平台的头文件目录和六个库，手工编译时才需要显式 `-I` / `--link`。
+- File / TCP 的 native 后端在 `std-posix/native/file.rs` / `net/`（Rust staticlib），Windows 由 `std-win32/native` 的同名 shim 复用；`--std` 会自动选择当前平台的头文件目录和六个库，手工编译时才需要显式 `-I` / `--link`。
 
 因此当前分发的本质是：**跟着编译器发布包一起分发源码目录**，没有独立的 `std.mylib`，也没有完整拆分的平台包。
 

@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { Str } from "core/Str";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_tcp_connect, mylis_tcp_stream_fd, mylis_tcp_stream_close, mylis_tcp_stream_set_nonblocking, mylis_tcp_stream_set_timeout, mylis_tcp_stream_read, mylis_tcp_stream_write, mylis_tcp_stream_set_nodelay, mylis_tcp_stream_set_keepalive, mylis_tcp_stream_set_recv_buffer, mylis_tcp_stream_set_send_buffer } from "Net_bind.myl";
+import { mylis_tcp_connect, mylis_tcp_stream_fd, mylis_tcp_stream_close, mylis_tcp_stream_set_nonblocking, mylis_tcp_stream_set_timeout, mylis_tcp_stream_read, mylis_tcp_stream_write, mylis_tcp_stream_set_nodelay, mylis_tcp_stream_set_keepalive, mylis_tcp_stream_set_recv_buffer, mylis_tcp_stream_set_send_buffer } from "Tcp_bind.myl";
 
 pub class TcpStream {
     i64 handle;

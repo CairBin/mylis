@@ -2,7 +2,7 @@
 import { IoError } from "IoError.myl";
 import { UnixStream } from "UnixStream.myl";
 import { myrt_str_ptr } from "core/Mylrt_bind";
-import { mylis_unix_bind, mylis_unix_accept, mylis_unix_listener_fd, mylis_unix_listener_close, mylis_unix_listener_set_nonblocking, mylis_unix_remove } from "Net_bind.myl";
+import { mylis_unix_bind, mylis_unix_accept, mylis_unix_listener_fd, mylis_unix_listener_close, mylis_unix_listener_set_nonblocking, mylis_unix_remove } from "Unix_bind.myl";
 
 pub class UnixListener {
     i64 handle;

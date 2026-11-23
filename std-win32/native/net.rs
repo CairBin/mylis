@@ -1,3 +1,4 @@
-// Windows std native 侧车：复用跨平台 Rust 实现。
-// 平台差异由被 include 的实现内部 #[cfg(windows)] 分支处理。
-include!("../../std-posix/native/net.rs");
+// Windows std native 网络侧车：复用 std-posix/native/net 的跨平台实现。
+// 平台差异由子模块内部的 #[cfg(windows)] 分支处理。
+#[path = "../../std-posix/native/net/mod.rs"]
+mod net_impl;
