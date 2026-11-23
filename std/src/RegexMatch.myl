@@ -14,7 +14,18 @@ pub class RegexMatch {
         if (this.start < 0 || this.end < this.start) {
             return "";
         }
-        return Str::Substring(source, this.start as u64, (this.end - this.start) as u64);
+        u8[] data = Str::Bytes(source);
+        if (this.end > data.len() as i64) {
+            return "";
+        }
+        i64 count = this.end - this.start;
+        u8[] part = new u8[count as u64];
+        i64 i = 0;
+        while (i < count) {
+            part[i as u64] = data[(this.start + i) as u64];
+            i = i + 1;
+        }
+        return Str::FromBytes(part);
     }
 }
 

@@ -1,0 +1,156 @@
+// Unicode 字符类：通用类别与常见文字，按码点匹配。
+import { Regex } from "Regex.myl";
+import { RegexCaptures } from "RegexCaptures.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> letterResult = Regex::Compile("\\p{{L}}+");
+    match letterResult {
+        Ok(letterPattern) => {
+            println_bool(letterPattern.isMatch("abc"));
+            println_bool(letterPattern.isMatch("中文"));
+            println_bool(letterPattern.isMatch("café"));
+            println_bool(letterPattern.isMatch("Ω"));
+            println_bool(letterPattern.isMatch("123"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> notLetterResult = Regex::Compile("\\P{{L}}+");
+    match notLetterResult {
+        Ok(notLetterPattern) => {
+            println_bool(notLetterPattern.isMatch("123"));
+            println_bool(notLetterPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> hanResult = Regex::Compile("\\p{{Han}}+");
+    match hanResult {
+        Ok(hanPattern) => {
+            println_bool(hanPattern.isMatch("中文"));
+            println_bool(hanPattern.isMatch("abc"));
+            println_bool(hanPattern.isMatch("中a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> digitResult = Regex::Compile("\\p{{Nd}}+");
+    match digitResult {
+        Ok(digitPattern) => {
+            println_bool(digitPattern.isMatch("123"));
+            println_bool(digitPattern.isMatch("١٢٣"));
+            println_bool(digitPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> greekResult = Regex::Compile("\\p{{Greek}}+");
+    match greekResult {
+        Ok(greekPattern) => {
+            println_bool(greekPattern.isMatch("Ω"));
+            println_bool(greekPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sequenceResult = Regex::Compile("\\p{{L}}\\p{{Nd}}");
+    match sequenceResult {
+        Ok(sequencePattern) => {
+            println_bool(sequencePattern.isMatch("a1"));
+            println_bool(sequencePattern.isMatch("中1"));
+            println_bool(sequencePattern.isMatch("1中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> repeatResult = Regex::Compile("\\p{{L}}{{2}}");
+    match repeatResult {
+        Ok(repeatPattern) => {
+            println_bool(repeatPattern.isMatch("中文"));
+            println_bool(repeatPattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> captureResult = Regex::Compile("(?<ch>\\p{{L}})");
+    match captureResult {
+        Ok(capturePattern) => {
+            Option<RegexCaptures> found = capturePattern.findCaptures("中a");
+            match found {
+                Some(caps) => {
+                    println(caps.text("中a", 0));
+                    println(caps.text("中a", 1));
+                    println(caps.textNamed("中a", "ch"));
+                }
+                None => { println("capture-none"); }
+            }
+        }
+        Err(_) => { println("capture-error"); }
+    }
+
+    Result<Regex, IoError> alternateResult = Regex::Compile("\\p{{Han}}|\\p{{Greek}}");
+    match alternateResult {
+        Ok(alternatePattern) => {
+            println_bool(alternatePattern.isMatch("中"));
+            println_bool(alternatePattern.isMatch("Ω"));
+            println_bool(alternatePattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> lookResult = Regex::Compile("(?=\\p{{Han}})中");
+    match lookResult {
+        Ok(lookPattern) => {
+            println_bool(lookPattern.isMatch("中"));
+            println_bool(lookPattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> unknownResult = Regex::Compile("\\p{{Unknown}}");
+    match unknownResult {
+        Ok(_) => { println_bool(false); }
+        Err(_) => { println_bool(true); }
+    }
+
+    Result<Regex, IoError> missingBraceResult = Regex::Compile("\\p{{L");
+    match missingBraceResult {
+        Ok(_) => { println_bool(false); }
+        Err(_) => { println_bool(true); }
+    }
+
+    Result<Regex, IoError> classPropertyResult = Regex::Compile("[\\p{{L}}]");
+    match classPropertyResult {
+        Ok(_) => { println_bool(false); }
+        Err(_) => { println_bool(true); }
+    }
+
+    Result<Regex, IoError> notHanResult = Regex::Compile("\\P{{Han}}");
+    match notHanResult {
+        Ok(notHanPattern) => {
+            println_bool(notHanPattern.isMatch("a"));
+            println_bool(notHanPattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> fullWidthResult = Regex::Compile("\\p{{Nd}}");
+    match fullWidthResult {
+        Ok(fullWidthPattern) => {
+            println_bool(fullWidthPattern.isMatch("３"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> accentResult = Regex::Compile("\\p{{L}}");
+    match accentResult {
+        Ok(accentPattern) => {
+            println_bool(accentPattern.isMatch("é"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    return 0;
+}
