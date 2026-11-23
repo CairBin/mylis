@@ -2,8 +2,9 @@
 // 内联选项 `(?i)` / `(?s)` / `(?m)`（含作用域形式 `(?i:...)`）、捕获组、
 // 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
 // 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
-// 反向引用 `\1`..`\99` / `\k<name>` / `(?P=name)`、分支 `|`、`* + ?` 与
-// `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持 Unicode 字符类。
+// 反向引用 `\1`..`\99` / `\k<name>` / `(?P=name)`、Unicode 字符类
+// `\p{...}` / `\P{...}`、`(?u)` 码点模式与 `(?iu)` 简单大小写折叠、分支 `|`、
+// `* + ?` 与 `{m,n}` 计数量词。
 // 匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含断言、反向引用或
 // findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
 import { Str } from "core/Str";
@@ -112,6 +113,7 @@ class RegexState {
     pub static const i32 BOUNDARY_NEGATIVE = 1;
     pub static const i32 BOUNDARY_UNICODE = 2;
     pub static const i32 STATE_FLAG = 256;
+    pub static const i32 BACKREF_UNICODE = 512;
     pub static const i32 MULTILINE = 1;
     pub static const i32 LOOK_BEHIND = 2;
 
@@ -286,6 +288,7 @@ class RegexCompiler {
         RegexClass dummy = new RegexClass(false);
         i32 encoded = group;
         if (this.ignoreCase) { encoded = encoded | RegexState::STATE_FLAG; }
+        if (this.wordUnicode && this.ignoreCase) { encoded = encoded | RegexState::BACKREF_UNICODE; }
         i32 state = this.addState(RegexState::BACKREF, encoded, dummy);
         RegexFrag result = new RegexFrag(state);
         result.addOut(state * 2);
@@ -354,7 +357,43 @@ class RegexCompiler {
         return this.pos >= this.bytes.len() as i32;
     }
 
+    fn addCaseVariants(RegexClass cls) -> void {
+        i32[] pairs = UnicodeData::CasePairs();
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            i32 i = 0;
+            while (i + 1 < pairs.len() as i32) {
+                i32 left = pairs[i];
+                i32 right = pairs[i + 1];
+                bool hasLeft = cls.contains(left);
+                bool hasRight = cls.contains(right);
+                if (hasLeft && !hasRight) {
+                    cls.addRange(right, right);
+                    changed = true;
+                }
+                if (hasRight && !hasLeft) {
+                    cls.addRange(left, left);
+                    changed = true;
+                }
+                i = i + 2;
+            }
+        }
+    }
+
+    fn literalCodeFrag(i32 code) -> RegexFrag {
+        RegexClass cls = new RegexClass(false);
+        cls.unicode = true;
+        cls.addRange(code, code);
+        this.addCaseVariants(cls);
+        this.hasUnicode = true;
+        return this.classFrag(cls);
+    }
+
     fn literalFrag(u8 value) -> RegexFrag {
+        if (this.wordUnicode && this.ignoreCase) {
+            return this.literalCodeFrag(value as i32);
+        }
         RegexClass dummy = new RegexClass(false);
         i32 encoded = value as i32;
         if (this.ignoreCase) { encoded = encoded | RegexState::STATE_FLAG; }
@@ -687,6 +726,17 @@ class RegexCompiler {
         return -1;
     }
 
+    fn slicePattern(i32 start, i32 length) -> string {
+        if (start < 0 || length <= 0 || start + length > this.bytes.len() as i32) { return ""; }
+        u8[] part = new u8[length as u64];
+        i32 i = 0;
+        while (i < length) {
+            part[i] = this.bytes[start + i];
+            i = i + 1;
+        }
+        return Str::FromBytes(part);
+    }
+
     fn parseGroupName() -> string {
         i32 start = this.pos;
         if (this.atEnd()) { return ""; }
@@ -704,7 +754,7 @@ class RegexCompiler {
         i32 length = this.pos - start;
         if (length <= 0 || length > 64) { return ""; }
         this.pos = this.pos + 1;
-        return Str::Substring(this.pattern, start as u64, length as u64);
+        return this.slicePattern(start, length);
     }
 
     fn parseGroupRefName() -> string {
@@ -724,7 +774,7 @@ class RegexCompiler {
         i32 length = this.pos - start;
         if (length <= 0 || length > 64) { return ""; }
         this.pos = this.pos + 1;
-        return Str::Substring(this.pattern, start as u64, length as u64);
+        return this.slicePattern(start, length);
     }
 
     fn parsePropertyName() -> string {
@@ -739,7 +789,7 @@ class RegexCompiler {
         i32 length = this.pos - start;
         if (length <= 0 || length > 64) { return ""; }
         this.pos = this.pos + 1;
-        return Str::Substring(this.pattern, start as u64, length as u64);
+        return this.slicePattern(start, length);
     }
 
     fn normalizePropertyName(string name) -> string {
@@ -989,8 +1039,54 @@ class RegexCompiler {
         if (c == 41 || c == 124 || c == 42 || c == 43 || c == 63 || c == 123) {
             return this.fail();
         }
+        if (c >= 128 && this.wordUnicode && this.ignoreCase) {
+            i32[] code = new i32[1];
+            i32 step = this.decodePatternCode(this.pos, code);
+            if (step < 0) { return this.fail(); }
+            this.pos = this.pos + step;
+            return this.literalCodeFrag(code[0]);
+        }
         this.pos = this.pos + 1;
         return this.literalFrag(c);
+    }
+
+    fn decodePatternCode(i32 at, i32[] out) -> i32 {
+        i32 length = this.bytes.len() as i32;
+        if (at < 0 || at >= length) { return -1; }
+        i32 b0 = this.bytes[at] as i32;
+        if (b0 < 128) { out[0] = b0; return 1; }
+        if (b0 < 192) { return -1; }
+        if (b0 < 224) {
+            if (at + 1 >= length) { return -1; }
+            i32 b1 = this.bytes[at + 1] as i32;
+            if ((b1 & 192) != 128) { return -1; }
+            i32 code = ((b0 & 31) << 6) | (b1 & 63);
+            if (code < 128) { return -1; }
+            out[0] = code;
+            return 2;
+        }
+        if (b0 < 240) {
+            if (at + 2 >= length) { return -1; }
+            i32 b1 = this.bytes[at + 1] as i32;
+            i32 b2 = this.bytes[at + 2] as i32;
+            if ((b1 & 192) != 128 || (b2 & 192) != 128) { return -1; }
+            i32 code = ((b0 & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63);
+            if (code < 2048 || (code >= 55296 && code <= 57343)) { return -1; }
+            out[0] = code;
+            return 3;
+        }
+        if (b0 < 248) {
+            if (at + 3 >= length) { return -1; }
+            i32 b1 = this.bytes[at + 1] as i32;
+            i32 b2 = this.bytes[at + 2] as i32;
+            i32 b3 = this.bytes[at + 3] as i32;
+            if ((b1 & 192) != 128 || (b2 & 192) != 128 || (b3 & 192) != 128) { return -1; }
+            i32 code = ((b0 & 7) << 18) | ((b1 & 63) << 12) | ((b2 & 63) << 6) | (b3 & 63);
+            if (code < 65536 || code > 1114111) { return -1; }
+            out[0] = code;
+            return 4;
+        }
+        return -1;
     }
 
     fn escapeValue() -> u8 {
@@ -1015,8 +1111,13 @@ class RegexCompiler {
             this.pos = this.pos + 1;
         }
         RegexClass cls = new RegexClass(negated);
+        bool codeMode = this.wordUnicode;
+        if (codeMode) {
+            cls.unicode = true;
+            this.hasUnicode = true;
+        }
         while (!this.atEnd() && this.currentByte() != 93) {
-            u8 first = 0;
+            i32 first = 0;
             if (this.currentByte() == 92) {
                 this.pos = this.pos + 1;
                 if (this.atEnd()) { break; }
@@ -1038,28 +1139,30 @@ class RegexCompiler {
                     }
                     cls.unicode = true;
                     this.hasUnicode = true;
+                    codeMode = true;
                     continue;
                 }
                 if (special == 100 || special == 68 || special == 119 || special == 87 || special == 115 || special == 83) {
-                    bool codeMode = this.wordUnicode || cls.unicode;
+                    bool classCode = codeMode || cls.unicode;
                     i32[] ranges = new i32[0];
                     if (special == 100 || special == 68) {
-                        ranges = this.digitRanges(codeMode);
+                        ranges = this.digitRanges(classCode);
                     } else if (special == 119 || special == 87) {
-                        ranges = this.wordRanges(codeMode);
+                        ranges = this.wordRanges(classCode);
                     } else {
-                        ranges = this.spaceRanges(codeMode);
+                        ranges = this.spaceRanges(classCode);
                     }
                     bool invert = special == 68 || special == 87 || special == 83;
                     if (invert) {
                         i32 limit = 255;
-                        if (codeMode) { limit = 1114111; }
+                        if (classCode) { limit = 1114111; }
                         ranges = UnicodeData::ComplementTo(ranges, limit);
                     }
                     this.appendRanges(cls, ranges);
-                    if (codeMode) {
+                    if (classCode) {
                         cls.unicode = true;
                         this.hasUnicode = true;
+                        codeMode = true;
                     }
                     continue;
                 }
@@ -1067,24 +1170,47 @@ class RegexCompiler {
                 else if (special == 114) { first = 13; }
                 else if (special == 116) { first = 9; }
                 else if (special == 98) { first = 8; }
-                else { first = special; }
+                else { first = special as i32; }
             } else {
-                first = this.currentByte();
-                this.pos = this.pos + 1;
+                if (codeMode && this.currentByte() >= 128) {
+                    i32[] code = new i32[1];
+                    i32 step = this.decodePatternCode(this.pos, code);
+                    if (step < 0) { return this.fail(); }
+                    first = code[0];
+                    this.pos = this.pos + step;
+                } else {
+                    first = this.currentByte() as i32;
+                    this.pos = this.pos + 1;
+                }
             }
             if (!this.atEnd() && this.currentByte() == 45 && this.pos + 1 < this.bytes.len() as i32 && this.bytes[this.pos + 1] != 93) {
                 this.pos = this.pos + 1;
-                u8 last = this.bytes[this.pos];
-                this.pos = this.pos + 1;
-                cls.addRange(first as i32, last as i32);
+                i32 last = 0;
+                if (this.currentByte() == 92) { return this.fail(); }
+                if (codeMode && this.currentByte() >= 128) {
+                    i32[] code = new i32[1];
+                    i32 step = this.decodePatternCode(this.pos, code);
+                    if (step < 0) { return this.fail(); }
+                    last = code[0];
+                    this.pos = this.pos + step;
+                } else {
+                    last = this.currentByte() as i32;
+                    this.pos = this.pos + 1;
+                }
+                cls.addRange(first, last);
             } else {
-                cls.addRange(first as i32, first as i32);
+                cls.addRange(first, first);
             }
         }
         if (!this.atEnd() && this.currentByte() == 93) {
             this.pos = this.pos + 1;
         } else {
             return this.fail();
+        }
+        if (this.wordUnicode && this.ignoreCase) {
+            cls.unicode = true;
+            this.addCaseVariants(cls);
+            this.hasUnicode = true;
         }
         return this.classFrag(cls);
     }
@@ -1249,6 +1375,10 @@ pub class Regex {
         if (left == right) { return true; }
         if (!ignoreCase) { return false; }
         return this.foldByte(left) == right;
+    }
+
+    fn sameFold(i32 left, i32 right) -> bool {
+        return UnicodeData::Fold(left) == UnicodeData::Fold(right);
     }
 
     fn decodeCodePoint(u8[] text, i32 pos, i32[] out) -> i32 {
@@ -1457,12 +1587,28 @@ pub class Regex {
             i32 encoded = this.states[state].ch;
             i32 group = encoded & 255;
             bool ignoreCase = (encoded & RegexState::STATE_FLAG) != 0;
+            bool unicode = (encoded & RegexState::BACKREF_UNICODE) != 0;
             i32 firstSlot = group * 2;
             i32 lastSlot = firstSlot + 1;
             if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return false; }
             i32 first = captures[firstSlot];
             i32 last = captures[lastSlot];
             if (first < 0 || last < first) { return false; }
+            if (unicode) {
+                i32 sourcePos = first;
+                i32 targetPos = pos;
+                while (sourcePos < last) {
+                    i32[] sourceCode = new i32[1];
+                    i32[] targetCode = new i32[1];
+                    i32 sourceStep = this.decodeCodePoint(text, sourcePos, sourceCode);
+                    i32 targetStep = this.decodeCodePoint(text, targetPos, targetCode);
+                    if (sourceStep < 0 || targetStep < 0) { return false; }
+                    if (!this.sameFold(sourceCode[0], targetCode[0])) { return false; }
+                    sourcePos = sourcePos + sourceStep;
+                    targetPos = targetPos + targetStep;
+                }
+                return this.dfs(text, this.states[state].out1, targetPos, captures, budget, target);
+            }
             i32 n = last - first;
             if (pos + n > text.len() as i32) { return false; }
             i32 i = 0;
@@ -1552,12 +1698,29 @@ pub class Regex {
             i32 encoded = this.states[state].ch;
             i32 group = encoded & 255;
             bool ignoreCase = (encoded & RegexState::STATE_FLAG) != 0;
+            bool unicode = (encoded & RegexState::BACKREF_UNICODE) != 0;
             i32 firstSlot = group * 2;
             i32 lastSlot = firstSlot + 1;
             if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return; }
             i32 first = captures[firstSlot];
             i32 last = captures[lastSlot];
             if (first < 0 || last < first) { return; }
+            if (unicode) {
+                i32 sourcePos = first;
+                i32 targetPos = pos;
+                while (sourcePos < last) {
+                    i32[] sourceCode = new i32[1];
+                    i32[] targetCode = new i32[1];
+                    i32 sourceStep = this.decodeCodePoint(text, sourcePos, sourceCode);
+                    i32 targetStep = this.decodeCodePoint(text, targetPos, targetCode);
+                    if (sourceStep < 0 || targetStep < 0) { return; }
+                    if (!this.sameFold(sourceCode[0], targetCode[0])) { return; }
+                    sourcePos = sourcePos + sourceStep;
+                    targetPos = targetPos + targetStep;
+                }
+                this.dfsLongest(text, this.states[state].out1, targetPos, captures, budget, best);
+                return;
+            }
             i32 n = last - first;
             if (pos + n > text.len() as i32) { return; }
             i32 i = 0;

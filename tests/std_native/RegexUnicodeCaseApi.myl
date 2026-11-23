@@ -1,0 +1,139 @@
+// Unicode 大小写折叠：字面量、字符类与反向引用。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> omegaResult = Regex::Compile("(?iu)Ω");
+    match omegaResult {
+        Ok(omegaPattern) => {
+            println_bool(omegaPattern.isMatch("ω"));
+            println_bool(omegaPattern.isMatch("Ω"));
+            println_bool(omegaPattern.isMatch("σ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sigmaResult = Regex::Compile("(?iu)Σ");
+    match sigmaResult {
+        Ok(sigmaPattern) => {
+            println_bool(sigmaPattern.isMatch("σ"));
+            println_bool(sigmaPattern.isMatch("ς"));
+            println_bool(sigmaPattern.isMatch("Σ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> asciiOnlyResult = Regex::Compile("(?i)Ω");
+    match asciiOnlyResult {
+        Ok(asciiOnlyPattern) => {
+            println_bool(asciiOnlyPattern.isMatch("ω"));
+            println_bool(asciiOnlyPattern.isMatch("Ω"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> greekClassResult = Regex::Compile("(?iu)[α-ω]");
+    match greekClassResult {
+        Ok(greekClassPattern) => {
+            println_bool(greekClassPattern.isMatch("Α"));
+            println_bool(greekClassPattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> asciiClassResult = Regex::Compile("(?iu)[a-z]");
+    match asciiClassResult {
+        Ok(asciiClassPattern) => {
+            println_bool(asciiClassPattern.isMatch("A"));
+            println_bool(asciiClassPattern.isMatch("K"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> negatedClassResult = Regex::Compile("(?iu)[^a]");
+    match negatedClassResult {
+        Ok(negatedClassPattern) => {
+            println_bool(negatedClassPattern.isMatch("A"));
+            println_bool(negatedClassPattern.isMatch("b"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> namedBackrefResult = Regex::Compile("(?iu)(?<ch>Ω)\\k<ch>");
+    match namedBackrefResult {
+        Ok(namedBackrefPattern) => {
+            println_bool(namedBackrefPattern.isMatch("Ωω"));
+            println_bool(namedBackrefPattern.isMatch("Ωσ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sigmaBackrefResult = Regex::Compile("(?iu)(Σ)\\1");
+    match sigmaBackrefResult {
+        Ok(sigmaBackrefPattern) => {
+            println_bool(sigmaBackrefPattern.isMatch("Σσ"));
+            println_bool(sigmaBackrefPattern.isMatch("Σς"));
+            println_bool(sigmaBackrefPattern.isMatch("Σa"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> kelvinBackrefResult = Regex::Compile("(?iu)(K)\\1");
+    match kelvinBackrefResult {
+        Ok(kelvinBackrefPattern) => {
+            println_bool(kelvinBackrefPattern.isMatch("KK"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sigmaClassResult = Regex::Compile("(?iu)[Σ]");
+    match sigmaClassResult {
+        Ok(sigmaClassPattern) => {
+            println_bool(sigmaClassPattern.isMatch("ς"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> lowerSigmaClassResult = Regex::Compile("(?iu)[σ]");
+    match lowerSigmaClassResult {
+        Ok(lowerSigmaClassPattern) => {
+            println_bool(lowerSigmaClassPattern.isMatch("Σ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> finalSigmaClassResult = Regex::Compile("(?iu)[ς]");
+    match finalSigmaClassResult {
+        Ok(finalSigmaClassPattern) => {
+            println_bool(finalSigmaClassPattern.isMatch("Σ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sharpSClassResult = Regex::Compile("(?iu)[ß]");
+    match sharpSClassResult {
+        Ok(sharpSClassPattern) => {
+            println_bool(sharpSClassPattern.isMatch("ẞ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> sharpSResult = Regex::Compile("(?iu)ß");
+    match sharpSResult {
+        Ok(sharpSPattern) => {
+            println_bool(sharpSPattern.isMatch("ẞ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> noCaseResult = Regex::Compile("(?u)Σ");
+    match noCaseResult {
+        Ok(noCasePattern) => {
+            println_bool(noCasePattern.isMatch("σ"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    return 0;
+}
