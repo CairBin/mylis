@@ -1,5 +1,6 @@
 // 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、捕获组、
-// 非捕获组 `(?:...)`、先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
+// 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
+// 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
 // 反向引用 `\1`..`\9`、分支 `|`、`* + ?` 与
 // `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持 Unicode 字符类。
 // 匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含断言、反向引用或
@@ -147,6 +148,7 @@ class RegexCompiler {
     i32 groupCount;
     bool hasLookahead;
     bool hasBackref;
+    string[] groupNames;
 
     pub fn init(string source) -> void {
         this.pattern = source;
@@ -159,6 +161,12 @@ class RegexCompiler {
         this.groupCount = 1;
         this.hasLookahead = false;
         this.hasBackref = false;
+        this.groupNames = new string[32];
+        i32 i = 0;
+        while (i < 32) {
+            this.groupNames[i] = "";
+            i = i + 1;
+        }
     }
 
     fn fail() -> RegexFrag {
@@ -493,6 +501,55 @@ class RegexCompiler {
         return atom;
     }
 
+    fn ensureGroupNames(i32 needed) -> void {
+        if (needed <= this.groupNames.len() as i32) { return; }
+        i32 capacity = this.groupNames.len() as i32;
+        while (capacity < needed) { capacity = capacity * 2; }
+        string[] grown = new string[capacity];
+        i32 i = 0;
+        while (i < capacity) {
+            if (i < this.groupNames.len() as i32) {
+                grown[i] = this.groupNames[i];
+            } else {
+                grown[i] = "";
+            }
+            i = i + 1;
+        }
+        this.groupNames = grown;
+    }
+
+    fn recordGroupName(i32 group, string name) -> bool {
+        if (group < 1 || name == "") { return false; }
+        this.ensureGroupNames(group + 1);
+        i32 i = 1;
+        while (i < group) {
+            if (this.groupNames[i] == name) { return false; }
+            i = i + 1;
+        }
+        this.groupNames[group] = name;
+        return true;
+    }
+
+    fn parseGroupName() -> string {
+        i32 start = this.pos;
+        if (this.atEnd()) { return ""; }
+        u8 first = this.currentByte();
+        bool valid = (first >= 65 && first <= 90) || (first >= 97 && first <= 122) || first == 95;
+        if (!valid) { return ""; }
+        this.pos = this.pos + 1;
+        while (!this.atEnd()) {
+            u8 c = this.currentByte();
+            bool part = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;
+            if (!part) { break; }
+            this.pos = this.pos + 1;
+        }
+        if (this.atEnd() || this.currentByte() != 62) { return ""; }
+        i32 length = this.pos - start;
+        if (length <= 0 || length > 64) { return ""; }
+        this.pos = this.pos + 1;
+        return Str::Substring(this.pattern, start as u64, length as u64);
+    }
+
     fn parseAtom() -> RegexFrag {
         if (this.atEnd()) {
             return this.emptyFrag();
@@ -501,6 +558,7 @@ class RegexCompiler {
         if (c == 40) {
             this.pos = this.pos + 1;
             i32 mode = 0;
+            string groupName = "";
             if (!this.atEnd() && this.currentByte() == 63) {
                 this.pos = this.pos + 1;
                 if (!this.atEnd() && this.currentByte() == 58) {
@@ -521,17 +579,29 @@ class RegexCompiler {
                         mode = 5;
                         this.pos = this.pos + 1;
                     } else {
-                        return this.fail();
+                        groupName = this.parseGroupName();
+                        if (groupName == "") { return this.fail(); }
+                        mode = 6;
                     }
+                } else if (!this.atEnd() && this.currentByte() == 80) {
+                    this.pos = this.pos + 1;
+                    if (this.atEnd() || this.currentByte() != 60) { return this.fail(); }
+                    this.pos = this.pos + 1;
+                    groupName = this.parseGroupName();
+                    if (groupName == "") { return this.fail(); }
+                    mode = 6;
                 } else {
                     return this.fail();
                 }
             }
-            bool capture = mode == 0;
+            bool capture = mode == 0 || mode == 6;
             i32 group = 0;
             if (capture) {
                 group = this.groupCount;
                 this.groupCount = this.groupCount + 1;
+                if (mode == 6 && !this.recordGroupName(group, groupName)) {
+                    return this.fail();
+                }
             }
             RegexFrag inner = this.parseAlternation();
             if (this.atEnd() || this.currentByte() != 41) {
@@ -693,7 +763,7 @@ class RegexCompiler {
         i32 matchState = this.addState(RegexState::MATCH, 0, dummy);
         frag = this.saveGroup(frag, 0);
         this.patch(frag, matchState);
-        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start, this.groupCount, this.hasLookahead, this.hasBackref));
+        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start, this.groupCount, this.hasLookahead, this.hasBackref, this.groupNames));
     }
 }
 
@@ -705,8 +775,9 @@ pub class Regex {
     i32 groupCount;
     bool hasLookahead;
     bool hasBackref;
+    string[] groupNames;
 
-    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex, i32 groups, bool lookahead, bool backref) -> void {
+    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex, i32 groups, bool lookahead, bool backref, string[] names) -> void {
         this.pattern = source;
         this.states = table;
         this.stateCount = total;
@@ -714,6 +785,7 @@ pub class Regex {
         this.groupCount = groups;
         this.hasLookahead = lookahead;
         this.hasBackref = backref;
+        this.groupNames = names;
     }
 
     pub static fn Compile(string pattern) -> Result<Regex, IoError> {
@@ -1051,7 +1123,7 @@ pub class Regex {
             i32[] budget = new i32[1];
             budget[0] = this.searchBudget(length);
             if (this.dfs(data, this.start, start, captures, budget, -1)) {
-                return Some(new RegexCaptures(captures));
+                return Some(new RegexCaptures(captures, this.groupNames));
             }
             start = start + 1;
         }

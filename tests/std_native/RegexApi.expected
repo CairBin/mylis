@@ -96,3 +96,17 @@ false
 forward-backref-error
 true
 false
+2
+2026
+11
+year
+month
+hello
+hello
+duplicate-name-error
+invalid-name-error
+true
+false
+2
+x
+y

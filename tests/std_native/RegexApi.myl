@@ -469,5 +469,75 @@ fn main() -> i32 {
         Err(_) => { println("second-backref-compile-error"); }
     }
 
+
+    Result<Regex, IoError> namedResult = Regex::Compile("(?<year>\\d{{4}})-(?<month>\\d{{2}})");
+    match namedResult {
+        Ok(namedPattern) => {
+            Option<RegexCaptures> namedFound = namedPattern.findCaptures("2026-11");
+            match namedFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.textNamed("2026-11", "year"));
+                    println(caps.textNamed("2026-11", "month"));
+                    println(caps.nameOf(1));
+                    println(caps.nameOf(2));
+                }
+                None => { println("named-none"); }
+            }
+        }
+        Err(_) => { println("named-compile-error"); }
+    }
+
+    Result<Regex, IoError> pythonNamedResult = Regex::Compile("(?P<word>[a-z]+)");
+    match pythonNamedResult {
+        Ok(pythonNamedPattern) => {
+            Option<RegexCaptures> pythonNamedFound = pythonNamedPattern.findCaptures("hello");
+            match pythonNamedFound {
+                Some(caps) => {
+                    println(caps.textNamed("hello", "word"));
+                    println(caps.text("hello", 1));
+                }
+                None => { println("python-named-none"); }
+            }
+        }
+        Err(_) => { println("python-named-compile-error"); }
+    }
+
+    Result<Regex, IoError> duplicateNameResult = Regex::Compile("(?<item>x)(?<item>y)");
+    match duplicateNameResult {
+        Ok(_) => { println("duplicate-name-supported"); }
+        Err(_) => { println("duplicate-name-error"); }
+    }
+
+    Result<Regex, IoError> invalidNameResult = Regex::Compile("(?<1item>x)");
+    match invalidNameResult {
+        Ok(_) => { println("invalid-name-supported"); }
+        Err(_) => { println("invalid-name-error"); }
+    }
+
+    Result<Regex, IoError> namedBackrefResult = Regex::Compile("(?<letter>a)\\1");
+    match namedBackrefResult {
+        Ok(namedBackrefPattern) => {
+            println_bool(namedBackrefPattern.isMatch("aa"));
+            println_bool(namedBackrefPattern.isMatch("ab"));
+        }
+        Err(_) => { println("named-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> mixedNameResult = Regex::Compile("(x)(?<tail>y)");
+    match mixedNameResult {
+        Ok(mixedNamePattern) => {
+            Option<RegexCaptures> mixedNameFound = mixedNamePattern.findCaptures("xy");
+            match mixedNameFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("xy", 1));
+                    println(caps.textNamed("xy", "tail"));
+                }
+                None => { println("mixed-name-none"); }
+            }
+        }
+        Err(_) => { println("mixed-name-compile-error"); }
+    }
     return 0;
 }
