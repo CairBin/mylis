@@ -793,7 +793,7 @@ class RegexCompiler {
         i32 start = this.pos;
         while (!this.atEnd() && this.currentByte() != 125) {
             u8 c = this.currentByte();
-            bool part = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;
+            bool part = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 || c == 61 || c == 58 || c == 45;
             if (!part) { return ""; }
             this.pos = this.pos + 1;
         }
@@ -804,7 +804,19 @@ class RegexCompiler {
         return this.slicePattern(start, length);
     }
 
+    fn propertyNameTail(string name, string prefix) -> string {
+        u64 prefixLength = Str::Len(prefix);
+        u64 nameLength = Str::Len(name);
+        if (nameLength <= prefixLength) { return ""; }
+        return Str::Substring(name, prefixLength, nameLength - prefixLength);
+    }
+
     fn normalizePropertyName(string name) -> string {
+        if (Str::StartsWith(name, "Script=")) { return this.normalizePropertyName(this.propertyNameTail(name, "Script=")); }
+        if (Str::StartsWith(name, "Script:")) { return this.normalizePropertyName(this.propertyNameTail(name, "Script:")); }
+        if (Str::StartsWith(name, "sc=")) { return this.normalizePropertyName(this.propertyNameTail(name, "sc=")); }
+        if (Str::StartsWith(name, "sc:")) { return this.normalizePropertyName(this.propertyNameTail(name, "sc:")); }
+        if (Str::StartsWith(name, "Is")) { return this.normalizePropertyName(this.propertyNameTail(name, "Is")); }
         if (name == "Letter") { return "L"; }
         if (name == "Number") { return "N"; }
         if (name == "Decimal_Number") { return "Nd"; }
@@ -812,6 +824,16 @@ class RegexCompiler {
         if (name == "Separator") { return "Z"; }
         if (name == "Symbol") { return "S"; }
         if (name == "Mark") { return "M"; }
+        if (name == "Latn") { return "Latin"; }
+        if (name == "Deva") { return "Devanagari"; }
+        if (name == "Zyyy") { return "Common"; }
+        if (name == "Hani") { return "Han"; }
+        if (name == "Hira") { return "Hiragana"; }
+        if (name == "Kana") { return "Katakana"; }
+        if (name == "Hang") { return "Hangul"; }
+        if (name == "Cyrl") { return "Cyrillic"; }
+        if (name == "Grek") { return "Greek"; }
+        if (name == "Arab") { return "Arabic"; }
         return name;
     }
 

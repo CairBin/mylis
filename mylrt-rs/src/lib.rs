@@ -259,20 +259,20 @@ pub extern "C" fn myrt_f64_to_string_fmt(v: f64, width: i32, precision: i32, fla
     rt().f64_to_string_fmt(v, width, precision, flags)
 }
 #[no_mangle]
-pub extern "C" fn mylrt_str_starts_with(s: *mut MyStr, prefix: *mut MyStr) -> bool {
-    rt().str_starts_with(s, prefix)
+pub extern "C" fn mylrt_str_starts_with(s: *mut MyStr, prefix: *mut MyStr) -> i32 {
+    if rt().str_starts_with(s, prefix) { 1 } else { 0 }
 }
 #[no_mangle]
-pub extern "C" fn mylrt_str_ends_with(s: *mut MyStr, suffix: *mut MyStr) -> bool {
-    rt().str_ends_with(s, suffix)
+pub extern "C" fn mylrt_str_ends_with(s: *mut MyStr, suffix: *mut MyStr) -> i32 {
+    if rt().str_ends_with(s, suffix) { 1 } else { 0 }
 }
 #[no_mangle]
 pub extern "C" fn mylrt_str_index_of(s: *mut MyStr, needle: *mut MyStr) -> i64 {
     rt().str_index_of(s, needle)
 }
 #[no_mangle]
-pub extern "C" fn mylrt_str_contains(s: *mut MyStr, needle: *mut MyStr) -> bool {
-    rt().str_index_of(s, needle) >= 0
+pub extern "C" fn mylrt_str_contains(s: *mut MyStr, needle: *mut MyStr) -> i32 {
+    if rt().str_index_of(s, needle) >= 0 { 1 } else { 0 }
 }
 #[no_mangle]
 pub extern "C" fn mylrt_str_substring(s: *mut MyStr, start: u64, length: u64) -> *mut MyStr {
