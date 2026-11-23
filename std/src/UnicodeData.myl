@@ -277,4 +277,39 @@ pub class UnicodeData {
         }
         return [];
     }
+    pub static fn Complement(i32[] ranges) -> i32[] {
+        i32 count = 0;
+        i32 cursor = 0;
+        i32 i = 0;
+        while (i < ranges.len() as i32) {
+            i32 start = ranges[i];
+            i32 end = ranges[i + 1];
+            if (cursor < start) { count = count + 2; }
+            cursor = end + 1;
+            i = i + 2;
+        }
+        if (cursor <= 1114111) { count = count + 2; }
+        i32[] out = new i32[count];
+        i32 at = 0;
+        cursor = 0;
+        i = 0;
+        while (i < ranges.len() as i32) {
+            i32 start = ranges[i];
+            i32 end = ranges[i + 1];
+            if (cursor < start) {
+                out[at] = cursor;
+                out[at + 1] = start - 1;
+                at = at + 2;
+            }
+            cursor = end + 1;
+            i = i + 2;
+        }
+        if (cursor <= 1114111) {
+            out[at] = cursor;
+            out[at + 1] = 1114111;
+            at = at + 2;
+        }
+        return out;
+    }
+
 }

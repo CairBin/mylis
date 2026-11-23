@@ -16,11 +16,13 @@ import { UnicodeData } from "UnicodeData.myl";
 
 class RegexClass {
     bool negated;
+    bool unicode;
     i32[] ranges;
     i32 count;
 
     pub fn init(bool invert) -> void {
         this.negated = invert;
+        this.unicode = false;
         this.ranges = new i32[16];
         this.count = 0;
     }
@@ -105,6 +107,7 @@ class RegexState {
     pub static const i32 BACKREF = 12;
     pub static const i32 BOUNDARY = 13;
     pub static const i32 CODEPOINT = 14;
+    pub static const i32 CLASS_CODE = 15;
     pub static const i32 LOOK_NEGATIVE = 1;
     pub static const i32 BOUNDARY_NEGATIVE = 1;
     pub static const i32 STATE_FLAG = 256;
@@ -361,7 +364,13 @@ class RegexCompiler {
     fn classFrag(RegexClass cls) -> RegexFrag {
         i32 flags = 0;
         if (this.ignoreCase) { flags = RegexState::STATE_FLAG; }
-        i32 index = this.addState(RegexState::CLASS, flags, cls);
+        i32 op = RegexState::CLASS;
+        if (cls.unicode) {
+            op = RegexState::CLASS_CODE;
+            flags = 0;
+            this.hasUnicode = true;
+        }
+        i32 index = this.addState(op, flags, cls);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
@@ -945,7 +954,24 @@ class RegexCompiler {
                 if (this.atEnd()) { break; }
                 u8 special = this.currentByte();
                 this.pos = this.pos + 1;
-                if (special == 112 || special == 80) { return this.fail(); }
+                if (special == 112 || special == 80) {
+                    if (this.atEnd() || this.currentByte() != 123) { return this.fail(); }
+                    this.pos = this.pos + 1;
+                    string property = this.parsePropertyName();
+                    if (property == "") { return this.fail(); }
+                    property = this.normalizePropertyName(property);
+                    i32[] ranges = UnicodeData::Ranges(property);
+                    if (ranges.len() == 0) { return this.fail(); }
+                    if (special == 80) { ranges = UnicodeData::Complement(ranges); }
+                    i32 i = 0;
+                    while (i < ranges.len() as i32) {
+                        cls.addRange(ranges[i], ranges[i + 1]);
+                        i = i + 2;
+                    }
+                    cls.unicode = true;
+                    this.hasUnicode = true;
+                    continue;
+                }
                 if (special == 100) { cls.addDigit(); continue; }
                 if (special == 119) { cls.addWord(); continue; }
                 if (special == 115) { cls.addSpace(); continue; }
@@ -1323,7 +1349,7 @@ pub class Regex {
             }
             return this.dfs(text, this.states[state].out1, pos + n, captures, budget, target);
         }
-        if (op == RegexState::CODEPOINT) {
+        if (op == RegexState::CODEPOINT || op == RegexState::CLASS_CODE) {
             i32[] code = new i32[1];
             i32 step = this.decodeCodePoint(text, pos, code);
             if (step < 0) { return false; }
@@ -1419,7 +1445,7 @@ pub class Regex {
             this.dfsLongest(text, this.states[state].out1, pos + n, captures, budget, best);
             return;
         }
-        if (op == RegexState::CODEPOINT) {
+        if (op == RegexState::CODEPOINT || op == RegexState::CLASS_CODE) {
             i32[] code = new i32[1];
             i32 step = this.decodeCodePoint(text, pos, code);
             if (step < 0) { return; }

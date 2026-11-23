@@ -123,8 +123,8 @@ fn main() -> i32 {
 
     Result<Regex, IoError> classPropertyResult = Regex::Compile("[\\p{{L}}]");
     match classPropertyResult {
-        Ok(_) => { println_bool(false); }
-        Err(_) => { println_bool(true); }
+        Ok(classPropertyPattern) => { println_bool(classPropertyPattern.isMatch("a")); }
+        Err(_) => { println_bool(false); }
     }
 
     Result<Regex, IoError> notHanResult = Regex::Compile("\\P{{Han}}");

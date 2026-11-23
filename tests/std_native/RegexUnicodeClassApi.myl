@@ -1,0 +1,102 @@
+// Unicode 字符类：\p / \P 与普通字符混用。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> mixedResult = Regex::Compile("[\\p{{L}}\\p{{Nd}}_]+");
+    match mixedResult {
+        Ok(mixedPattern) => {
+            println_bool(mixedPattern.isMatch("a1_中"));
+            println_bool(mixedPattern.isMatch("!"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> notHanResult = Regex::Compile("[^\\p{{Han}}]+");
+    match notHanResult {
+        Ok(notHanPattern) => {
+            println_bool(notHanPattern.isMatch("abc"));
+            println_bool(notHanPattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> complementResult = Regex::Compile("[\\P{{Han}}]+");
+    match complementResult {
+        Ok(complementPattern) => {
+            println_bool(complementPattern.isMatch("abc"));
+            println_bool(complementPattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> invertedComplementResult = Regex::Compile("[^\\P{{Han}}]+");
+    match invertedComplementResult {
+        Ok(invertedPattern) => {
+            println_bool(invertedPattern.isMatch("中"));
+            println_bool(invertedPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> hanDigitResult = Regex::Compile("[\\p{{Han}}0-9]+");
+    match hanDigitResult {
+        Ok(hanDigitPattern) => {
+            println_bool(hanDigitPattern.isMatch("中1"));
+            println_bool(hanDigitPattern.isMatch("ab"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> arabicDigitResult = Regex::Compile("[\\p{{Nd}}]+");
+    match arabicDigitResult {
+        Ok(arabicDigitPattern) => {
+            println_bool(arabicDigitPattern.isMatch("١٢٣"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> scriptResult = Regex::Compile("[\\p{{Greek}}\\p{{Han}}]");
+    match scriptResult {
+        Ok(scriptPattern) => {
+            println_bool(scriptPattern.isMatch("Ω"));
+            println_bool(scriptPattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> repeatResult = Regex::Compile("[\\p{{L}}]{{2}}");
+    match repeatResult {
+        Ok(repeatPattern) => {
+            println_bool(repeatPattern.isMatch("中文"));
+            println_bool(repeatPattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> singleResult = Regex::Compile("[\\p{{L}}]");
+    match singleResult {
+        Ok(singlePattern) => {
+            println_bool(singlePattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> notLetterResult = Regex::Compile("[^\\p{{L}}]");
+    match notLetterResult {
+        Ok(notLetterPattern) => {
+            println_bool(notLetterPattern.isMatch("1"));
+            println_bool(notLetterPattern.isMatch("a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> unknownResult = Regex::Compile("[\\p{{Unknown}}]");
+    match unknownResult {
+        Ok(_) => { println_bool(false); }
+        Err(_) => { println_bool(true); }
+    }
+
+    return 0;
+}
