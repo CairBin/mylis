@@ -574,5 +574,98 @@ fn main() -> i32 {
         }
         Err(_) => { println("replace-empty-compile-error"); }
     }
+
+    Result<Regex, IoError> boundaryResult = Regex::Compile("\\bword\\b");
+    match boundaryResult {
+        Ok(boundaryPattern) => {
+            println_bool(boundaryPattern.isMatch("a word here"));
+            println_bool(boundaryPattern.isMatch("sword"));
+            println_bool(boundaryPattern.isMatch("word"));
+            println_bool(boundaryPattern.isMatch("word!"));
+        }
+        Err(_) => { println("boundary-compile-error"); }
+    }
+
+    Result<Regex, IoError> nonBoundaryResult = Regex::Compile("\\Bword");
+    match nonBoundaryResult {
+        Ok(nonBoundaryPattern) => {
+            println_bool(nonBoundaryPattern.isMatch("sword"));
+            println_bool(nonBoundaryPattern.isMatch("a word"));
+            println_bool(nonBoundaryPattern.isMatch("word"));
+        }
+        Err(_) => { println("non-boundary-compile-error"); }
+    }
+
+    Result<Regex, IoError> boundaryCaptureResult = Regex::Compile("\\b(\\w+)\\b");
+    match boundaryCaptureResult {
+        Ok(boundaryCapturePattern) => {
+            Option<RegexCaptures> boundaryFound = boundaryCapturePattern.findCaptures("hi there");
+            match boundaryFound {
+                Some(caps) => { println(caps.text("hi there", 1)); }
+                None => { println("boundary-capture-none"); }
+            }
+        }
+        Err(_) => { println("boundary-capture-compile-error"); }
+    }
+
+    Result<Regex, IoError> boundaryReplaceResult = Regex::Compile("\\b");
+    match boundaryReplaceResult {
+        Ok(boundaryReplacePattern) => {
+            println(boundaryReplacePattern.replaceAll("a b", "_"));
+        }
+        Err(_) => { println("boundary-replace-compile-error"); }
+    }
+
+    Result<Regex, IoError> splitResult = Regex::Compile("[,;]");
+    match splitResult {
+        Ok(splitPattern) => {
+            Vec<string> parts = splitPattern.split("a,b;c");
+            println_i64(parts.len());
+            i64 i = 0;
+            while (i < parts.len()) {
+                println("[" + parts.get(i) + "]");
+                i = i + 1;
+            }
+            Vec<string> trailing = splitPattern.split("a,b,");
+            println_i64(trailing.len());
+            i = 0;
+            while (i < trailing.len()) {
+                println("[" + trailing.get(i) + "]");
+                i = i + 1;
+            }
+            Vec<string> whole = splitPattern.split("abc");
+            println_i64(whole.len());
+            println("[" + whole.get(0) + "]");
+        }
+        Err(_) => { println("split-compile-error"); }
+    }
+
+    Result<Regex, IoError> splitSpaceResult = Regex::Compile("\\s+");
+    match splitSpaceResult {
+        Ok(splitSpacePattern) => {
+            Vec<string> words = splitSpacePattern.split("a  b\tc");
+            println_i64(words.len());
+            i64 i = 0;
+            while (i < words.len()) {
+                println("[" + words.get(i) + "]");
+                i = i + 1;
+            }
+        }
+        Err(_) => { println("split-space-compile-error"); }
+    }
+
+    Result<Regex, IoError> splitBoundaryResult = Regex::Compile("\\b");
+    match splitBoundaryResult {
+        Ok(splitBoundaryPattern) => {
+            Vec<string> pieces = splitBoundaryPattern.split("a b");
+            println_i64(pieces.len());
+            i64 i = 0;
+            while (i < pieces.len()) {
+                println("[" + pieces.get(i) + "]");
+                i = i + 1;
+            }
+        }
+        Err(_) => { println("split-boundary-compile-error"); }
+    }
     return 0;
 }

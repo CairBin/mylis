@@ -1,4 +1,4 @@
-// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、捕获组、
+// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、`\b/\B`、捕获组、
 // 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
 // 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
 // 反向引用 `\1`..`\9`、分支 `|`、`* + ?` 与
@@ -85,7 +85,9 @@ class RegexState {
     pub static const i32 LOOK = 10;
     pub static const i32 ASSERT_MATCH = 11;
     pub static const i32 BACKREF = 12;
+    pub static const i32 BOUNDARY = 13;
     pub static const i32 LOOK_NEGATIVE = 1;
+    pub static const i32 BOUNDARY_NEGATIVE = 1;
     pub static const i32 LOOK_BEHIND = 2;
 
     i32 op;
@@ -341,6 +343,14 @@ class RegexCompiler {
     fn anchorFrag(i32 op) -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
         i32 index = this.addState(op, 0, dummy);
+        RegexFrag frag = new RegexFrag(index);
+        frag.addOut(index * 2);
+        return frag;
+    }
+
+    fn boundaryFrag(i32 flags) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 index = this.addState(RegexState::BOUNDARY, flags, dummy);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
@@ -654,6 +664,12 @@ class RegexCompiler {
                 }
                 return this.backrefFrag(group);
             }
+            if (escaped == 98) {
+                return this.boundaryFrag(0);
+            }
+            if (escaped == 66) {
+                return this.boundaryFrag(RegexState::BOUNDARY_NEGATIVE);
+            }
             if (escaped == 100) {
                 RegexClass digits = new RegexClass(false);
                 digits.addDigit();
@@ -732,6 +748,7 @@ class RegexCompiler {
                 if (special == 110) { first = 10; }
                 else if (special == 114) { first = 13; }
                 else if (special == 116) { first = 9; }
+                else if (special == 98) { first = 8; }
                 else { first = special; }
             } else {
                 first = this.currentByte();
@@ -794,30 +811,49 @@ pub class Regex {
     }
 
 
-    fn addState(i32 stateIndex, i32 pos, i32 textLength, bool[] seen, i32[] out, i32[] count) -> void {
+    fn isWordByte(u8 value) -> bool {
+        i32 code = value as i32;
+        return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 95;
+    }
+
+    fn boundaryAt(u8[] text, i32 pos, i32 flags) -> bool {
+        bool left = pos > 0 && this.isWordByte(text[pos - 1]);
+        bool right = pos < text.len() as i32 && this.isWordByte(text[pos]);
+        bool boundary = left != right;
+        if ((flags & RegexState::BOUNDARY_NEGATIVE) != 0) { return !boundary; }
+        return boundary;
+    }
+
+    fn addState(i32 stateIndex, u8[] text, i32 pos, bool[] seen, i32[] out, i32[] count) -> void {
         if (stateIndex < 0 || stateIndex >= this.stateCount || seen[stateIndex]) {
             return;
         }
         seen[stateIndex] = true;
         i32 op = this.states[stateIndex].op;
         if (op == RegexState::SPLIT) {
-            this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
-            this.addState(this.states[stateIndex].out2, pos, textLength, seen, out, count);
+            this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
+            this.addState(this.states[stateIndex].out2, text, pos, seen, out, count);
             return;
         }
         if (op == RegexState::EPS || op == RegexState::SAVE) {
-            this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
             return;
         }
         if (op == RegexState::BOL) {
             if (pos == 0) {
-                this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+                this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
             }
             return;
         }
         if (op == RegexState::EOL) {
-            if (pos == textLength) {
-                this.addState(this.states[stateIndex].out1, pos, textLength, seen, out, count);
+            if (pos == text.len() as i32) {
+                this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
+            }
+            return;
+        }
+        if (op == RegexState::BOUNDARY) {
+            if (this.boundaryAt(text, pos, this.states[stateIndex].ch)) {
+                this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
             }
             return;
         }
@@ -857,7 +893,7 @@ pub class Regex {
         i32[] currentCount = new i32[1];
         currentCount[0] = 0;
         bool[] seen = new bool[this.stateCount];
-        this.addState(this.start, start, length, seen, current, currentCount);
+        this.addState(this.start, text, start, seen, current, currentCount);
         i64 best = -1;
         if (this.hasMatch(current, currentCount[0])) {
             best = start as i64;
@@ -872,7 +908,7 @@ pub class Regex {
             while (i < currentCount[0]) {
                 i32 stateIndex = current[i];
                 if (this.accepts(stateIndex, text[pos])) {
-                    this.addState(this.states[stateIndex].out1, pos + 1, length, nextSeen, next, nextCount);
+                    this.addState(this.states[stateIndex].out1, text, pos + 1, nextSeen, next, nextCount);
                 }
                 i = i + 1;
             }
@@ -956,6 +992,10 @@ pub class Regex {
         }
         if (op == RegexState::EOL) {
             if (pos == text.len() as i32) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
+            return false;
+        }
+        if (op == RegexState::BOUNDARY) {
+            if (this.boundaryAt(text, pos, this.states[state].ch)) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
             return false;
         }
         if (op == RegexState::EPS) {
@@ -1045,6 +1085,12 @@ pub class Regex {
         }
         if (op == RegexState::EOL) {
             if (pos == text.len() as i32) {
+                this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
+            }
+            return;
+        }
+        if (op == RegexState::BOUNDARY) {
+            if (this.boundaryAt(text, pos, this.states[state].ch)) {
                 this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
             }
             return;
@@ -1180,6 +1226,32 @@ pub class Regex {
                 None => { break; }
             }
         }
+        return out;
+    }
+
+    // 按正则分隔符切分；零宽匹配不消耗字符，但在该位置切分一次。
+    pub fn split(string text) -> Vec<string> {
+        u8[] data = Str::Bytes(text);
+        Vec<string> out = new Vec<string>();
+        i64 cursor = 0;
+        i64 last = 0;
+        i64 length = data.len() as i64;
+        while (cursor <= length) {
+            Option<RegexMatch> found = this.findBytes(data, cursor as i32);
+            match found {
+                Some(value) => {
+                    out.push(Str::Substring(text, last as u64, (value.start - last) as u64));
+                    last = value.end;
+                    if (value.end == value.start) {
+                        cursor = value.end + 1;
+                    } else {
+                        cursor = value.end;
+                    }
+                }
+                None => { break; }
+            }
+        }
+        out.push(Str::Substring(text, last as u64, (length - last) as u64));
         return out;
     }
 
