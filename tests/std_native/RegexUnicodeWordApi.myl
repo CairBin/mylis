@@ -1,0 +1,155 @@
+// Unicode 感知模式：\w / \d / \s / \b 按码点工作。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> boundaryResult = Regex::Compile("(?u)\\b中文\\b");
+    match boundaryResult {
+        Ok(boundaryPattern) => {
+            println_bool(boundaryPattern.isMatch("中文"));
+            println_bool(boundaryPattern.isMatch("中a"));
+            println_bool(boundaryPattern.isMatch("中文a"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> asciiBoundaryResult = Regex::Compile("\\b中文\\b");
+    match asciiBoundaryResult {
+        Ok(asciiBoundaryPattern) => {
+            println_bool(asciiBoundaryPattern.isMatch("中文"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> englishBoundaryResult = Regex::Compile("(?u)\\babc\\b");
+    match englishBoundaryResult {
+        Ok(englishBoundaryPattern) => {
+            println_bool(englishBoundaryPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> scopedBoundaryResult = Regex::Compile("(?u:\\b中文\\b)");
+    match scopedBoundaryResult {
+        Ok(scopedBoundaryPattern) => {
+            println_bool(scopedBoundaryPattern.isMatch("中文"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> disabledBoundaryResult = Regex::Compile("(?u)(?-u)\\b中文\\b");
+    match disabledBoundaryResult {
+        Ok(disabledBoundaryPattern) => {
+            println_bool(disabledBoundaryPattern.isMatch("中文"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> wordResult = Regex::Compile("(?u)\\w+");
+    match wordResult {
+        Ok(wordPattern) => {
+            println_bool(wordPattern.isMatch("中文abc123"));
+            println_bool(wordPattern.isMatch("!!"));
+            println_bool(wordPattern.isMatch("中"));
+            println_bool(wordPattern.isMatch("_"));
+            println_bool(wordPattern.isMatch("-"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> asciiWordResult = Regex::Compile("\\w+");
+    match asciiWordResult {
+        Ok(asciiWordPattern) => {
+            println_bool(asciiWordPattern.isMatch("中文"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> digitResult = Regex::Compile("(?u)\\d+");
+    match digitResult {
+        Ok(digitPattern) => {
+            println_bool(digitPattern.isMatch("١٢٣"));
+            println_bool(digitPattern.isMatch("abc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> spaceResult = Regex::Compile("(?u)\\s+");
+    match spaceResult {
+        Ok(spacePattern) => {
+            println_bool(spacePattern.isMatch("　"));
+            println_bool(spacePattern.isMatch("\n"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> nonWordResult = Regex::Compile("(?u)\\W");
+    match nonWordResult {
+        Ok(nonWordPattern) => {
+            println_bool(nonWordPattern.isMatch("中"));
+            println_bool(nonWordPattern.isMatch("!"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classWordResult = Regex::Compile("(?u)[\\w]+");
+    match classWordResult {
+        Ok(classWordPattern) => {
+            println_bool(classWordPattern.isMatch("中文"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classNonWordResult = Regex::Compile("(?u)[\\W]");
+    match classNonWordResult {
+        Ok(classNonWordPattern) => {
+            println_bool(classNonWordPattern.isMatch("中"));
+            println_bool(classNonWordPattern.isMatch("!"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classDigitResult = Regex::Compile("(?u)[\\d]+");
+    match classDigitResult {
+        Ok(classDigitPattern) => {
+            println_bool(classDigitPattern.isMatch("١٢٣"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classSpaceResult = Regex::Compile("(?u)[\\s]");
+    match classSpaceResult {
+        Ok(classSpacePattern) => {
+            println_bool(classSpacePattern.isMatch("　"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classNegatedWordResult = Regex::Compile("(?u)[^\\w]");
+    match classNegatedWordResult {
+        Ok(classNegatedWordPattern) => {
+            println_bool(classNegatedWordPattern.isMatch("中"));
+            println_bool(classNegatedWordPattern.isMatch("!"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classNonDigitResult = Regex::Compile("(?u)[\\D]");
+    match classNonDigitResult {
+        Ok(classNonDigitPattern) => {
+            println_bool(classNonDigitPattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> classNonSpaceResult = Regex::Compile("(?u)[\\S]");
+    match classNonSpaceResult {
+        Ok(classNonSpacePattern) => {
+            println_bool(classNonSpacePattern.isMatch("中"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    return 0;
+}

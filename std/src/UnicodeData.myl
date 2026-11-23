@@ -278,6 +278,30 @@ pub class UnicodeData {
         return [];
     }
     pub static fn Complement(i32[] ranges) -> i32[] {
+        return UnicodeData::ComplementTo(ranges, 1114111);
+    }
+
+    static fn SortRanges(i32[] ranges) -> void {
+        i32 i = 0;
+        while (i + 1 < ranges.len() as i32) {
+            i32 j = i + 2;
+            while (j + 1 < ranges.len() as i32) {
+                if (ranges[j] < ranges[i]) {
+                    i32 first = ranges[i];
+                    i32 last = ranges[i + 1];
+                    ranges[i] = ranges[j];
+                    ranges[i + 1] = ranges[j + 1];
+                    ranges[j] = first;
+                    ranges[j + 1] = last;
+                }
+                j = j + 2;
+            }
+            i = i + 2;
+        }
+    }
+
+    pub static fn ComplementTo(i32[] ranges, i32 limit) -> i32[] {
+        UnicodeData::SortRanges(ranges);
         i32 count = 0;
         i32 cursor = 0;
         i32 i = 0;
@@ -288,7 +312,7 @@ pub class UnicodeData {
             cursor = end + 1;
             i = i + 2;
         }
-        if (cursor <= 1114111) { count = count + 2; }
+        if (cursor <= limit) { count = count + 2; }
         i32[] out = new i32[count];
         i32 at = 0;
         cursor = 0;
@@ -304,9 +328,9 @@ pub class UnicodeData {
             cursor = end + 1;
             i = i + 2;
         }
-        if (cursor <= 1114111) {
+        if (cursor <= limit) {
             out[at] = cursor;
-            out[at + 1] = 1114111;
+            out[at + 1] = limit;
             at = at + 2;
         }
         return out;
