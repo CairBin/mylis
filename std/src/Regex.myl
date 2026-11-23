@@ -834,6 +834,26 @@ class RegexCompiler {
         if (name == "Enclosing_Mark") { return "Me"; }
         if (name == "Letter_Number") { return "Nl"; }
         if (name == "Other_Number") { return "No"; }
+        if (name == "Connector_Punctuation") { return "Pc"; }
+        if (name == "Dash_Punctuation") { return "Pd"; }
+        if (name == "Open_Punctuation") { return "Ps"; }
+        if (name == "Close_Punctuation") { return "Pe"; }
+        if (name == "Initial_Punctuation") { return "Pi"; }
+        if (name == "Final_Punctuation") { return "Pf"; }
+        if (name == "Other_Punctuation") { return "Po"; }
+        if (name == "Math_Symbol") { return "Sm"; }
+        if (name == "Currency_Symbol") { return "Sc"; }
+        if (name == "Modifier_Symbol") { return "Sk"; }
+        if (name == "Other_Symbol") { return "So"; }
+        if (name == "Space_Separator") { return "Zs"; }
+        if (name == "Line_Separator") { return "Zl"; }
+        if (name == "Paragraph_Separator") { return "Zp"; }
+        if (name == "Control") { return "Cc"; }
+        if (name == "Format") { return "Cf"; }
+        if (name == "Surrogate") { return "Cs"; }
+        if (name == "Private_Use") { return "Co"; }
+        if (name == "Unassigned") { return "Cn"; }
+        if (name == "Other") { return "C"; }
         if (name == "Latn") { return "Latin"; }
         if (name == "Deva") { return "Devanagari"; }
         if (name == "Zyyy") { return "Common"; }

@@ -767,6 +767,8 @@ run_stdflag_named_case RegexUnicodeScriptApi mir
 run_stdflag_named_case RegexUnicodeScriptApi ast
 run_stdflag_named_case RegexUnicodeCategoryApi mir
 run_stdflag_named_case RegexUnicodeCategoryApi ast
+run_stdflag_named_case RegexUnicodeCategoryMoreApi mir
+run_stdflag_named_case RegexUnicodeCategoryMoreApi ast
 run_stdflag_named_case HashApi mir
 run_stdflag_named_case HashApi ast
 run_stdflag_named_case GzipApi mir
