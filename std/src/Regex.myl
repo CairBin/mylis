@@ -1,8 +1,9 @@
 // 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、捕获组、
-// 非捕获组 `(?:...)`、先行断言 `(?=...)` / `(?!...)`、反向引用 `\1`..`\9`、分支 `|`、`* + ?` 与
-// `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持后行断言和 Unicode
-// 字符类。匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含先行断言、
-// 反向引用或 findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
+// 非捕获组 `(?:...)`、先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
+// 反向引用 `\1`..`\9`、分支 `|`、`* + ?` 与
+// `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持 Unicode 字符类。
+// 匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含断言、反向引用或
+// findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
 import { Str } from "core/Str";
 import { StringBuilder } from "StringBuilder.myl";
 import { IoError } from "IoError.myl";
@@ -83,6 +84,8 @@ class RegexState {
     pub static const i32 LOOK = 10;
     pub static const i32 ASSERT_MATCH = 11;
     pub static const i32 BACKREF = 12;
+    pub static const i32 LOOK_NEGATIVE = 1;
+    pub static const i32 LOOK_BEHIND = 2;
 
     i32 op;
     i32 out1;
@@ -219,12 +222,13 @@ class RegexCompiler {
         return result;
     }
 
-    fn lookaheadFrag(RegexFrag body, bool negative) -> RegexFrag {
+    fn lookaroundFrag(RegexFrag body, bool negative, bool behind) -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
         i32 endpoint = this.addState(RegexState::ASSERT_MATCH, 0, dummy);
         this.patch(body, endpoint);
         i32 kind = 0;
-        if (negative) { kind = 1; }
+        if (negative) { kind = kind | RegexState::LOOK_NEGATIVE; }
+        if (behind) { kind = kind | RegexState::LOOK_BEHIND; }
         i32 look = this.addState(RegexState::LOOK, kind, dummy);
         this.states[look].out2 = body.start;
         RegexFrag result = new RegexFrag(look);
@@ -508,6 +512,17 @@ class RegexCompiler {
                 } else if (!this.atEnd() && this.currentByte() == 33) {
                     mode = 3;
                     this.pos = this.pos + 1;
+                } else if (!this.atEnd() && this.currentByte() == 60) {
+                    this.pos = this.pos + 1;
+                    if (!this.atEnd() && this.currentByte() == 61) {
+                        mode = 4;
+                        this.pos = this.pos + 1;
+                    } else if (!this.atEnd() && this.currentByte() == 33) {
+                        mode = 5;
+                        this.pos = this.pos + 1;
+                    } else {
+                        return this.fail();
+                    }
                 } else {
                     return this.fail();
                 }
@@ -524,10 +539,16 @@ class RegexCompiler {
             }
             this.pos = this.pos + 1;
             if (mode == 2) {
-                return this.lookaheadFrag(inner, false);
+                return this.lookaroundFrag(inner, false, false);
             }
             if (mode == 3) {
-                return this.lookaheadFrag(inner, true);
+                return this.lookaroundFrag(inner, true, false);
+            }
+            if (mode == 4) {
+                return this.lookaroundFrag(inner, false, true);
+            }
+            if (mode == 5) {
+                return this.lookaroundFrag(inner, true, true);
             }
             if (capture) {
                 return this.saveGroup(inner, group);
@@ -794,7 +815,7 @@ pub class Regex {
         return best;
     }
 
-    fn probeLook(u8[] text, i32 state, i32 pos, i32[] captures, i32[] budget) -> i32 {
+    fn probeFrom(u8[] text, i32 bodyStart, i32 start, i32 target, i32[] captures, i32[] budget, bool commit) -> i32 {
         if (budget[0] <= 0) { return -1; }
         i32[] copy = new i32[captures.len()];
         i32 i = 0;
@@ -802,9 +823,9 @@ pub class Regex {
             copy[i] = captures[i];
             i = i + 1;
         }
-        bool matched = this.dfs(text, this.states[state].out2, pos, copy, budget);
+        bool matched = this.dfs(text, bodyStart, start, copy, budget, target);
         if (!matched && budget[0] <= 0) { return -1; }
-        if (matched && this.states[state].ch == 0) {
+        if (matched && commit) {
             i = 2;
             while (i < captures.len() as i32) {
                 captures[i] = copy[i];
@@ -815,12 +836,31 @@ pub class Regex {
         return 0;
     }
 
-    fn dfs(u8[] text, i32 state, i32 pos, i32[] captures, i32[] budget) -> bool {
+    fn probeLook(u8[] text, i32 state, i32 pos, i32[] captures, i32[] budget) -> i32 {
+        i32 flags = this.states[state].ch;
+        bool negative = (flags & RegexState::LOOK_NEGATIVE) != 0;
+        bool behind = (flags & RegexState::LOOK_BEHIND) != 0;
+        bool commit = !negative;
+        i32 bodyStart = this.states[state].out2;
+        if (!behind) {
+            return this.probeFrom(text, bodyStart, pos, -1, captures, budget, commit);
+        }
+        i32 start = pos;
+        while (start >= 0) {
+            i32 probed = this.probeFrom(text, bodyStart, start, pos, captures, budget, commit);
+            if (probed != 0) { return probed; }
+            start = start - 1;
+        }
+        return 0;
+    }
+
+    fn dfs(u8[] text, i32 state, i32 pos, i32[] captures, i32[] budget, i32 target) -> bool {
         if (budget[0] <= 0) { return false; }
         budget[0] = budget[0] - 1;
         if (state < 0 || state >= this.stateCount) { return false; }
         i32 op = this.states[state].op;
         if (op == RegexState::MATCH || op == RegexState::ASSERT_MATCH) {
+            if (target >= 0 && pos != target) { return false; }
             captures[1] = pos;
             return true;
         }
@@ -829,25 +869,25 @@ pub class Regex {
             if (slot < 0 || slot >= captures.len() as i32) { return false; }
             i32 old = captures[slot];
             captures[slot] = pos;
-            bool matched = this.dfs(text, this.states[state].out1, pos, captures, budget);
+            bool matched = this.dfs(text, this.states[state].out1, pos, captures, budget, target);
             if (matched) { return true; }
             captures[slot] = old;
             return false;
         }
         if (op == RegexState::SPLIT) {
-            if (this.dfs(text, this.states[state].out1, pos, captures, budget)) { return true; }
-            return this.dfs(text, this.states[state].out2, pos, captures, budget);
+            if (this.dfs(text, this.states[state].out1, pos, captures, budget, target)) { return true; }
+            return this.dfs(text, this.states[state].out2, pos, captures, budget, target);
         }
         if (op == RegexState::BOL) {
-            if (pos == 0) { return this.dfs(text, this.states[state].out1, pos, captures, budget); }
+            if (pos == 0) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
             return false;
         }
         if (op == RegexState::EOL) {
-            if (pos == text.len() as i32) { return this.dfs(text, this.states[state].out1, pos, captures, budget); }
+            if (pos == text.len() as i32) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
             return false;
         }
         if (op == RegexState::EPS) {
-            return this.dfs(text, this.states[state].out1, pos, captures, budget);
+            return this.dfs(text, this.states[state].out1, pos, captures, budget, target);
         }
         if (op == RegexState::LOOK) {
             i32[] before = new i32[captures.len()];
@@ -858,13 +898,13 @@ pub class Regex {
             }
             i32 probed = this.probeLook(text, state, pos, captures, budget);
             if (probed < 0) { return false; }
-            bool positive = this.states[state].ch == 0;
+            bool positive = (this.states[state].ch & RegexState::LOOK_NEGATIVE) == 0;
             if (positive) {
                 if (probed == 0) { return false; }
             } else {
                 if (probed == 1) { return false; }
             }
-            bool matched = this.dfs(text, this.states[state].out1, pos, captures, budget);
+            bool matched = this.dfs(text, this.states[state].out1, pos, captures, budget, target);
             if (!matched) {
                 i = 0;
                 while (i < captures.len() as i32) {
@@ -889,11 +929,11 @@ pub class Regex {
                 if (text[first + i] != text[pos + i]) { return false; }
                 i = i + 1;
             }
-            return this.dfs(text, this.states[state].out1, pos + n, captures, budget);
+            return this.dfs(text, this.states[state].out1, pos + n, captures, budget, target);
         }
         if (pos >= text.len() as i32) { return false; }
         if (!this.accepts(state, text[pos])) { return false; }
-        return this.dfs(text, this.states[state].out1, pos + 1, captures, budget);
+        return this.dfs(text, this.states[state].out1, pos + 1, captures, budget, target);
     }
 
     fn searchBudget(i32 length) -> i32 {
@@ -944,7 +984,7 @@ pub class Regex {
         if (op == RegexState::LOOK) {
             i32 probed = this.probeLook(text, state, pos, captures, budget);
             if (probed < 0) { return; }
-            bool positive = this.states[state].ch == 0;
+            bool positive = (this.states[state].ch & RegexState::LOOK_NEGATIVE) == 0;
             if (positive && probed == 0) { return; }
             if (!positive && probed == 1) { return; }
             this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
@@ -1010,7 +1050,7 @@ pub class Regex {
             }
             i32[] budget = new i32[1];
             budget[0] = this.searchBudget(length);
-            if (this.dfs(data, this.start, start, captures, budget)) {
+            if (this.dfs(data, this.start, start, captures, budget, -1)) {
                 return Some(new RegexCaptures(captures));
             }
             start = start + 1;

@@ -295,10 +295,81 @@ fn main() -> i32 {
         Err(_) => { println("longest-look-compile-error"); }
     }
 
-    Result<Regex, IoError> lookBehindResult = Regex::Compile("(?<=a)b");
-    match lookBehindResult {
-        Ok(_) => { println("lookbehind-supported"); }
-        Err(_) => { println("lookbehind-error"); }
+    Result<Regex, IoError> behindResult = Regex::Compile("(?<=foo)bar");
+    match behindResult {
+        Ok(behindPattern) => {
+            println_bool(behindPattern.isMatch("foobar"));
+            println_bool(behindPattern.isMatch("barfoo"));
+            Option<RegexMatch> behindFound = behindPattern.find("xxfoobar");
+            match behindFound {
+                Some(value) => {
+                    println_i64(value.start);
+                    println_i64(value.end);
+                    println(value.text("xxfoobar"));
+                }
+                None => { println("behind-none"); }
+            }
+        }
+        Err(_) => { println("behind-compile-error"); }
+    }
+
+    Result<Regex, IoError> negativeBehindResult = Regex::Compile("(?<!foo)bar");
+    match negativeBehindResult {
+        Ok(negativeBehindPattern) => {
+            println_bool(negativeBehindPattern.isMatch("bazbar"));
+            println_bool(negativeBehindPattern.isMatch("foobar"));
+        }
+        Err(_) => { println("negative-behind-compile-error"); }
+    }
+
+    Result<Regex, IoError> variableBehindResult = Regex::Compile("(?<=a|bc)d");
+    match variableBehindResult {
+        Ok(variableBehindPattern) => {
+            println_bool(variableBehindPattern.isMatch("ad"));
+            println_bool(variableBehindPattern.isMatch("bcd"));
+            println_bool(variableBehindPattern.isMatch("xd"));
+        }
+        Err(_) => { println("variable-behind-compile-error"); }
+    }
+
+    Result<Regex, IoError> behindCaptureResult = Regex::Compile("(?<=(a))b");
+    match behindCaptureResult {
+        Ok(behindCapturePattern) => {
+            Option<RegexCaptures> behindCaptureFound = behindCapturePattern.findCaptures("ab");
+            match behindCaptureFound {
+                Some(caps) => {
+                    println_i64(caps.groupCount() as i64);
+                    println(caps.text("ab", 0));
+                    println(caps.text("ab", 1));
+                }
+                None => { println("behind-capture-none"); }
+            }
+        }
+        Err(_) => { println("behind-capture-compile-error"); }
+    }
+
+    Result<Regex, IoError> behindAllResult = Regex::Compile("(?<=a)b");
+    match behindAllResult {
+        Ok(behindAllPattern) => {
+            Vec<RegexMatch> behindMatches = behindAllPattern.findAll("abab");
+            println_i64(behindMatches.len());
+            if (behindMatches.len() > 0) {
+                println_i64(behindMatches.get(0).start);
+            }
+            if (behindMatches.len() > 1) {
+                println_i64(behindMatches.get(1).start);
+            }
+        }
+        Err(_) => { println("behind-all-compile-error"); }
+    }
+
+    Result<Regex, IoError> behindBackrefResult = Regex::Compile("(?<=(a)\\1)b");
+    match behindBackrefResult {
+        Ok(behindBackrefPattern) => {
+            println_bool(behindBackrefPattern.isMatch("aab"));
+            println_bool(behindBackrefPattern.isMatch("ab"));
+        }
+        Err(_) => { println("behind-backref-compile-error"); }
     }
 
     Result<Regex, IoError> lookLeakResult = Regex::Compile("((?=(a))ab|ac)");
