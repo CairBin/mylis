@@ -2,7 +2,7 @@
 
 两套配置共用同一个语言服务器 `myls`（与编译器同一份 lexer/parser/sema，诊断与 `mylc --check` 同源）。
 
-`myls` 提供：诊断（带 `MYLnnn` 码）、文档符号（大纲）、悬停（签名/字段）、跳转定义、补全（关键字 + 项目符号 + 标准库）。
+`myls` 提供：诊断（带 `MYLnnn` 码）、文档符号（大纲）、悬停（签名/字段）、跳转定义、补全（关键字 + 项目符号 + 标准库）、查找引用、重命名、工作区符号、函数签名。
 
 ## 服务器查找顺序
 
@@ -43,7 +43,11 @@ code --install-extension mylis-vscode-0.1.0.vsix
 | 诊断（保存/输入即时） | 自动 |
 | 悬停签名 | 鼠标悬停 / `Ctrl+K` |
 | 跳转定义 | `F12` / `Ctrl+Click` |
-| 补全 | 输入 `/` 或 `.` 时，或 `Ctrl+Space` |
+| 查找引用 | `Shift+F12` |
+| 重命名 | `F2`（仅顶层声明，先提示旧名） |
+| 函数签名 | `Ctrl+Shift+Space`，或输入 `(` / `,` 时 |
+| 补全 | 输入 `.` 或 `:` 时，或 `Ctrl+Space` |
+| 工作区符号 | `Ctrl+T` |
 | 大纲 | 资源管理器 → Outline |
 | `Mylis: 重启语言服务器` | 命令面板（状态栏点击同样触发） |
 | `Mylis: 查看语言服务器日志` | 命令面板（输出面板 `Mylis LSP`） |
@@ -69,8 +73,20 @@ require("mylis").setup()                       -- 自动找 myls
 -- require("mylis").setup({ server = "/home/me/mylis/bin/myls" })
 ```
 
-走 Neovim 内置 `vim.lsp.start`，不需要 lspconfig/nvim-lspconfig；同一 buffer 复用同一个 client。
-buffer 内自动加两个映射：`gd`（跳转定义）、`K`（悬停签名）；补全用原生的 `Ctrl+Space` / `Ctrl+X Ctrl+O`。
+走 Neovim 内置 `vim.lsp.start`，不需要 lspconfig/nvim-lspconfig；同一 buffer 复用同一个 client。最低版本为 0.8，工程根目录由 `root_dir` 自己向上查找 `mylis.toml` / `.git` / `Makefile`，不依赖 `vim.fs.root`。
+
+buffer 内自动加这些映射：
+
+| 映射 | 能力 |
+| --- | --- |
+| `gd` | 跳转定义 |
+| `gr` | 查找引用 |
+| `K` | 悬停签名 |
+| `<leader>rn` | 重命名（仅顶层声明） |
+| `<C-k>` | 函数签名 |
+| `<C-x><C-o>` | 补全（`omnifunc` 为空时自动设为 `v:lua.vim.lsp.omnifunc`；也可用 `Ctrl+Space`） |
+
+`:MylisWorkspaceSymbols [query]` 打开工作区符号；不传 query 时列出全部符号。
 
 ---
 

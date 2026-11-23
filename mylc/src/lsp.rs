@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use mylc::diag::{Diag, Item};
 use mylc::json::{self, Value};
 use mylc::program::Loader;
+use mylc::lexer::{Lexer, Tok};
 use mylc::{ast, sema};
 
 struct Doc {
@@ -63,7 +64,13 @@ fn percent_decode(s: &str) -> String {
 }
 
 fn path_to_uri(p: &str) -> String {
-    let norm = p.replace('\\', "/");
+    let mut norm = p.replace('\\', "/");
+    for pre in ["//?/", "//./"] {
+        if let Some(rest) = norm.strip_prefix(pre) {
+            norm = rest.to_string();
+            break;
+        }
+    }
     let mut enc = String::from("file://");
     if !norm.starts_with('/') {
         enc.push('/');
@@ -123,8 +130,8 @@ impl Server {
         // 键同时放“原始路径”和“规范化路径”：Windows 上 canonicalize 会带 \\?\ 前缀
         let mut overlay: HashMap<String, String> = HashMap::new();
         for d in self.docs.values() {
-            overlay.insert(d.path.clone(), d.text.clone());
-            overlay.insert(canon(&d.path), d.text.clone());
+            overlay.insert(overlay_key(&d.path), d.text.clone());
+            overlay.insert(overlay_key(&canon(&d.path)), d.text.clone());
         }
         let mut search: Vec<std::path::PathBuf> = Vec::new();
         search.extend(self.std_dirs());
@@ -202,6 +209,18 @@ impl Server {
             ]),
         )
     }
+}
+
+fn overlay_key(s: &str) -> String {
+    // 与 Loader::path_key 保持一致：去掉 Windows canonicalize 的 \\?\ 前缀，Windows 下转小写。
+    let mut t = s.to_string();
+    if let Some(rest) = t.strip_prefix(r"\\?\") {
+        t = rest.to_string();
+    }
+    if cfg!(windows) {
+        t.make_ascii_lowercase();
+    }
+    t
 }
 
 fn norm_path(s: &str) -> String {
@@ -428,6 +447,385 @@ fn range_value(line: u32, col: u32, len: usize) -> Value {
     ])
 }
 
+
+#[derive(Clone)]
+struct DeclSym {
+    path: String,
+    name: String,
+    kind: i64,
+    line: u32,
+    col: u32,
+    top_level: bool,
+}
+
+fn decl_kind(tok: Tok) -> Option<i64> {
+    match tok {
+        Tok::KwClass => Some(5),
+        Tok::KwInterface => Some(11),
+        Tok::KwEnum => Some(10),
+        Tok::KwFn => Some(12),
+        _ => None,
+    }
+}
+
+fn scan_decls(text: &str, path: &str) -> Vec<DeclSym> {
+    let (tokens, _) = Lexer::new(path, text).tokenize();
+    let mut out = Vec::new();
+    let mut depth: i32 = 0;
+    let mut i = 0usize;
+    while i < tokens.len() {
+        match tokens[i].tok {
+            Tok::LBrace => depth += 1,
+            Tok::RBrace => {
+                if depth > 0 { depth -= 1; }
+            }
+            Tok::KwClass | Tok::KwInterface | Tok::KwEnum | Tok::KwFn => {
+                if i + 1 < tokens.len() && tokens[i + 1].tok == Tok::Ident {
+                    if let Some(kind) = decl_kind(tokens[i].tok) {
+                        let t = &tokens[i + 1];
+                        out.push(DeclSym {
+                            path: path.to_string(),
+                            name: t.text.clone(),
+                            kind,
+                            line: t.line,
+                            col: t.col,
+                            top_level: depth == 0,
+                        });
+                    }
+                    i += 2;
+                    continue;
+                }
+            }
+            Tok::KwConst => {
+                let mut j = i + 1;
+                while j + 1 < tokens.len() {
+                    if tokens[j].tok == Tok::Ident
+                        && (tokens[j + 1].tok == Tok::Assign || tokens[j + 1].tok == Tok::Semi)
+                    {
+                        let t = &tokens[j];
+                        out.push(DeclSym {
+                            path: path.to_string(),
+                            name: t.text.clone(),
+                            kind: 14,
+                            line: t.line,
+                            col: t.col,
+                            top_level: depth == 0,
+                        });
+                        i = j + 1;
+                        break;
+                    }
+                    if tokens[j].tok == Tok::Semi || tokens[j].tok == Tok::LBrace {
+                        break;
+                    }
+                    j += 1;
+                }
+            }
+            Tok::Ident if tokens[i].text == "type" => {
+                if i + 2 < tokens.len()
+                    && tokens[i + 1].tok == Tok::Ident
+                    && tokens[i + 2].tok == Tok::Assign
+                {
+                    let t = &tokens[i + 1];
+                    out.push(DeclSym {
+                        path: path.to_string(),
+                        name: t.text.clone(),
+                        kind: 26,
+                        line: t.line,
+                        col: t.col,
+                        top_level: depth == 0,
+                    });
+                    i += 3;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
+}
+
+fn collect_myl(dir: &std::path::Path, out: &mut Vec<String>, depth: usize) {
+    if depth > 8 { return; }
+    let rd = match std::fs::read_dir(dir) { Ok(v) => v, Err(_) => return };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if path.is_dir() {
+            if name.starts_with('.') { continue; }
+            if matches!(name.as_str(), "build" | "bin" | "dist" | "target" | "toolchain" | "node_modules" | "out") {
+                continue;
+            }
+            collect_myl(&path, out, depth + 1);
+        } else if name.ends_with(".myl") {
+            out.push(path.to_string_lossy().to_string());
+        }
+    }
+}
+
+fn ident_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    let first = match chars.next() { Some(c) => c, None => return false };
+    if !(first.is_ascii_alphabetic() || first == '_') { return false; }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') { return false; }
+    !KEYWORDS.contains(&s)
+}
+
+fn decl_at(decls: &[DeclSym], path: &str, line: u32, col: u32) -> Option<DeclSym> {
+    decls.iter()
+        .find(|d| same_file(&d.path, path) && d.line == line && d.col == col)
+        .cloned()
+}
+
+fn location_json(path: &str, line: u32, col: u32, len: usize) -> Value {
+    Value::Obj(vec![
+        ("uri".to_string(), Value::Str(path_to_uri(path))),
+        ("range".to_string(), range_value(line, col, len)),
+    ])
+}
+
+impl Server {
+    fn project_files(&self) -> Vec<String> {
+        let root = if self.root.is_empty() {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        } else {
+            std::path::PathBuf::from(&self.root)
+        };
+        let mut out = Vec::new();
+        collect_myl(&root, &mut out, 0);
+        for d in self.docs.values() {
+            out.push(canon(&d.path));
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut unique = Vec::new();
+        for p in out {
+            let key = norm_path(&p);
+            if seen.insert(key) { unique.push(p); }
+        }
+        unique.sort();
+        unique
+    }
+
+    fn text_of(&self, path: &str) -> Option<String> {
+        for d in self.docs.values() {
+            if same_file(&d.path, path) { return Some(d.text.clone()); }
+        }
+        std::fs::read_to_string(path).ok()
+    }
+
+    fn all_decls(&self) -> Vec<DeclSym> {
+        let mut out = Vec::new();
+        for p in self.project_files() {
+            if let Some(text) = self.text_of(&p) {
+                out.extend(scan_decls(&text, &p));
+            }
+        }
+        out
+    }
+}
+
+fn references_json(srv: &Server, uri: &str, pos: &Value, include_decl: bool) -> Value {
+    let doc = match srv.docs.get(uri) { Some(d) => d, None => return Value::Arr(Vec::new()) };
+    let line = pos.get("line").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let ch = pos.get("character").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let (word, _, _) = match word_at(&doc.text, line, ch) { Some(v) => v, None => return Value::Arr(Vec::new()) };
+    let decls = srv.all_decls();
+    let known = decls.iter().any(|d| d.name == word);
+    let files = if known { srv.project_files() } else { vec![doc.path.clone()] };
+    let mut locs = Vec::new();
+    for path in files {
+        let text = match srv.text_of(&path) { Some(t) => t, None => continue };
+        let (tokens, _) = Lexer::new(&path, &text).tokenize();
+        for t in tokens.iter() {
+            if t.tok != Tok::Ident || t.text != word { continue; }
+            if !include_decl && decl_at(&decls, &path, t.line, t.col).is_some() { continue; }
+            locs.push(location_json(&path, t.line, t.col, word.chars().count()));
+        }
+    }
+    Value::Arr(locs)
+}
+
+fn prepare_rename_json(srv: &Server, uri: &str, pos: &Value) -> Value {
+    let doc = match srv.docs.get(uri) { Some(d) => d, None => return Value::Null };
+    let line = pos.get("line").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let ch = pos.get("character").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let (word, start, _) = match word_at(&doc.text, line, ch) { Some(v) => v, None => return Value::Null };
+    let decls = srv.all_decls();
+    if decl_at(&decls, &doc.path, line + 1, start + 1).map(|d| d.top_level).unwrap_or(false) {
+        Value::Obj(vec![
+            ("range".to_string(), range_value(line + 1, start + 1, word.chars().count())),
+            ("placeholder".to_string(), Value::Str(word)),
+        ])
+    } else {
+        Value::Null
+    }
+}
+
+fn rename_json(srv: &Server, uri: &str, pos: &Value, new_name: &str) -> Value {
+    if !ident_name(new_name) { return Value::Null; }
+    let doc = match srv.docs.get(uri) { Some(d) => d, None => return Value::Null };
+    let line = pos.get("line").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let ch = pos.get("character").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let (word, start, _) = match word_at(&doc.text, line, ch) { Some(v) => v, None => return Value::Null };
+    let decls = srv.all_decls();
+    let target = match decl_at(&decls, &doc.path, line + 1, start + 1) {
+        Some(d) if d.top_level => d,
+        _ => return Value::Null,
+    };
+    if word == new_name || target.name != word { return Value::Null; }
+    let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
+    for path in srv.project_files() {
+        let text = match srv.text_of(&path) { Some(t) => t, None => continue };
+        let (tokens, _) = Lexer::new(&path, &text).tokenize();
+        for t in tokens.iter() {
+            if t.tok != Tok::Ident || t.text != word { continue; }
+            groups.entry(path_to_uri(&path)).or_default().push(Value::Obj(vec![
+                ("range".to_string(), range_value(t.line, t.col, word.chars().count())),
+                ("newText".to_string(), Value::Str(new_name.to_string())),
+            ]));
+        }
+    }
+    if groups.is_empty() { return Value::Null; }
+    let changes = groups.into_iter().map(|(k, v)| (k, Value::Arr(v))).collect();
+    Value::Obj(vec![("changes".to_string(), Value::Obj(changes))])
+}
+
+fn workspace_symbols_json(srv: &Server, query: &str) -> Value {
+    let q = query.to_lowercase();
+    let mut out = Vec::new();
+    for d in srv.all_decls() {
+        if !q.is_empty() && !d.name.to_lowercase().contains(&q) { continue; }
+        out.push(Value::Obj(vec![
+            ("name".to_string(), Value::Str(d.name.clone())),
+            ("kind".to_string(), Value::n(d.kind)),
+            ("location".to_string(), location_json(&d.path, d.line, d.col, d.name.chars().count())),
+        ]));
+        if out.len() >= 1000 { break; }
+    }
+    Value::Arr(out)
+}
+
+fn token_index_at(tokens: &[mylc::lexer::Token], line: u32, ch: u32) -> Option<usize> {
+    let target_line = line + 1;
+    let target_col = ch + 1;
+    let mut idx = None;
+    for (i, t) in tokens.iter().enumerate() {
+        if t.tok == Tok::Eof { break; }
+        if t.line < target_line || (t.line == target_line && t.col < target_col) {
+            idx = Some(i);
+        } else {
+            break;
+        }
+    }
+    idx
+}
+
+fn call_mode(tokens: &[mylc::lexer::Token], name_idx: usize) -> &'static str {
+    if name_idx == 0 { return "fn"; }
+    match tokens[name_idx - 1].tok {
+        Tok::Dot => "method",
+        Tok::ColonColon => "static",
+        Tok::KwNew => "ctor",
+        _ => "fn",
+    }
+}
+
+fn signature_for(entry: &str, name: &str, mode: &str) -> Option<(String, Vec<String>)> {
+    let mut diags = Diag::new();
+    diags.collect_mode();
+    let search = lsp_search_dirs(Some(entry));
+    let mut loader = Loader::new(&mut diags, search);
+    let _ = loader.load(entry);
+    let prog = loader.prog;
+    for d in prog.decls.iter() {
+        if mode == "ctor" {
+            if d.kind == ast::DeclKind::Class && d.name == name {
+                let mut ctor = None;
+                for id in d.members.iter() {
+                    let m = &prog.decls[*id];
+                    if m.is_ctor { ctor = Some(m); break; }
+                }
+                if let Some(m) = ctor {
+                    let params: Vec<String> = m.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect();
+                    let label = format!("new {}({})", name, params.join(", "));
+                    return Some((label, params));
+                }
+                let params: Vec<String> = d.fields.iter().map(|f| format!("{} {}", f.ty, f.name)).collect();
+                let label = format!("new {}({})", name, params.join(", "));
+                return Some((label, params));
+            }
+        } else if d.kind == ast::DeclKind::Fn && d.name == name && !d.is_ctor {
+            if mode == "static" && !d.is_static { continue; }
+            let params: Vec<String> = d.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect();
+            return Some((decl_signature(d), params));
+        }
+    }
+    None
+}
+
+fn signature_help_json(srv: &Server, uri: &str, pos: &Value) -> Value {
+    let doc = match srv.docs.get(uri) { Some(d) => d, None => return Value::Null };
+    let line = pos.get("line").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let ch = pos.get("character").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let (tokens, _) = Lexer::new(&doc.path, &doc.text).tokenize();
+    let idx = match token_index_at(&tokens, line, ch) { Some(i) => i, None => return Value::Null };
+    let mut depth = 0i32;
+    let mut lp = None;
+    for i in (0..=idx).rev() {
+        match tokens[i].tok {
+            Tok::RParen => depth += 1,
+            Tok::LParen => {
+                if depth == 0 { lp = Some(i); break; } else { depth -= 1; }
+            }
+            _ => {}
+        }
+    }
+    let lp = match lp { Some(i) => i, None => return Value::Null };
+    if lp == 0 { return Value::Null; }
+    let mut name_idx = lp - 1;
+    if tokens[name_idx].tok == Tok::Gt {
+        let mut d = 0i32;
+        loop {
+            if tokens[name_idx].tok == Tok::Gt { d += 1; }
+            else if tokens[name_idx].tok == Tok::Lt {
+                d -= 1;
+                if d == 0 { break; }
+            }
+            if name_idx == 0 { return Value::Null; }
+            name_idx -= 1;
+        }
+        if name_idx == 0 { return Value::Null; }
+        name_idx -= 1;
+    }
+    if tokens[name_idx].tok != Tok::Ident { return Value::Null; }
+    let name = tokens[name_idx].text.clone();
+    let mode = call_mode(&tokens, name_idx);
+    let (label, params) = match signature_for(&doc.path, &name, mode) { Some(v) => v, None => return Value::Null };
+    let mut active = 0usize;
+    let mut nest = 0i32;
+    for t in tokens.iter().take(idx + 1).skip(lp + 1) {
+        match t.tok {
+            Tok::LParen | Tok::LBracket | Tok::LBrace => nest += 1,
+            Tok::RParen | Tok::RBracket | Tok::RBrace => {
+                if nest > 0 { nest -= 1; }
+            }
+            Tok::Comma if nest == 0 => active += 1,
+            _ => {}
+        }
+    }
+    if !params.is_empty() && active >= params.len() { active = params.len() - 1; }
+    let parameter_items = params.iter().map(|p| Value::Obj(vec![("label".to_string(), Value::Str(p.clone()))])).collect();
+    let sig = Value::Obj(vec![
+        ("label".to_string(), Value::Str(label)),
+        ("parameters".to_string(), Value::Arr(parameter_items)),
+    ]);
+    Value::Obj(vec![
+        ("signatures".to_string(), Value::Arr(vec![sig])),
+        ("activeSignature".to_string(), Value::n(0)),
+        ("activeParameter".to_string(), Value::n(active as i64)),
+    ])
+}
+
 fn needs_io() -> bool {
     true
 }
@@ -468,6 +866,19 @@ fn main() {
                         Value::Obj(vec![(
                             "triggerCharacters".to_string(),
                             Value::Arr(vec![Value::s("."), Value::s(":")]),
+                        )]),
+                    ),
+                    ("referencesProvider".to_string(), Value::Bool(true)),
+                    (
+                        "renameProvider".to_string(),
+                        Value::Obj(vec![("prepareProvider".to_string(), Value::Bool(true))]),
+                    ),
+                    ("workspaceSymbolProvider".to_string(), Value::Bool(true)),
+                    (
+                        "signatureHelpProvider".to_string(),
+                        Value::Obj(vec![(
+                            "triggerCharacters".to_string(),
+                            Value::Arr(vec![Value::s("("), Value::s(",")]),
                         )]),
                     ),
                 ]);
@@ -659,6 +1070,35 @@ fn main() {
                     ]));
                 }
                 write_message(&mut stdout, &response(&id, Value::Obj(vec![("isIncomplete".to_string(), Value::Bool(false)), ("items".to_string(), Value::Arr(items))])));
+            }
+            "textDocument/references" => {
+                let uri = params.get("textDocument").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let pos = params.get("position").cloned().unwrap_or(Value::Null);
+                let include = match params.get("context").and_then(|v| v.get("includeDeclaration")) {
+                    Some(Value::Bool(b)) => *b,
+                    _ => true,
+                };
+                write_message(&mut stdout, &response(&id, references_json(&srv, &uri, &pos, include)));
+            }
+            "textDocument/prepareRename" => {
+                let uri = params.get("textDocument").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let pos = params.get("position").cloned().unwrap_or(Value::Null);
+                write_message(&mut stdout, &response(&id, prepare_rename_json(&srv, &uri, &pos)));
+            }
+            "textDocument/rename" => {
+                let uri = params.get("textDocument").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let pos = params.get("position").cloned().unwrap_or(Value::Null);
+                let new_name = params.get("newName").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                write_message(&mut stdout, &response(&id, rename_json(&srv, &uri, &pos, &new_name)));
+            }
+            "workspace/symbol" => {
+                let query = params.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                write_message(&mut stdout, &response(&id, workspace_symbols_json(&srv, &query)));
+            }
+            "textDocument/signatureHelp" => {
+                let uri = params.get("textDocument").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let pos = params.get("position").cloned().unwrap_or(Value::Null);
+                write_message(&mut stdout, &response(&id, signature_help_json(&srv, &uri, &pos)));
             }
             "shutdown" => {
                 write_message(&mut stdout, &response(&id, Value::Null));

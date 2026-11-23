@@ -72,9 +72,14 @@ function start(context) {
       textDocument: {
         synchronization: { dynamicRegistration: false },
         hover: { contentFormat: ['markdown', 'plaintext'] },
-        completion: { completionItem: { snippetSupport: false } }
+        completion: { completionItem: { snippetSupport: false } },
+        definition: { linkSupport: false },
+        references: {},
+        rename: { prepareSupport: true },
+        signatureHelp: { signatureInformation: { documentationFormat: ['markdown', 'plaintext'] } },
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true }
       },
-      workspace: { workspaceFolders: true }
+      workspace: { workspaceFolders: true, symbol: {} }
     }
   }).then(() => {
     sendNotification('initialized', {});
@@ -158,7 +163,13 @@ function publish(params) {
   const uri = vscode.Uri.parse(params.uri);
   const items = (params.diagnostics || []).map((d) => {
     const r = new vscode.Range(d.range.start.line, d.range.start.character, d.range.end.line, d.range.end.character);
-    const sev = d.severity === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
+    const sevMap = {
+      1: vscode.DiagnosticSeverity.Error,
+      2: vscode.DiagnosticSeverity.Warning,
+      3: vscode.DiagnosticSeverity.Information,
+      4: vscode.DiagnosticSeverity.Hint
+    };
+    const sev = sevMap[d.severity] || vscode.DiagnosticSeverity.Error;
     const diag = new vscode.Diagnostic(r, d.message, sev);
     diag.source = 'mylis';
     if (d.code) diag.code = d.code;
@@ -169,6 +180,20 @@ function publish(params) {
 
 function at(doc, pos) {
   return { textDocument: { uri: doc.uri.toString() }, position: { line: pos.line, character: pos.character } };
+}
+
+function toRange(r) {
+  return new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
+}
+
+function toLocation(loc) {
+  if (!loc || !loc.uri || !loc.range) return null;
+  return new vscode.Location(vscode.Uri.parse(loc.uri), toRange(loc.range));
+}
+
+// LSP SymbolKind 是 1 起始，VS Code SymbolKind 是 0 起始。
+function toSymbolKind(kind) {
+  return kind > 0 ? kind - 1 : kind;
 }
 
 function registerProviders() {
@@ -188,11 +213,8 @@ function registerProviders() {
   const definition = vscode.languages.registerDefinitionProvider('mylis', {
     provideDefinition(doc, pos) {
       return sendRequest('textDocument/definition', at(doc, pos)).then((res) => {
-        if (!res) return null;
-        return new vscode.Location(
-          vscode.Uri.parse(res.uri),
-          new vscode.Range(res.range.start.line, res.range.start.character, res.range.end.line, res.range.end.character)
-        );
+        const list = Array.isArray(res) ? res : [res];
+        return list.map(toLocation).filter(Boolean);
       }).catch(() => null);
     }
   });
@@ -208,7 +230,7 @@ function registerProviders() {
         });
       }).catch(() => []);
     }
-  }, '@');
+  }, '.', ':');
 
   const symbols = vscode.languages.registerDocumentSymbolProvider('mylis', {
     provideDocumentSymbols(doc) {
@@ -217,7 +239,7 @@ function registerProviders() {
       }).then((res) => (res || []).map((s) => new vscode.DocumentSymbol(
         s.name,
         s.detail || '',
-        s.kind,
+        toSymbolKind(s.kind),
         new vscode.Range(s.range.start.line, s.range.start.character, s.range.end.line, s.range.end.character),
         new vscode.Range(s.selectionRange.start.line, s.selectionRange.start.character,
                          s.selectionRange.end.line, s.selectionRange.end.character)
@@ -225,7 +247,64 @@ function registerProviders() {
     }
   });
 
-  return [hover, definition, completion, symbols];
+  const references = vscode.languages.registerReferenceProvider('mylis', {
+    provideReferences(doc, pos, context) {
+      const params = at(doc, pos);
+      params.context = { includeDeclaration: context.includeDeclaration };
+      return sendRequest('textDocument/references', params)
+        .then((res) => (res || []).map(toLocation).filter(Boolean))
+        .catch(() => []);
+    }
+  });
+
+  const rename = vscode.languages.registerRenameProvider('mylis', {
+    prepareRename(doc, pos) {
+      return sendRequest('textDocument/prepareRename', at(doc, pos)).then((res) => {
+        if (!res || !res.range) return null;
+        return { range: toRange(res.range), placeholder: res.placeholder || '' };
+      }).catch(() => null);
+    },
+    provideRenameEdits(doc, pos, newName) {
+      return sendRequest('textDocument/rename', Object.assign(at(doc, pos), { newName })).then((res) => {
+        if (!res || !res.changes) return null;
+        const edit = new vscode.WorkspaceEdit();
+        for (const [uri, edits] of Object.entries(res.changes)) {
+          for (const e of edits) edit.replace(vscode.Uri.parse(uri), toRange(e.range), e.newText);
+        }
+        return edit;
+      }).catch(() => null);
+    }
+  });
+
+  const signature = vscode.languages.registerSignatureHelpProvider('mylis', {
+    provideSignatureHelp(doc, pos) {
+      return sendRequest('textDocument/signatureHelp', at(doc, pos)).then((res) => {
+        if (!res || !res.signatures) return null;
+        const help = new vscode.SignatureHelp();
+        help.signatures = res.signatures.map((s) => {
+          const info = new vscode.SignatureInformation(s.label);
+          info.parameters = (s.parameters || []).map((p) => new vscode.ParameterInformation(p.label));
+          if (s.documentation) info.documentation = s.documentation;
+          return info;
+        });
+        help.activeSignature = res.activeSignature || 0;
+        help.activeParameter = res.activeParameter || 0;
+        return help;
+      }).catch(() => null);
+    }
+  }, '(', ',');
+
+  const workspaceSymbols = vscode.languages.registerWorkspaceSymbolProvider({
+    provideWorkspaceSymbols(query) {
+      return sendRequest('workspace/symbol', { query }).then((res) => (res || []).map((s) => {
+        const loc = toLocation(s.location);
+        if (!loc) return null;
+        return new vscode.SymbolInformation(s.name, toSymbolKind(s.kind), s.containerName || '', loc);
+      }).filter(Boolean)).catch(() => []);
+    }
+  });
+
+  return [hover, definition, completion, symbols, references, rename, signature, workspaceSymbols];
 }
 
 function activate(context) {

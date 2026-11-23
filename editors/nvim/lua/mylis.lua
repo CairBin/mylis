@@ -5,7 +5,8 @@
 --   require("mylis").setup({ server = "/path/to/bin/myls" })
 --
 -- 内置快捷键（buffer-local）：
---   gd   跳转定义      K    悬停签名      i    补全（<C-x><C-o>，已默认可用）
+--   gd   跳转定义      gr   查找引用      K    悬停签名
+--   <leader>rn  重命名  <C-k> 函数签名    <C-x><C-o> 补全（omnifunc）
 local M = {}
 
 local function exe_names()
@@ -15,12 +16,15 @@ local function exe_names()
   return { "myls", "myls.exe" }
 end
 
+local uv = vim.uv or vim.loop
+
 local function exists(p)
-  return vim.loop.fs_stat(p) ~= nil
+  return uv.fs_stat(p) ~= nil
 end
 
 local function join(a, b)
-  return a .. (a:sub(-1) == "/" or a:sub(-1) == "\\" and "" or "/") .. b
+  local sep = (a:sub(-1) == "/" or a:sub(-1) == "\\") and "" or "/"
+  return a .. sep .. b
 end
 
 --- 查找顺序：opts.server → $MYLIS_SERVER → 工程 ./bin → 工程上级 ./bin → PATH
@@ -39,8 +43,16 @@ function M.find_server(server)
 end
 
 local function root_dir(bufnr)
-  if vim.fs and vim.fs.root then
-    return vim.fs.root(bufnr, { "mylis.toml", ".git", "Makefile" }) or vim.fn.getcwd()
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  local dir = name ~= "" and vim.fn.fnamemodify(name, ":p:h") or vim.fn.getcwd()
+  if dir == "" then dir = vim.fn.getcwd() end
+  while true do
+    for _, marker in ipairs({ "mylis.toml", ".git", "Makefile" }) do
+      if exists(join(dir, marker)) then return dir end
+    end
+    local parent = vim.fn.fnamemodify(dir, ":h")
+    if parent == dir or parent == "" then break end
+    dir = parent
   end
   return vim.fn.getcwd()
 end
@@ -70,8 +82,16 @@ function M.setup(opts)
     pattern = "mylis",
     callback = function(args)
       attach(args.buf)
+      pcall(function()
+        if vim.bo[args.buf].omnifunc == "" then
+          vim.bo[args.buf].omnifunc = "v:lua.vim.lsp.omnifunc"
+        end
+      end)
       vim.keymap.set("n", "gd", vim.lsp.buf.definition, { buffer = args.buf, desc = "Mylis: 跳转定义" })
+      vim.keymap.set("n", "gr", vim.lsp.buf.references, { buffer = args.buf, desc = "Mylis: 查找引用" })
       vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = args.buf, desc = "Mylis: 悬停" })
+      vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { buffer = args.buf, desc = "Mylis: 重命名" })
+      vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, { buffer = args.buf, desc = "Mylis: 函数签名" })
     end,
   })
 
@@ -79,6 +99,14 @@ function M.setup(opts)
     pattern = "*.myl",
     callback = function() vim.bo.filetype = "mylis" end,
   })
+
+  vim.api.nvim_create_user_command("MylisWorkspaceSymbols", function(args)
+    if vim.lsp.buf.workspace_symbol then
+      vim.lsp.buf.workspace_symbol(args.args)
+    else
+      vim.notify("当前 Neovim 不支持 workspace/symbol", vim.log.levels.WARN)
+    end
+  end, { nargs = "?" })
 end
 
 return M

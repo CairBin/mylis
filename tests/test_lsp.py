@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""myls 语言服务器冒烟测试：初始化 → 打开文档（带错误）→ 诊断 / 符号 / 悬停 / 跳转 / 补全。"""
+"""myls 语言服务器冒烟测试：诊断 / 符号 / 悬停 / 跳转 / 补全 / 引用 / 重命名 / 工作区符号 / 签名。"""
 import json, os, subprocess, sys
+from pathlib import Path
 
 SERVER = sys.argv[1] if len(sys.argv) > 1 else "./build/myls"
 fails = 0
@@ -35,14 +36,15 @@ def check(name, cond, extra=""):
         print("  FAIL %s %s" % (name, extra))
         fails += 1
 
-root = os.path.abspath(".")
-send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"rootPath": root}})
+root = str(Path(".").resolve())
+send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"rootPath": root, "rootUri": Path(root).as_uri()}})
 init = recv()
 check("initialize", init and init["result"]["serverInfo"]["name"] == "myls")
 send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
 
-src = open("tests/positive/ComboIface.myl", encoding="utf-8").read()
-uri = "file://" + os.path.join(root, "tests/positive/ComboIface.myl")
+src_path = Path("tests/positive/ComboIface.myl").resolve()
+src = src_path.read_text(encoding="utf-8")
+uri = src_path.as_uri()
 send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
       "params": {"textDocument": {"uri": uri, "languageId": "mylis", "version": 1, "text": src}}})
 diag = recv()
@@ -76,7 +78,7 @@ check("悬停给出签名", hover and "interface ReadWriteCloser" in hover["cont
 send({"jsonrpc": "2.0", "id": 4, "method": "textDocument/definition",
       "params": {"textDocument": {"uri": uri}, "position": {"line": ln, "character": ch}}})
 defloc = recv()["result"]
-check("跳转到声明", defloc and defloc["uri"].endswith("ComboIface.myl")
+check("跳转到声明", defloc and defloc["uri"].lower().endswith("comboiface.myl")
       and defloc["range"]["start"]["line"] == next(i for i, l in enumerate(lines) if "interface ReadWriteCloser" in l), str(defloc))
 
 send({"jsonrpc": "2.0", "id": 5, "method": "textDocument/completion",
@@ -84,7 +86,58 @@ send({"jsonrpc": "2.0", "id": 5, "method": "textDocument/completion",
 items = [x["label"] for x in recv()["result"]["items"]]
 check("补全含项目类型与关键字", "ReadWriteCloser" in items and "Buf" in items and "fn" in items)
 
-send({"jsonrpc": "2.0", "id": 9, "method": "shutdown", "params": {}})
+# ---- P1：references / prepareRename / rename / workspace symbol / signatureHelp ----
+ref_ln = next(i for i, l in enumerate(lines) if "interface Reader" in l)
+ref_ch = lines[ref_ln].find("Reader") + 2
+base_params = {"textDocument": {"uri": uri}, "position": {"line": ref_ln, "character": ref_ch}}
+
+send({"jsonrpc": "2.0", "id": 6, "method": "textDocument/references",
+      "params": dict(base_params, context={"includeDeclaration": True})})
+refs = recv()["result"]
+check("查找引用包含声明与使用", len(refs) >= 2 and all(r["uri"].endswith("ComboIface.myl") for r in refs), str(refs))
+send({"jsonrpc": "2.0", "id": 7, "method": "textDocument/references",
+      "params": dict(base_params, context={"includeDeclaration": False})})
+refs_no_decl = recv()["result"]
+check("查找引用可排除声明", len(refs_no_decl) == len(refs) - 1, "%d vs %d" % (len(refs_no_decl), len(refs)))
+
+send({"jsonrpc": "2.0", "id": 8, "method": "textDocument/prepareRename", "params": base_params})
+prep = recv()["result"]
+check("重命名预检返回旧名范围", prep and prep.get("placeholder") == "Reader"
+      and prep["range"]["start"]["character"] == lines[ref_ln].find("Reader"), str(prep))
+
+send({"jsonrpc": "2.0", "id": 9, "method": "textDocument/rename",
+      "params": dict(base_params, newName="Input")})
+ren = recv()["result"]
+edits = list((ren or {}).get("changes", {}).values())
+check("重命名返回工作区编辑", bool(edits) and all(e["newText"] == "Input" for group in edits for e in group), str(ren))
+check("重命名不直接改文件", open("tests/positive/ComboIface.myl", encoding="utf-8").read() == src)
+
+local_ln = next(i for i, l in enumerate(lines) if "Buf b" in l)
+local_ch = lines[local_ln].find("b") + 1
+send({"jsonrpc": "2.0", "id": 10, "method": "textDocument/prepareRename",
+      "params": {"textDocument": {"uri": uri}, "position": {"line": local_ln, "character": local_ch}}})
+check("局部变量暂不允许重命名", recv()["result"] is None)
+
+send({"jsonrpc": "2.0", "id": 11, "method": "workspace/symbol", "params": {"query": "Buf"}})
+wsyms = recv()["result"]
+check("工作区符号能查到 Buf", any(s["name"] == "Buf" for s in wsyms), str([s["name"] for s in wsyms][:10]))
+
+sig_ln = next(i for i, l in enumerate(lines) if "new Buf(" in l)
+sig_ch = lines[sig_ln].find("new Buf(") + len("new Buf(")
+send({"jsonrpc": "2.0", "id": 12, "method": "textDocument/signatureHelp",
+      "params": {"textDocument": {"uri": uri}, "position": {"line": sig_ln, "character": sig_ch}}})
+sig = recv()["result"]
+check("构造器签名帮助", sig and sig["signatures"][0]["label"].startswith("new Buf("), str(sig))
+
+call_ln = next(i for i, l in enumerate(lines) if "use_all(b)" in l)
+call_ch = lines[call_ln].find("use_all(") + len("use_all(")
+send({"jsonrpc": "2.0", "id": 13, "method": "textDocument/signatureHelp",
+      "params": {"textDocument": {"uri": uri}, "position": {"line": call_ln, "character": call_ch}}})
+sig = recv()["result"]
+check("函数签名帮助", sig and "use_all" in sig["signatures"][0]["label"]
+      and sig["activeParameter"] == 0, str(sig))
+
+send({"jsonrpc": "2.0", "id": 14, "method": "shutdown", "params": {}})
 recv()
 send({"jsonrpc": "2.0", "method": "exit", "params": {}})
 proc.wait(timeout=10)

@@ -1,7 +1,7 @@
 {
   "name": "mylis-vscode",
   "displayName": "Mylis",
-  "description": "Mylis 语言支持：语法高亮 + 诊断 + 悬停 + 跳转定义 + 补全 + 大纲（基于 myls 语言服务器）",
+  "description": "Mylis 语言支持：语法高亮 + 诊断 + 悬停 + 跳转定义 + 补全 + 大纲 + 引用/重命名/签名/工作区符号（基于 myls 语言服务器）",
   "version": "0.1.0",
   "publisher": "mylis",
   "license": "MIT",
@@ -12,7 +12,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:mylis"
+    "onLanguage:mylis",
+    "workspaceContains:**/*.myl"
   ],
   "main": "./src/extension.js",
   "contributes": {
