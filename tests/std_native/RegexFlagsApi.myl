@@ -115,5 +115,49 @@ fn main() -> i32 {
         }
         Err(_) => { println_bool(false); }
     }
+
+    Result<Regex, IoError> scopedResult = Regex::Compile("(?i:abc)DEF");
+    match scopedResult {
+        Ok(scopedPattern) => {
+            println_bool(scopedPattern.isMatch("abcDEF"));
+            println_bool(scopedPattern.isMatch("ABCDeF"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> scopedDotResult = Regex::Compile("(?s:a.b)c");
+    match scopedDotResult {
+        Ok(scopedDotPattern) => {
+            println_bool(scopedDotPattern.isMatch("a\nbc"));
+            println_bool(scopedDotPattern.isMatch("a\nBc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> scopedMultilineResult = Regex::Compile("(?m:^b$)");
+    match scopedMultilineResult {
+        Ok(scopedMultilinePattern) => {
+            println_bool(scopedMultilinePattern.isMatch("a\nb\nc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> nestedScopedResult = Regex::Compile("(?i:a(?-i:b)c)");
+    match nestedScopedResult {
+        Ok(nestedScopedPattern) => {
+            println_bool(nestedScopedPattern.isMatch("AbC"));
+            println_bool(nestedScopedPattern.isMatch("ABC"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> restoreScopedResult = Regex::Compile("a(?i:b)c");
+    match restoreScopedResult {
+        Ok(restoreScopedPattern) => {
+            println_bool(restoreScopedPattern.isMatch("aBc"));
+            println_bool(restoreScopedPattern.isMatch("aBC"));
+        }
+        Err(_) => { println_bool(false); }
+    }
     return 0;
 }

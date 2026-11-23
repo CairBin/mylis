@@ -1,5 +1,5 @@
 // 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、`\b/\B`、
-// 内联选项 `(?i)` / `(?s)` / `(?m)`、捕获组、
+// 内联选项 `(?i)` / `(?s)` / `(?m)`（含作用域形式 `(?i:...)`）、捕获组、
 // 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
 // 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
 // 反向引用 `\1`..`\99` / `\k<name>` / `(?P=name)`、分支 `|`、`* + ?` 与
@@ -619,6 +619,9 @@ class RegexCompiler {
     fn parseInlineFlags() -> RegexFrag {
         bool negative = false;
         bool any = false;
+        bool oldIgnoreCase = this.ignoreCase;
+        bool oldDotAll = this.dotAll;
+        bool oldMultiline = this.multiline;
         while (!this.atEnd()) {
             u8 c = this.currentByte();
             if (c == 45) {
@@ -648,6 +651,17 @@ class RegexCompiler {
                 this.pos = this.pos + 1;
                 if (!any) { return this.fail(); }
                 return this.emptyFrag();
+            }
+            if (c == 58) {
+                this.pos = this.pos + 1;
+                if (!any) { return this.fail(); }
+                RegexFrag inner = this.parseAlternation();
+                if (this.atEnd() || this.currentByte() != 41) { return this.fail(); }
+                this.pos = this.pos + 1;
+                this.ignoreCase = oldIgnoreCase;
+                this.dotAll = oldDotAll;
+                this.multiline = oldMultiline;
+                return inner;
             }
             return this.fail();
         }
