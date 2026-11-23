@@ -1,0 +1,40 @@
+// 正则反向引用扩展：Python 命名引用与多位组号。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println, println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> pythonRefResult = Regex::Compile("(?P<word>[a-z]+)-(?P=word)");
+    match pythonRefResult {
+        Ok(pythonRefPattern) => {
+            println_bool(pythonRefPattern.isMatch("go-go"));
+            println_bool(pythonRefPattern.isMatch("go-gx"));
+        }
+        Err(_) => { println("python-ref-compile-error"); }
+    }
+
+    Result<Regex, IoError> unknownPythonRefResult = Regex::Compile("(?P=missing)");
+    match unknownPythonRefResult {
+        Ok(_) => { println("python-ref-unknown-supported"); }
+        Err(_) => { println("python-ref-error"); }
+    }
+
+    Result<Regex, IoError> tenBackrefResult = Regex::Compile("(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\\10");
+    match tenBackrefResult {
+        Ok(tenBackrefPattern) => {
+            println_bool(tenBackrefPattern.isMatch("abcdefghijj"));
+            println_bool(tenBackrefPattern.isMatch("abcdefghijx"));
+        }
+        Err(_) => { println("ten-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> fallbackBackrefResult = Regex::Compile("(a)\\10");
+    match fallbackBackrefResult {
+        Ok(fallbackBackrefPattern) => {
+            println_bool(fallbackBackrefPattern.isMatch("aa0"));
+            println_bool(fallbackBackrefPattern.isMatch("a0"));
+        }
+        Err(_) => { println("fallback-backref-compile-error"); }
+    }
+    return 0;
+}

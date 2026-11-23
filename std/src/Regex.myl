@@ -1,7 +1,7 @@
 // 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、`\b/\B`、捕获组、
 // 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
 // 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
-// 反向引用 `\1`..`\9` / `\k<name>`、分支 `|`、`* + ?` 与
+// 反向引用 `\1`..`\99` / `\k<name>` / `(?P=name)`、分支 `|`、`* + ?` 与
 // `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持 Unicode 字符类。
 // 匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含断言、反向引用或
 // findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
@@ -569,6 +569,26 @@ class RegexCompiler {
         return Str::Substring(this.pattern, start as u64, length as u64);
     }
 
+    fn parseGroupRefName() -> string {
+        i32 start = this.pos;
+        if (this.atEnd()) { return ""; }
+        u8 first = this.currentByte();
+        bool valid = (first >= 65 && first <= 90) || (first >= 97 && first <= 122) || first == 95;
+        if (!valid) { return ""; }
+        this.pos = this.pos + 1;
+        while (!this.atEnd() && this.currentByte() != 41) {
+            u8 c = this.currentByte();
+            bool part = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;
+            if (!part) { break; }
+            this.pos = this.pos + 1;
+        }
+        if (this.atEnd() || this.currentByte() != 41) { return ""; }
+        i32 length = this.pos - start;
+        if (length <= 0 || length > 64) { return ""; }
+        this.pos = this.pos + 1;
+        return Str::Substring(this.pattern, start as u64, length as u64);
+    }
+
     fn parseAtom() -> RegexFrag {
         if (this.atEnd()) {
             return this.emptyFrag();
@@ -604,7 +624,16 @@ class RegexCompiler {
                     }
                 } else if (!this.atEnd() && this.currentByte() == 80) {
                     this.pos = this.pos + 1;
-                    if (this.atEnd() || this.currentByte() != 60) { return this.fail(); }
+                    if (this.atEnd()) { return this.fail(); }
+                    if (this.currentByte() == 61) {
+                        this.pos = this.pos + 1;
+                        string reference = this.parseGroupRefName();
+                        if (reference == "") { return this.fail(); }
+                        i32 target = this.findGroupName(reference);
+                        if (target < 1) { return this.fail(); }
+                        return this.backrefFrag(target);
+                    }
+                    if (this.currentByte() != 60) { return this.fail(); }
                     this.pos = this.pos + 1;
                     groupName = this.parseGroupName();
                     if (groupName == "") { return this.fail(); }
@@ -677,6 +706,16 @@ class RegexCompiler {
             }
             if (escaped >= 49 && escaped <= 57) {
                 i32 group = (escaped - 48) as i32;
+                if (!this.atEnd()) {
+                    u8 second = this.currentByte();
+                    if (second >= 48 && second <= 57) {
+                        i32 candidate = group * 10 + (second as i32 - 48);
+                        if (candidate < this.groupCount) {
+                            group = candidate;
+                            this.pos = this.pos + 1;
+                        }
+                    }
+                }
                 if (group >= this.groupCount) {
                     return this.fail();
                 }

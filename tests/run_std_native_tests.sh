@@ -749,6 +749,8 @@ run_stdflag_named_case DateTimeApi mir
 run_stdflag_named_case DateTimeApi ast
 run_stdflag_named_case RegexApi mir
 run_stdflag_named_case RegexApi ast
+run_stdflag_named_case RegexRefApi mir
+run_stdflag_named_case RegexRefApi ast
 run_stdflag_named_case HashApi mir
 run_stdflag_named_case HashApi ast
 run_stdflag_named_case GzipApi mir
