@@ -321,5 +321,82 @@ fn main() -> i32 {
         Err(_) => { println("look-leak-compile-error"); }
     }
 
+    Result<Regex, IoError> backrefResult = Regex::Compile("(a)\\1");
+    match backrefResult {
+        Ok(backrefPattern) => {
+            println_bool(backrefPattern.isMatch("aa"));
+            println_bool(backrefPattern.isMatch("ab"));
+            Option<RegexMatch> backrefFound = backrefPattern.find("xaa");
+            match backrefFound {
+                Some(value) => {
+                    println_i64(value.start);
+                    println_i64(value.end);
+                    println(value.text("xaa"));
+                }
+                None => { println("backref-none"); }
+            }
+            Option<RegexCaptures> backrefCaps = backrefPattern.findCaptures("aa");
+            match backrefCaps {
+                Some(caps) => { println(caps.text("aa", 1)); }
+                None => { println("backref-capture-none"); }
+            }
+        }
+        Err(_) => { println("backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> multiBackrefResult = Regex::Compile("(ab)\\1");
+    match multiBackrefResult {
+        Ok(multiBackrefPattern) => {
+            println_bool(multiBackrefPattern.isMatch("abab"));
+            println_bool(multiBackrefPattern.isMatch("abac"));
+        }
+        Err(_) => { println("multi-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> altBackrefResult = Regex::Compile("(a|b)\\1");
+    match altBackrefResult {
+        Ok(altBackrefPattern) => {
+            println_bool(altBackrefPattern.isMatch("bb"));
+            println_bool(altBackrefPattern.isMatch("ab"));
+        }
+        Err(_) => { println("alt-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> longestBackrefResult = Regex::Compile("(a|ab)\\1");
+    match longestBackrefResult {
+        Ok(longestBackrefPattern) => {
+            Option<RegexMatch> longestBackrefFound = longestBackrefPattern.find("abab");
+            match longestBackrefFound {
+                Some(value) => { println_i64(value.end); }
+                None => { println("longest-backref-none"); }
+            }
+        }
+        Err(_) => { println("longest-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> optionalBackrefResult = Regex::Compile("(a)?\\1");
+    match optionalBackrefResult {
+        Ok(optionalBackrefPattern) => {
+            println_bool(optionalBackrefPattern.isMatch("aa"));
+            println_bool(optionalBackrefPattern.isMatch("a"));
+        }
+        Err(_) => { println("optional-backref-compile-error"); }
+    }
+
+    Result<Regex, IoError> forwardBackrefResult = Regex::Compile("\\1(a)");
+    match forwardBackrefResult {
+        Ok(_) => { println("forward-backref-supported"); }
+        Err(_) => { println("forward-backref-error"); }
+    }
+
+    Result<Regex, IoError> secondBackrefResult = Regex::Compile("(a)(b)\\2\\1");
+    match secondBackrefResult {
+        Ok(secondBackrefPattern) => {
+            println_bool(secondBackrefPattern.isMatch("abba"));
+            println_bool(secondBackrefPattern.isMatch("abab"));
+        }
+        Err(_) => { println("second-backref-compile-error"); }
+    }
+
     return 0;
 }

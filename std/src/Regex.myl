@@ -1,8 +1,8 @@
 // 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、捕获组、
-// 非捕获组 `(?:...)`、先行断言 `(?=...)` / `(?!...)`、分支 `|`、`* + ?` 与
-// `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持后行断言、反向引用和
-// Unicode 字符类。匹配结果是字节偏移。find/findAll 走 Thompson NFA；
-// 含先行断言或 findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
+// 非捕获组 `(?:...)`、先行断言 `(?=...)` / `(?!...)`、反向引用 `\1`..`\9`、分支 `|`、`* + ?` 与
+// `{m,n}` 计数量词。按字节匹配 UTF-8 文本；不支持后行断言和 Unicode
+// 字符类。匹配结果是字节偏移。find/findAll 默认走 Thompson NFA；含先行断言、
+// 反向引用或 findCaptures 时走回溯，findCaptures 采用左优先贪婪语义。
 import { Str } from "core/Str";
 import { StringBuilder } from "StringBuilder.myl";
 import { IoError } from "IoError.myl";
@@ -82,6 +82,7 @@ class RegexState {
     pub static const i32 SAVE = 9;
     pub static const i32 LOOK = 10;
     pub static const i32 ASSERT_MATCH = 11;
+    pub static const i32 BACKREF = 12;
 
     i32 op;
     i32 out1;
@@ -142,6 +143,7 @@ class RegexCompiler {
     bool failed;
     i32 groupCount;
     bool hasLookahead;
+    bool hasBackref;
 
     pub fn init(string source) -> void {
         this.pattern = source;
@@ -153,6 +155,7 @@ class RegexCompiler {
         this.failed = false;
         this.groupCount = 1;
         this.hasLookahead = false;
+        this.hasBackref = false;
     }
 
     fn fail() -> RegexFrag {
@@ -227,6 +230,15 @@ class RegexCompiler {
         RegexFrag result = new RegexFrag(look);
         result.addOut(look * 2);
         this.hasLookahead = true;
+        return result;
+    }
+
+    fn backrefFrag(i32 group) -> RegexFrag {
+        RegexClass dummy = new RegexClass(false);
+        i32 state = this.addState(RegexState::BACKREF, group, dummy);
+        RegexFrag result = new RegexFrag(state);
+        result.addOut(state * 2);
+        this.hasBackref = true;
         return result;
     }
 
@@ -544,6 +556,13 @@ class RegexCompiler {
             }
             u8 escaped = this.currentByte();
             this.pos = this.pos + 1;
+            if (escaped >= 49 && escaped <= 57) {
+                i32 group = (escaped - 48) as i32;
+                if (group >= this.groupCount) {
+                    return this.fail();
+                }
+                return this.backrefFrag(group);
+            }
             if (escaped == 100) {
                 RegexClass digits = new RegexClass(false);
                 digits.addDigit();
@@ -653,7 +672,7 @@ class RegexCompiler {
         i32 matchState = this.addState(RegexState::MATCH, 0, dummy);
         frag = this.saveGroup(frag, 0);
         this.patch(frag, matchState);
-        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start, this.groupCount, this.hasLookahead));
+        return Ok(new Regex(this.pattern, this.states, this.stateCount, frag.start, this.groupCount, this.hasLookahead, this.hasBackref));
     }
 }
 
@@ -664,14 +683,16 @@ pub class Regex {
     i32 start;
     i32 groupCount;
     bool hasLookahead;
+    bool hasBackref;
 
-    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex, i32 groups, bool lookahead) -> void {
+    pub fn init(string source, RegexState[] table, i32 total, i32 startIndex, i32 groups, bool lookahead, bool backref) -> void {
         this.pattern = source;
         this.states = table;
         this.stateCount = total;
         this.start = startIndex;
         this.groupCount = groups;
         this.hasLookahead = lookahead;
+        this.hasBackref = backref;
     }
 
     pub static fn Compile(string pattern) -> Result<Regex, IoError> {
@@ -853,6 +874,23 @@ pub class Regex {
             }
             return matched;
         }
+        if (op == RegexState::BACKREF) {
+            i32 group = this.states[state].ch;
+            i32 firstSlot = group * 2;
+            i32 lastSlot = firstSlot + 1;
+            if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return false; }
+            i32 first = captures[firstSlot];
+            i32 last = captures[lastSlot];
+            if (first < 0 || last < first) { return false; }
+            i32 n = last - first;
+            if (pos + n > text.len() as i32) { return false; }
+            i32 i = 0;
+            while (i < n) {
+                if (text[first + i] != text[pos + i]) { return false; }
+                i = i + 1;
+            }
+            return this.dfs(text, this.states[state].out1, pos + n, captures, budget);
+        }
         if (pos >= text.len() as i32) { return false; }
         if (!this.accepts(state, text[pos])) { return false; }
         return this.dfs(text, this.states[state].out1, pos + 1, captures, budget);
@@ -874,7 +912,12 @@ pub class Regex {
             return;
         }
         if (op == RegexState::SAVE) {
+            i32 slot = this.states[state].ch;
+            if (slot < 0 || slot >= captures.len() as i32) { return; }
+            i32 old = captures[slot];
+            captures[slot] = pos;
             this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
+            captures[slot] = old;
             return;
         }
         if (op == RegexState::SPLIT) {
@@ -905,6 +948,24 @@ pub class Regex {
             if (positive && probed == 0) { return; }
             if (!positive && probed == 1) { return; }
             this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
+            return;
+        }
+        if (op == RegexState::BACKREF) {
+            i32 group = this.states[state].ch;
+            i32 firstSlot = group * 2;
+            i32 lastSlot = firstSlot + 1;
+            if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return; }
+            i32 first = captures[firstSlot];
+            i32 last = captures[lastSlot];
+            if (first < 0 || last < first) { return; }
+            i32 n = last - first;
+            if (pos + n > text.len() as i32) { return; }
+            i32 i = 0;
+            while (i < n) {
+                if (text[first + i] != text[pos + i]) { return; }
+                i = i + 1;
+            }
+            this.dfsLongest(text, this.states[state].out1, pos + n, captures, budget, best);
             return;
         }
         if (pos >= text.len() as i32) { return; }
@@ -958,7 +1019,7 @@ pub class Regex {
     }
 
     fn findBytes(u8[] text, i32 from) -> Option<RegexMatch> {
-        if (this.hasLookahead) {
+        if (this.hasLookahead || this.hasBackref) {
             return this.findBytesBacktrack(text, from);
         }
         i32 length = text.len() as i32;
