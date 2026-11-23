@@ -1108,11 +1108,9 @@ pub class Regex {
         return None;
     }
 
-    // 返回捕获组结果；采用左优先/贪婪回溯语义，组 0 是整个匹配。
-    pub fn findCaptures(string text) -> Option<RegexCaptures> {
-        u8[] data = Str::Bytes(text);
+    fn findCapturesFrom(u8[] data, i32 from) -> Option<RegexCaptures> {
         i32 length = data.len() as i32;
-        i32 start = 0;
+        i32 start = from;
         while (start <= length) {
             i32[] captures = new i32[this.groupCount * 2];
             i32 i = 0;
@@ -1128,6 +1126,11 @@ pub class Regex {
             start = start + 1;
         }
         return None;
+    }
+
+    // 返回捕获组结果；采用左优先/贪婪回溯语义，组 0 是整个匹配。
+    pub fn findCaptures(string text) -> Option<RegexCaptures> {
+        return this.findCapturesFrom(Str::Bytes(text), 0);
     }
 
     fn findBytes(u8[] text, i32 from) -> Option<RegexMatch> {
@@ -1205,6 +1208,104 @@ pub class Regex {
         }
         if (cursor < length) {
             out.append(Str::Substring(text, cursor as u64, (length - cursor) as u64));
+        }
+        return out.toString();
+    }
+
+    // 捕获组替换：$0..$9 按组号、${name} 按组名、${10} 支持多位组号；\$ 与 $$ 输出字面量 $。
+    pub fn replaceAllCaptures(string text, string replacement) -> string {
+        u8[] data = Str::Bytes(text);
+        StringBuilder out = new StringBuilder();
+        i64 cursor = 0;
+        i64 length = data.len() as i64;
+        while (cursor <= length) {
+            Option<RegexCaptures> found = this.findCapturesFrom(data, cursor as i32);
+            match found {
+                Some(captures) => {
+                    Option<RegexMatch> whole = captures.group(0);
+                    match whole {
+                        Some(value) => {
+                            out.append(Str::Substring(text, cursor as u64, (value.start - cursor) as u64));
+                            out.append(this.expandReplacement(text, replacement, captures));
+                            if (value.end == value.start) {
+                                if (value.end < length) {
+                                    out.append(Str::Substring(text, value.end as u64, 1));
+                                }
+                                cursor = value.end + 1;
+                            } else {
+                                cursor = value.end;
+                            }
+                        }
+                        None => { break; }
+                    }
+                }
+                None => { break; }
+            }
+        }
+        if (cursor < length) {
+            out.append(Str::Substring(text, cursor as u64, (length - cursor) as u64));
+        }
+        return out.toString();
+    }
+
+    fn groupNumber(string value) -> i32 {
+        u8[] bytes = Str::Bytes(value);
+        if (bytes.len() == 0) { return -1; }
+        i32 number = 0;
+        i32 i = 0;
+        while (i < bytes.len() as i32) {
+            u8 c = bytes[i];
+            if (c < 48 || c > 57) { return -1; }
+            number = number * 10 + (c as i32 - 48);
+            if (number > 10000) { return -1; }
+            i = i + 1;
+        }
+        return number;
+    }
+
+    fn expandReplacement(string source, string replacement, RegexCaptures captures) -> string {
+        u8[] bytes = Str::Bytes(replacement);
+        i32 length = bytes.len() as i32;
+        StringBuilder out = new StringBuilder();
+        i32 i = 0;
+        while (i < length) {
+            u8 c = bytes[i];
+            if (c == 92 && i + 1 < length && bytes[i + 1] == 36) {
+                out.append("$");
+                i = i + 2;
+                continue;
+            }
+            if (c == 36) {
+                if (i + 1 < length && bytes[i + 1] == 36) {
+                    out.append("$");
+                    i = i + 2;
+                    continue;
+                }
+                if (i + 1 < length && bytes[i + 1] == 123) {
+                    i32 close = i + 2;
+                    while (close < length && bytes[close] != 125) {
+                        close = close + 1;
+                    }
+                    if (close < length) {
+                        string name = Str::Substring(replacement, (i + 2) as u64, (close - i - 2) as u64);
+                        i32 number = this.groupNumber(name);
+                        if (number >= 0) {
+                            out.append(captures.text(source, number));
+                        } else {
+                            out.append(captures.textNamed(source, name));
+                        }
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                if (i + 1 < length && bytes[i + 1] >= 48 && bytes[i + 1] <= 57) {
+                    out.append(captures.text(source, bytes[i + 1] as i32 - 48));
+                    i = i + 2;
+                    continue;
+                }
+            }
+            out.append(Str::Substring(replacement, i as u64, 1));
+            i = i + 1;
         }
         return out.toString();
     }

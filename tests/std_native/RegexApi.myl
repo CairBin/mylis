@@ -539,5 +539,40 @@ fn main() -> i32 {
         }
         Err(_) => { println("mixed-name-compile-error"); }
     }
+
+    Result<Regex, IoError> replaceNamedResult = Regex::Compile("(?<word>[a-z]+)-(\\d+)");
+    match replaceNamedResult {
+        Ok(replaceNamedPattern) => {
+            println(replaceNamedPattern.replaceAllCaptures("abc-12 def-34", "${{word}}:$2"));
+            println(replaceNamedPattern.replaceAllCaptures("abc-12", "[$0] $$ \\$"));
+            println(replaceNamedPattern.replaceAllCaptures("abc-12", "${{missing}}"));
+        }
+        Err(_) => { println("replace-named-compile-error"); }
+    }
+
+    Result<Regex, IoError> replaceOptionalResult = Regex::Compile("(a)?(b)");
+    match replaceOptionalResult {
+        Ok(replaceOptionalPattern) => {
+            println(replaceOptionalPattern.replaceAllCaptures("ab", "$1-$2"));
+            println(replaceOptionalPattern.replaceAllCaptures("b", "$1-$2"));
+        }
+        Err(_) => { println("replace-optional-compile-error"); }
+    }
+
+    Result<Regex, IoError> replaceTenResult = Regex::Compile("(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)");
+    match replaceTenResult {
+        Ok(replaceTenPattern) => {
+            println(replaceTenPattern.replaceAllCaptures("abcdefghij", "${{10}}"));
+        }
+        Err(_) => { println("replace-ten-compile-error"); }
+    }
+
+    Result<Regex, IoError> replaceEmptyResult = Regex::Compile("(?=l)");
+    match replaceEmptyResult {
+        Ok(replaceEmptyPattern) => {
+            println(replaceEmptyPattern.replaceAllCaptures("hello", "_"));
+        }
+        Err(_) => { println("replace-empty-compile-error"); }
+    }
     return 0;
 }
