@@ -1,0 +1,58 @@
+// 默认模式下含非 ASCII 字面量的字符类按码点匹配。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn check(string pattern, string text) -> void {
+    Result<Regex, IoError> result = Regex::Compile(pattern);
+    match result {
+        Ok(regex) => { println_bool(regex.isMatch(text)); }
+        Err(_) => { println_bool(false); }
+    }
+}
+
+fn main() -> i32 {
+    check("[中]", "中");
+    check("[中]", "a");
+    check("[a中]", "a");
+    check("[a中]", "中");
+    check("[a中]", "b");
+    check("[一-龥]", "中");
+    check("[一-龥]", "a");
+    check("[^中]", "文");
+    check("[^中]", "中");
+    check("[中a-z]", "m");
+    check("[中a-z]", "中");
+    check("[中a-z]", "M");
+    check("[\\d中]", "5");
+    check("[\\d中]", "中");
+    check("[\\d中]", "a");
+    check("[\\d中]", "١");
+    check("[\\p{{L}}\\d]", "١");
+    check("(?u)[\\p{{L}}\\d]", "١");
+    check("[\\D中]", "a");
+    check("[\\D中]", "文");
+    check("[\\D中]", "5");
+    check("[\\w中]", "中");
+    check("[\\w中]", "-");
+    check("[\\W中]", "文");
+    check("[\\W中]", "a");
+    check("[\\s中]", " ");
+    check("[\\s中]", "中");
+    check("[\\s中]", "a");
+    check("[^\\d中]", "a");
+    check("[^\\d中]", "5");
+    check("[^\\d中]", "中");
+    check("[😀]", "😀");
+    check("[😀]", "a");
+    check("[😀-🙏]", "😁");
+    check("[😀-🙏]", "a");
+    check("[中]{{2}}", "中中");
+    check("[中]{{2}}", "中");
+    check("[😀]{{2}}", "😀😀");
+    check("[😀]{{2}}", "😀");
+    check("(?i)[a中]", "A");
+    check("(?i)[a中]", "中");
+    check("(?i)[a中]", "B");
+    return 0;
+}

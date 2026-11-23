@@ -76,6 +76,19 @@ class RegexClass {
         return hit;
     }
 
+    fn matchesCodeFold(i32 value, bool ignoreCase) -> bool {
+        bool hit = this.contains(value);
+        if (ignoreCase && !hit) {
+            if (value >= 65 && value <= 90) {
+                hit = this.contains(value + 32);
+            } else if (value >= 97 && value <= 122) {
+                hit = this.contains(value - 32);
+            }
+        }
+        if (this.negated) { return !hit; }
+        return hit;
+    }
+
     fn matchesFold(u8 value, bool ignoreCase) -> bool {
         i32 code = value as i32;
         bool hit = this.contains(code);
@@ -409,7 +422,6 @@ class RegexCompiler {
         i32 op = RegexState::CLASS;
         if (cls.unicode) {
             op = RegexState::CLASS_CODE;
-            flags = 0;
             this.hasUnicode = true;
         }
         i32 index = this.addState(op, flags, cls);
@@ -1103,6 +1115,27 @@ class RegexCompiler {
         return value;
     }
 
+    fn classNeedsCode() -> bool {
+        i32 scan = this.pos;
+        i32 length = this.bytes.len() as i32;
+        while (scan < length) {
+            u8 value = this.bytes[scan];
+            if (value == 93) { return false; }
+            if (value == 92) {
+                scan = scan + 1;
+                if (scan >= length) { return false; }
+                u8 escaped = this.bytes[scan];
+                if (escaped == 112 || escaped == 80) { return true; }
+                if (escaped >= 128) { return true; }
+                scan = scan + 1;
+                continue;
+            }
+            if (value >= 128) { return true; }
+            scan = scan + 1;
+        }
+        return false;
+    }
+
     fn parseClass() -> RegexFrag {
         this.pos = this.pos + 1;
         bool negated = false;
@@ -1111,7 +1144,7 @@ class RegexCompiler {
             this.pos = this.pos + 1;
         }
         RegexClass cls = new RegexClass(negated);
-        bool codeMode = this.wordUnicode;
+        bool codeMode = this.wordUnicode || this.classNeedsCode();
         if (codeMode) {
             cls.unicode = true;
             this.hasUnicode = true;
@@ -1143,26 +1176,24 @@ class RegexCompiler {
                     continue;
                 }
                 if (special == 100 || special == 68 || special == 119 || special == 87 || special == 115 || special == 83) {
-                    bool classCode = codeMode || cls.unicode;
                     i32[] ranges = new i32[0];
                     if (special == 100 || special == 68) {
-                        ranges = this.digitRanges(classCode);
+                        ranges = this.digitRanges(this.wordUnicode);
                     } else if (special == 119 || special == 87) {
-                        ranges = this.wordRanges(classCode);
+                        ranges = this.wordRanges(this.wordUnicode);
                     } else {
-                        ranges = this.spaceRanges(classCode);
+                        ranges = this.spaceRanges(this.wordUnicode);
                     }
                     bool invert = special == 68 || special == 87 || special == 83;
                     if (invert) {
                         i32 limit = 255;
-                        if (classCode) { limit = 1114111; }
+                        if (codeMode) { limit = 1114111; }
                         ranges = UnicodeData::ComplementTo(ranges, limit);
                     }
                     this.appendRanges(cls, ranges);
-                    if (classCode) {
+                    if (codeMode) {
                         cls.unicode = true;
                         this.hasUnicode = true;
-                        codeMode = true;
                     }
                     continue;
                 }
@@ -1622,7 +1653,8 @@ pub class Regex {
             i32[] code = new i32[1];
             i32 step = this.decodeCodePoint(text, pos, code);
             if (step < 0) { return false; }
-            if (!this.states[state].cls.matchesCode(code[0])) { return false; }
+            bool ignoreCase = (this.states[state].ch & RegexState::STATE_FLAG) != 0;
+            if (!this.states[state].cls.matchesCodeFold(code[0], ignoreCase)) { return false; }
             return this.dfs(text, this.states[state].out1, pos + step, captures, budget, target);
         }
         if (pos >= text.len() as i32) { return false; }
@@ -1735,7 +1767,8 @@ pub class Regex {
             i32[] code = new i32[1];
             i32 step = this.decodeCodePoint(text, pos, code);
             if (step < 0) { return; }
-            if (!this.states[state].cls.matchesCode(code[0])) { return; }
+            bool ignoreCase = (this.states[state].ch & RegexState::STATE_FLAG) != 0;
+            if (!this.states[state].cls.matchesCodeFold(code[0], ignoreCase)) { return; }
             this.dfsLongest(text, this.states[state].out1, pos + step, captures, budget, best);
             return;
         }

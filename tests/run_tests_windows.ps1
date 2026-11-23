@@ -72,7 +72,7 @@ function Get-TextLines([string]$Path) {
 }
 
 if ($Backend -eq "std") {
-    $stdNames = @("WindowsStdApi", "FileApi", "AsyncFileApi", "TcpApi", "UdpApi", "EventLoopApi", "UdpLoopApi", "TimerApi", "BufferedTcpApi", "UnixSocketApi", "FilePermApi", "DateTimeApi", "RegexApi", "RegexRefApi", "RegexFlagsApi", "RegexUnicodeApi", "RegexUnicodeClassApi", "RegexUnicodeWordApi", "RegexUnicodeCaseApi", "HashApi", "GzipApi", "TcpReuseApi")
+    $stdNames = @("WindowsStdApi", "FileApi", "AsyncFileApi", "TcpApi", "UdpApi", "EventLoopApi", "UdpLoopApi", "TimerApi", "BufferedTcpApi", "UnixSocketApi", "FilePermApi", "DateTimeApi", "RegexApi", "RegexRefApi", "RegexFlagsApi", "RegexUnicodeApi", "RegexUnicodeClassApi", "RegexUnicodeWordApi", "RegexUnicodeCaseApi", "RegexClassDefaultApi", "HashApi", "GzipApi", "TcpReuseApi")
     $cases = @()
     foreach ($name in $stdNames) {
         $cases += [pscustomobject]@{
