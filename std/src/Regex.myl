@@ -824,6 +824,16 @@ class RegexCompiler {
         if (name == "Separator") { return "Z"; }
         if (name == "Symbol") { return "S"; }
         if (name == "Mark") { return "M"; }
+        if (name == "Uppercase_Letter") { return "Lu"; }
+        if (name == "Lowercase_Letter") { return "Ll"; }
+        if (name == "Titlecase_Letter") { return "Lt"; }
+        if (name == "Modifier_Letter") { return "Lm"; }
+        if (name == "Other_Letter") { return "Lo"; }
+        if (name == "Nonspacing_Mark") { return "Mn"; }
+        if (name == "Spacing_Mark") { return "Mc"; }
+        if (name == "Enclosing_Mark") { return "Me"; }
+        if (name == "Letter_Number") { return "Nl"; }
+        if (name == "Other_Number") { return "No"; }
         if (name == "Latn") { return "Latin"; }
         if (name == "Deva") { return "Devanagari"; }
         if (name == "Zyyy") { return "Common"; }

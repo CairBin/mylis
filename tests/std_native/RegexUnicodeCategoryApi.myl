@@ -1,0 +1,58 @@
+// Unicode 通用类别子类：Lu/Ll/Lt/Lm/Lo、Mn/Mc/Me、Nl/No 及长名称别名。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn check(string pattern, string text) -> void {
+    Result<Regex, IoError> result = Regex::Compile(pattern);
+    match result {
+        Ok(regex) => { println_bool(regex.isMatch(text)); }
+        Err(_) => { println_bool(false); }
+    }
+}
+
+fn main() -> i32 {
+    check("\\p{{Lu}}", "A");
+    check("\\p{{Lu}}", "Ω");
+    check("\\p{{Lu}}", "a");
+    check("\\p{{Lu}}", "1");
+    check("\\p{{Ll}}", "a");
+    check("\\p{{Ll}}", "é");
+    check("\\p{{Ll}}", "A");
+    check("\\p{{Lt}}", "ǅ");
+    check("\\p{{Lt}}", "A");
+    check("\\p{{Lm}}", "ʰ");
+    check("\\p{{Lm}}", "a");
+    check("\\p{{Lo}}", "中");
+    check("\\p{{Lo}}", "A");
+    check("\\p{{Mn}}", "́");
+    check("\\p{{Mn}}", "a");
+    check("\\p{{Mc}}", "ा");
+    check("\\p{{Mc}}", "a");
+    check("\\p{{Me}}", "⃝");
+    check("\\p{{Me}}", "a");
+    check("\\p{{Nl}}", "Ⅻ");
+    check("\\p{{Nl}}", "1");
+    check("\\p{{No}}", "²");
+    check("\\p{{No}}", "1");
+    check("\\p{{Uppercase_Letter}}", "A");
+    check("\\p{{Lowercase_Letter}}", "a");
+    check("\\p{{Titlecase_Letter}}", "ǅ");
+    check("\\p{{Modifier_Letter}}", "ʰ");
+    check("\\p{{Other_Letter}}", "中");
+    check("\\p{{Nonspacing_Mark}}", "́");
+    check("\\p{{Spacing_Mark}}", "ा");
+    check("\\p{{Enclosing_Mark}}", "⃝");
+    check("\\p{{Letter_Number}}", "Ⅻ");
+    check("\\p{{Other_Number}}", "²");
+    check("\\P{{Lu}}", "a");
+    check("\\P{{Lu}}", "A");
+    check("[\\p{{Lu}}\\p{{Ll}}]", "A");
+    check("[\\p{{Lu}}\\p{{Ll}}]", "a");
+    check("[\\p{{Lu}}\\p{{Ll}}]", "1");
+    check("\\p{{Lu}}+", "ABC");
+    check("\\p{{Lu}}+", "abc");
+    check("\\p{{Lo}}+", "中文");
+    check("\\p{{Lo}}+", "abc");
+    return 0;
+}
