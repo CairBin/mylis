@@ -7,12 +7,30 @@
 
 | 想了解 | 先读 |
 | --- | --- |
-| 安装、命令行、工程、std API | [`docs/使用手册.md`](docs/使用手册.md) |
+| 文档总入口、按角色阅读路线、维护规则 | [`docs/README.md`](docs/README.md) |
+| 安装、命令行、工程、包管理 | [`docs/使用手册.md`](docs/使用手册.md) |
+| std 每个文件/类/函数的 API 与参数约定 | [`docs/std手册/README.md`](docs/std手册/README.md) |
 | 语法与语义 | [`docs/Mylis语言规范.md`](docs/Mylis语言规范.md) |
 | 编译器结构、扩展点、测试 | [`docs/开发者指南.md`](docs/开发者指南.md) |
 | MIR、后端与 GC | [`docs/MIR.md`](docs/MIR.md)、[`docs/后端与GC路线.md`](docs/后端与GC路线.md) |
 | std 平台侧车与异步模型 | [`docs/std平台与异步约定.md`](docs/std平台与异步约定.md) |
 | 库格式、依赖、目录布局 | [`docs/Mylis库标准.md`](docs/Mylis库标准.md)、[`docs/包获取与目录结构.md`](docs/包获取与目录结构.md) |
+| 人/Agent 改仓库的流程、测试与变更记录 | [`docs/agent开发规范.md`](docs/agent开发规范.md) |
+
+## AI 参与开发
+
+本仓库**接受使用 AI（含 Agent、代码生成工具）编写或辅助编写的代码**。接受的前提不是“代码能编译”，而是**改动可审计**：每个由 AI 参与产生的提交/PR 必须明确说明做了什么改动，以及如何测试过。
+
+最低要求：
+
+1. **读规范**：开工前读 [`docs/agent开发规范.md`](docs/agent开发规范.md)，并按其中的阅读顺序读目标领域文档与源码；不能只看本 README 就改代码。
+2. **说明改了什么**：文件/模块、行为变化、公开 API/ABI 变化、影响面；不能只写“优化”“修复问题”。
+3. **说明怎么测的**：给出真实命令与退出码/通过数量，例如 `make test -> exit 0`、Windows std 套件 `26/26`、`nm` 符号对比 `43/43`。禁止编造测试结果，禁止用“应该能过”代替运行记录。
+4. **列出未验证项**：只验证 Linux 不能声称 Windows 通过；未跑的后端、平台、用例必须明确写“未验证”。
+5. **最小改动**：不顺手重构、不批量格式化、不删除/弱化测试、不改无关文件；AI 生成但无法解释的代码不得合入。
+6. **同步文档**：公开 API、CLI、`mylis.toml`、native ABI 变化必须同一提交更新对应手册；改 std 时必须更新 [`docs/std手册`](docs/std手册/README.md)。
+
+提交说明直接套用 [`docs/agent开发规范.md`](docs/agent开发规范.md) 第 8 节的五段模板：`改了什么 / 为什么 / 影响面 / 验证 / 未验证与风险`。缺少“验证”段的提交按不可审计处理。
 
 ---
 
@@ -637,7 +655,7 @@ mylrt-rs/       Rust 运行时（Runtime / Gc trait + 实现）
 core/, std/     core 层与独立 std 包；std-posix/native、std-win32/native 放 Rust/C ABI native 后端
 tests/          positive / negative / lib / emit / test_lsp.py
 tools/          bootstrap_gc.sh、build_std_native.{sh,ps1}、package_windows.{sh,ps1}、package_windows_mingw.ps1、check_release_windows.ps1、test_windows.ps1、write_manifest.{sh,ps1} 等构建/打包/测试脚本
-docs/           Mylis 语言规范
+docs/           文档入口、语言规范、std 手册、平台约定、Agent 开发规范
 ```
 
 ### 明确不做
