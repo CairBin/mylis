@@ -1,0 +1,119 @@
+// 正则内联选项：i（忽略大小写）、s（点号匹配换行）、m（多行锚点）。
+import { Regex } from "Regex.myl";
+import { IoError } from "IoError.myl";
+import { println_bool } from "Io.myl";
+
+fn main() -> i32 {
+    Result<Regex, IoError> insensitiveResult = Regex::Compile("(?i)abc");
+    match insensitiveResult {
+        Ok(insensitivePattern) => {
+            println_bool(insensitivePattern.isMatch("ABC"));
+            println_bool(insensitivePattern.isMatch("AbC"));
+            println_bool(insensitivePattern.isMatch("abd"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> caseClassResult = Regex::Compile("(?i)[a-z]+");
+    match caseClassResult {
+        Ok(caseClassPattern) => {
+            println_bool(caseClassPattern.isMatch("ABC"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> negatedClassResult = Regex::Compile("(?i)[^a]");
+    match negatedClassResult {
+        Ok(negatedClassPattern) => {
+            println_bool(negatedClassPattern.isMatch("A"));
+            println_bool(negatedClassPattern.isMatch("B"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> caseBackrefResult = Regex::Compile("(?i)(a)\\1");
+    match caseBackrefResult {
+        Ok(caseBackrefPattern) => {
+            println_bool(caseBackrefPattern.isMatch("aA"));
+            println_bool(caseBackrefPattern.isMatch("ab"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> caseNamedBackrefResult = Regex::Compile("(?i)(?<part>ab)\\k<part>");
+    match caseNamedBackrefResult {
+        Ok(caseNamedBackrefPattern) => {
+            println_bool(caseNamedBackrefPattern.isMatch("abAB"));
+            println_bool(caseNamedBackrefPattern.isMatch("abX"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> dotAllResult = Regex::Compile("(?s)a.b");
+    match dotAllResult {
+        Ok(dotAllPattern) => {
+            println_bool(dotAllPattern.isMatch("a\nb"));
+            println_bool(dotAllPattern.isMatch("acb"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> plainDotResult = Regex::Compile("a.b");
+    match plainDotResult {
+        Ok(plainDotPattern) => {
+            println_bool(plainDotPattern.isMatch("a\nb"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> multilineResult = Regex::Compile("(?m)^b$");
+    match multilineResult {
+        Ok(multilinePattern) => {
+            println_bool(multilinePattern.isMatch("a\nb\nc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> plainAnchorResult = Regex::Compile("^b$");
+    match plainAnchorResult {
+        Ok(plainAnchorPattern) => {
+            println_bool(plainAnchorPattern.isMatch("a\nb\nc"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> multilineStartResult = Regex::Compile("(?m)^a");
+    match multilineStartResult {
+        Ok(multilineStartPattern) => {
+            println_bool(multilineStartPattern.isMatch("x\na"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> middleFlagResult = Regex::Compile("a(?i)b");
+    match middleFlagResult {
+        Ok(middleFlagPattern) => {
+            println_bool(middleFlagPattern.isMatch("aB"));
+            println_bool(middleFlagPattern.isMatch("Ab"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> disableFlagResult = Regex::Compile("(?i)a(?-i)b");
+    match disableFlagResult {
+        Ok(disableFlagPattern) => {
+            println_bool(disableFlagPattern.isMatch("Ab"));
+            println_bool(disableFlagPattern.isMatch("AB"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+
+    Result<Regex, IoError> combinedFlagResult = Regex::Compile("(?is)^a.b$");
+    match combinedFlagResult {
+        Ok(combinedFlagPattern) => {
+            println_bool(combinedFlagPattern.isMatch("A\nB"));
+        }
+        Err(_) => { println_bool(false); }
+    }
+    return 0;
+}

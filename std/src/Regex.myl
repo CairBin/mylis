@@ -1,4 +1,5 @@
-// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、`\b/\B`、捕获组、
+// 纯 Mylis 正则：支持字面量、`.`、`^`/`$`、字符类、`\d/\w/\s`、`\b/\B`、
+// 内联选项 `(?i)` / `(?s)` / `(?m)`、捕获组、
 // 非捕获组 `(?:...)`、命名组 `(?<name>...)` / `(?P<name>...)`、
 // 先行/后行断言 `(?=...)` / `(?!...)` / `(?<=...)` / `(?<!...)`、
 // 反向引用 `\1`..`\99` / `\k<name>` / `(?P=name)`、分支 `|`、`* + ?` 与
@@ -54,16 +55,26 @@ class RegexClass {
         this.addRange(32, 32);
     }
 
-    fn matches(u8 value) -> bool {
-        i32 code = value as i32;
-        bool hit = false;
+    fn contains(i32 code) -> bool {
         i32 i = 0;
         while (i < this.count) {
             if (code >= this.ranges[i] && code <= this.ranges[i + 1]) {
-                hit = true;
-                break;
+                return true;
             }
             i = i + 2;
+        }
+        return false;
+    }
+
+    fn matchesFold(u8 value, bool ignoreCase) -> bool {
+        i32 code = value as i32;
+        bool hit = this.contains(code);
+        if (ignoreCase && !hit) {
+            if (code >= 65 && code <= 90) {
+                hit = this.contains(code + 32);
+            } else if (code >= 97 && code <= 122) {
+                hit = this.contains(code - 32);
+            }
         }
         if (this.negated) {
             return !hit;
@@ -88,6 +99,8 @@ class RegexState {
     pub static const i32 BOUNDARY = 13;
     pub static const i32 LOOK_NEGATIVE = 1;
     pub static const i32 BOUNDARY_NEGATIVE = 1;
+    pub static const i32 STATE_FLAG = 256;
+    pub static const i32 MULTILINE = 1;
     pub static const i32 LOOK_BEHIND = 2;
 
     i32 op;
@@ -150,6 +163,9 @@ class RegexCompiler {
     i32 groupCount;
     bool hasLookahead;
     bool hasBackref;
+    bool ignoreCase;
+    bool dotAll;
+    bool multiline;
     string[] groupNames;
 
     pub fn init(string source) -> void {
@@ -163,6 +179,9 @@ class RegexCompiler {
         this.groupCount = 1;
         this.hasLookahead = false;
         this.hasBackref = false;
+        this.ignoreCase = false;
+        this.dotAll = false;
+        this.multiline = false;
         this.groupNames = new string[32];
         i32 i = 0;
         while (i < 32) {
@@ -249,7 +268,9 @@ class RegexCompiler {
 
     fn backrefFrag(i32 group) -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
-        i32 state = this.addState(RegexState::BACKREF, group, dummy);
+        i32 encoded = group;
+        if (this.ignoreCase) { encoded = encoded | RegexState::STATE_FLAG; }
+        i32 state = this.addState(RegexState::BACKREF, encoded, dummy);
         RegexFrag result = new RegexFrag(state);
         result.addOut(state * 2);
         this.hasBackref = true;
@@ -319,14 +340,18 @@ class RegexCompiler {
 
     fn literalFrag(u8 value) -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
-        i32 index = this.addState(RegexState::CHAR, value as i32, dummy);
+        i32 encoded = value as i32;
+        if (this.ignoreCase) { encoded = encoded | RegexState::STATE_FLAG; }
+        i32 index = this.addState(RegexState::CHAR, encoded, dummy);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
     }
 
     fn classFrag(RegexClass cls) -> RegexFrag {
-        i32 index = this.addState(RegexState::CLASS, 0, cls);
+        i32 flags = 0;
+        if (this.ignoreCase) { flags = RegexState::STATE_FLAG; }
+        i32 index = this.addState(RegexState::CLASS, flags, cls);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
@@ -334,15 +359,17 @@ class RegexCompiler {
 
     fn anyFrag() -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
-        i32 index = this.addState(RegexState::ANY, 0, dummy);
+        i32 flags = 0;
+        if (this.dotAll) { flags = RegexState::STATE_FLAG; }
+        i32 index = this.addState(RegexState::ANY, flags, dummy);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
     }
 
-    fn anchorFrag(i32 op) -> RegexFrag {
+    fn anchorFrag(i32 op, i32 flags) -> RegexFrag {
         RegexClass dummy = new RegexClass(false);
-        i32 index = this.addState(op, 0, dummy);
+        i32 index = this.addState(op, flags, dummy);
         RegexFrag frag = new RegexFrag(index);
         frag.addOut(index * 2);
         return frag;
@@ -589,6 +616,44 @@ class RegexCompiler {
         return Str::Substring(this.pattern, start as u64, length as u64);
     }
 
+    fn parseInlineFlags() -> RegexFrag {
+        bool negative = false;
+        bool any = false;
+        while (!this.atEnd()) {
+            u8 c = this.currentByte();
+            if (c == 45) {
+                negative = true;
+                this.pos = this.pos + 1;
+                continue;
+            }
+            if (c == 105) {
+                this.ignoreCase = !negative;
+                any = true;
+                this.pos = this.pos + 1;
+                continue;
+            }
+            if (c == 115) {
+                this.dotAll = !negative;
+                any = true;
+                this.pos = this.pos + 1;
+                continue;
+            }
+            if (c == 109) {
+                this.multiline = !negative;
+                any = true;
+                this.pos = this.pos + 1;
+                continue;
+            }
+            if (c == 41) {
+                this.pos = this.pos + 1;
+                if (!any) { return this.fail(); }
+                return this.emptyFrag();
+            }
+            return this.fail();
+        }
+        return this.fail();
+    }
+
     fn parseAtom() -> RegexFrag {
         if (this.atEnd()) {
             return this.emptyFrag();
@@ -600,6 +665,9 @@ class RegexCompiler {
             string groupName = "";
             if (!this.atEnd() && this.currentByte() == 63) {
                 this.pos = this.pos + 1;
+                if (!this.atEnd() && (this.currentByte() == 105 || this.currentByte() == 115 || this.currentByte() == 109 || this.currentByte() == 45)) {
+                    return this.parseInlineFlags();
+                }
                 if (!this.atEnd() && this.currentByte() == 58) {
                     mode = 1;
                     this.pos = this.pos + 1;
@@ -682,11 +750,15 @@ class RegexCompiler {
         }
         if (c == 94) {
             this.pos = this.pos + 1;
-            return this.anchorFrag(RegexState::BOL);
+            i32 flags = 0;
+            if (this.multiline) { flags = RegexState::MULTILINE; }
+            return this.anchorFrag(RegexState::BOL, flags);
         }
         if (c == 36) {
             this.pos = this.pos + 1;
-            return this.anchorFrag(RegexState::EOL);
+            i32 flags = 0;
+            if (this.multiline) { flags = RegexState::MULTILINE; }
+            return this.anchorFrag(RegexState::EOL, flags);
         }
         if (c == 92) {
             this.pos = this.pos + 1;
@@ -897,13 +969,17 @@ pub class Regex {
             return;
         }
         if (op == RegexState::BOL) {
-            if (pos == 0) {
+            bool ok = pos == 0;
+            if (!ok && (this.states[stateIndex].ch & RegexState::MULTILINE) != 0) { ok = text[pos - 1] == 10; }
+            if (ok) {
                 this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
             }
             return;
         }
         if (op == RegexState::EOL) {
-            if (pos == text.len() as i32) {
+            bool ok = pos == text.len() as i32;
+            if (!ok && (this.states[stateIndex].ch & RegexState::MULTILINE) != 0) { ok = text[pos] == 10; }
+            if (ok) {
                 this.addState(this.states[stateIndex].out1, text, pos, seen, out, count);
             }
             return;
@@ -929,16 +1005,38 @@ pub class Regex {
         return false;
     }
 
+    fn foldByte(u8 value) -> u8 {
+        i32 code = value as i32;
+        if (code >= 65 && code <= 90) { return (code + 32) as u8; }
+        if (code >= 97 && code <= 122) { return (code - 32) as u8; }
+        return value;
+    }
+
+    fn literalMatches(i32 encoded, u8 value) -> bool {
+        i32 expected = encoded & 255;
+        if (expected == value as i32) { return true; }
+        if ((encoded & RegexState::STATE_FLAG) == 0) { return false; }
+        return this.foldByte(expected as u8) == value;
+    }
+
+    fn sameByte(u8 left, u8 right, bool ignoreCase) -> bool {
+        if (left == right) { return true; }
+        if (!ignoreCase) { return false; }
+        return this.foldByte(left) == right;
+    }
+
     fn accepts(i32 stateIndex, u8 value) -> bool {
         i32 op = this.states[stateIndex].op;
         if (op == RegexState::CHAR) {
-            return this.states[stateIndex].ch == value as i32;
+            return this.literalMatches(this.states[stateIndex].ch, value);
         }
         if (op == RegexState::ANY) {
+            if ((this.states[stateIndex].ch & RegexState::STATE_FLAG) != 0) { return true; }
             return value != 10;
         }
         if (op == RegexState::CLASS) {
-            return this.states[stateIndex].cls.matches(value);
+            bool ignoreCase = (this.states[stateIndex].ch & RegexState::STATE_FLAG) != 0;
+            return this.states[stateIndex].cls.matchesFold(value, ignoreCase);
         }
         return false;
     }
@@ -1044,11 +1142,15 @@ pub class Regex {
             return this.dfs(text, this.states[state].out2, pos, captures, budget, target);
         }
         if (op == RegexState::BOL) {
-            if (pos == 0) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
+            bool ok = pos == 0;
+            if (!ok && (this.states[state].ch & RegexState::MULTILINE) != 0) { ok = text[pos - 1] == 10; }
+            if (ok) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
             return false;
         }
         if (op == RegexState::EOL) {
-            if (pos == text.len() as i32) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
+            bool ok = pos == text.len() as i32;
+            if (!ok && (this.states[state].ch & RegexState::MULTILINE) != 0) { ok = text[pos] == 10; }
+            if (ok) { return this.dfs(text, this.states[state].out1, pos, captures, budget, target); }
             return false;
         }
         if (op == RegexState::BOUNDARY) {
@@ -1084,7 +1186,9 @@ pub class Regex {
             return matched;
         }
         if (op == RegexState::BACKREF) {
-            i32 group = this.states[state].ch;
+            i32 encoded = this.states[state].ch;
+            i32 group = encoded & 255;
+            bool ignoreCase = (encoded & RegexState::STATE_FLAG) != 0;
             i32 firstSlot = group * 2;
             i32 lastSlot = firstSlot + 1;
             if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return false; }
@@ -1095,7 +1199,7 @@ pub class Regex {
             if (pos + n > text.len() as i32) { return false; }
             i32 i = 0;
             while (i < n) {
-                if (text[first + i] != text[pos + i]) { return false; }
+                if (!this.sameByte(text[first + i], text[pos + i], ignoreCase)) { return false; }
                 i = i + 1;
             }
             return this.dfs(text, this.states[state].out1, pos + n, captures, budget, target);
@@ -1135,13 +1239,17 @@ pub class Regex {
             return;
         }
         if (op == RegexState::BOL) {
-            if (pos == 0) {
+            bool ok = pos == 0;
+            if (!ok && (this.states[state].ch & RegexState::MULTILINE) != 0) { ok = text[pos - 1] == 10; }
+            if (ok) {
                 this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
             }
             return;
         }
         if (op == RegexState::EOL) {
-            if (pos == text.len() as i32) {
+            bool ok = pos == text.len() as i32;
+            if (!ok && (this.states[state].ch & RegexState::MULTILINE) != 0) { ok = text[pos] == 10; }
+            if (ok) {
                 this.dfsLongest(text, this.states[state].out1, pos, captures, budget, best);
             }
             return;
@@ -1166,7 +1274,9 @@ pub class Regex {
             return;
         }
         if (op == RegexState::BACKREF) {
-            i32 group = this.states[state].ch;
+            i32 encoded = this.states[state].ch;
+            i32 group = encoded & 255;
+            bool ignoreCase = (encoded & RegexState::STATE_FLAG) != 0;
             i32 firstSlot = group * 2;
             i32 lastSlot = firstSlot + 1;
             if (firstSlot < 0 || lastSlot >= captures.len() as i32) { return; }
@@ -1177,7 +1287,7 @@ pub class Regex {
             if (pos + n > text.len() as i32) { return; }
             i32 i = 0;
             while (i < n) {
-                if (text[first + i] != text[pos + i]) { return; }
+                if (!this.sameByte(text[first + i], text[pos + i], ignoreCase)) { return; }
                 i = i + 1;
             }
             this.dfsLongest(text, this.states[state].out1, pos + n, captures, budget, best);
