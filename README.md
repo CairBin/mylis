@@ -62,13 +62,15 @@ bin/mylc hello.myl -o hello
 bin/mylc hello.myl --run
 ```
 
-默认不需要 Boehm GC。只有显式切换到 Boehm 时才需要：
+默认不需要 Boehm GC，也不需要 `gc.h`。`make all` 只构建自研 GC；只有显式切换到 Boehm 时才会构建 `gc_boehm` 包装库并引用 `gc.h`：
 
 ```bash
 make bootstrap                 # 下载并编译 Boehm GC（可选）
-make all
-MYLIS_GC=boehm mylc app.myl -o app
+make all GC_BACKEND=boehm      # 构建 gc_boehm 包装库并复制到 bin/build
+MYLIS_GC=boehm bin/mylc app.myl -o app
 ```
+
+`gc.h` 只由 `myrt/gc/gc_boehm.c` 引用；默认 `GC_BACKEND=own` 不会编译该文件。`make all` 的 `bin` 步骤若发现 `GC_ROOT/include/gc.h`，会把它作为可选文件复制到 `bin/gc`；缺失只打印 warning，不参与编译或链接。
 
 ---
 
@@ -119,7 +121,7 @@ mylc --lang en app.myl          # mylc 自身的消息用英文（默认简体�
 | `MYLIS_CFLAGS` / `MYLIS_LDFLAGS` | 覆盖编译/链接参数（整体替换默认值） |
 | `MYLIS_PATH` | 追加模块搜索路径（Windows 用 `;`，其他用 `:`） |
 | `MYLIS_GC_ROOT` | 覆盖 Boehm GC 安装前缀 |
-| `MYLIS_GC` | GC 后端：默认 `own`（自研分代 mark-sweep，GNU `libmylgc.a` / MSVC `mylgc.lib`）；`boehm`（需 `libgc`，先 `make bootstrap`）；`simple`（malloc 不回收，调试用） |
+| `MYLIS_GC` | GC 后端：默认 `own`（自研分代 mark-sweep，GNU `libmylgc.a` / MSVC `mylgc.lib`）；`boehm`（需 `libgc` + `libgc_boehm.a`，先 `make bootstrap && make all GC_BACKEND=boehm`）；`simple`（malloc 不回收，调试用） |
 | `MYLIS_GC_THRESHOLD` | 自研 GC 自动回收阈值（字节，默认 `524288`，`0` 关闭；仍可显式 `myrt_gc_collect()`） |
 | `MYLIS_SERVER` | 编辑器查找 `myls` 的额外位置 |
 | `MYLIS_LANG=zh\|en` | 消息语言 |
@@ -252,9 +254,9 @@ myrt/gc_simple.c   ← 可选：malloc 不回收（调试）
 
 ```bash
 make all                         # 默认自研 GC
-MYLIS_GC=simple mylc app.myl -o app   # 不回收，调试用
-make bootstrap && make all            # 可选：准备 Boehm
-MYLIS_GC=boehm mylc app.myl -o app
+MYLIS_GC=simple bin/mylc app.myl -o app   # 不回收，调试用
+make bootstrap && make all GC_BACKEND=boehm   # 可选：准备 Boehm
+MYLIS_GC=boehm bin/mylc app.myl -o app
 ```
 
 `myrt_*` 的 ABI 不随后端变化。
@@ -590,8 +592,8 @@ powershell -File tools\test_windows.ps1 -SkipPackage
 ```bash
 make all                 # CC=gcc / AR=ar，默认自研 GC + LLVM 后端
 make all CC=clang        # 显式指定 C 编译器
-make bootstrap           # 可选：准备 Boehm
-MYLIS_GC=boehm mylc app.myl -o app
+make bootstrap && make all GC_BACKEND=boehm   # 可选：准备 Boehm
+MYLIS_GC=boehm bin/mylc app.myl -o app
 ```
 
 ### 用 mylc 编译 .myl 的默认后端

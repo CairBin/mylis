@@ -137,7 +137,10 @@ else
   STD_POSIX_LIBS := $(addprefix $(STD_POSIX_DIR)/,libmylis_file.a libmylis_io.a libmylis_time.a libmylis_net.a libmylis_event.a libmylis_process.a)
   STD_POSIX_STAMP := $(STD_POSIX_DIR)/.built
   MYLGC_LIB     := build/libmylgc.a
-  GC_DEPS       := $(MYLGC_LIB) $(SIMPLE_LIB) $(BOEHM_LIB)
+  GC_DEPS       := $(MYLGC_LIB) $(SIMPLE_LIB)
+ifeq ($(GC_BACKEND),boehm)
+  GC_DEPS       += $(BOEHM_LIB)
+endif
   CFLAGS        := -std=c11 -O2 -Wall -Wextra -fno-strict-aliasing -fPIC -I$(ROOT)/myrt
   LIBFLAGS      :=
   BIN_MYLC      := build/mylc$(EXE)
@@ -250,7 +253,9 @@ endif
 	@$(call COPY,$(BUILD_MANIFEST),bin/mylis-build.json)
 ifeq ($(OS),Windows_NT)
 else
+ifeq ($(GC_BACKEND),boehm)
 	@$(call COPY,$(BOEHM_LIB),bin/build/$(notdir $(BOEHM_LIB)))
+endif
 endif
 ifeq ($(OS),Windows_NT)
 	@if exist "$(call W,$(GC_ROOT)/include/gc.h)" ( xcopy /E /I /Y /Q "$(call W,$(GC_ROOT)/include)\*" "$(call W,bin/gc/include)" >NUL & copy /Y "$(call W,$(GC_ROOT)/lib/libgc.lib)" "$(call W,bin/gc/lib)" >NUL ) else ( echo warning: no MSVC Boehm GC found; own GC is default )
