@@ -82,6 +82,9 @@ mylc app.myl                    # → 可执行；默认 LLVM 后端
 mylc app.myl -o out/app         # 指定产物
 mylc app.myl --run              # 编译后立即运行
 mylc app.myl --check            # 只做语法 + 语义检查
+mylc app.myl --debug            # debug profile：-O0 -g，保留调试信息
+mylc app.myl --release          # release profile：-O2，裁剪最终产物的调试段
+mylc app.myl --profile minsize  # 也可显式指定 profile
 mylc app.myl --emit-c out.c     # 只生成 C 源码（MIR-C；审 C 后端用）
 mylc app.myl --emit-ir out.ir   # 只生成 MIR（审前端）
 mylc app.myl --emit-llvm out.ll # 只生成 LLVM IR（原生 MIR 后端）
@@ -103,6 +106,8 @@ mylc app.myl                               # 源码或清单依赖 std 时自动
 
 # 工程（见第 3 节）
 mylc build [target]             # 按 mylis.toml 构建全部/单个目标
+mylc build --debug [target]     # 本次构建覆盖为 debug profile
+mylc build --release [target]   # 本次构建覆盖为 release profile
 mylc build --std [target]       # 构建时自动加入 std 源码与当前平台 native
 mylc run [target]               # 构建后运行
 mylc test                       # 编译并运行 tests/**/*.myl，比对 .expected
@@ -151,9 +156,11 @@ name = "myapp"
 [build]
 paths = ["src", "lib"]        # 模块搜索根（相对工程根，按序；缺省即这两项）
 backend = "llvm"              # llvm（默认）/ mir / ast / ir
+profile = "release"           # debug / release / relwithdebinfo / minsize
 
 [targets.myapp]
 kind = "exe"                  # exe | static | shared
+profile = "debug"             # 可省略；覆盖 [build].profile
 entry = "src/app.myl"
 out = "build/myapp"           # 可省略，默认 build/<target 名>
 
@@ -173,6 +180,27 @@ mylc build myapp    # 只编一个
 mylc run myapp      # 编完直接跑
 mylc test           # tests/ 下的用例
 ```
+
+### 3.1 构建 profile
+
+| profile | 优化 | 调试信息 | 最终链接 |
+| --- | --- | --- | --- |
+| `debug` | `-O0` | `-g`，保留 | 保留 `.symtab` / `.debug_*` |
+| `release` | `-O2` | 不请求 `-g` | GNU 风格链接加 `-Wl,-S`，删除 `.debug_*` |
+| `relwithdebinfo` | `-O2` | `-g`，保留 | 保留 |
+| `minsize` | `-Os` | 不请求 `-g` | GNU 风格链接加 `-Wl,-s`，调试段和符号表都删除 |
+
+优先级：命令行 > `[targets.<name>].profile` > `[build].profile` > 默认 `release`。
+
+```bash
+mylc build --debug
+mylc build --profile relwithdebinfo app
+mylc --release src/main.myl -o build/app
+```
+
+`--debug` / `--release` / `--profile` 只用于指定一个 profile；指定不同 profile 会直接报错，重复指定同一个不会报错。MSVC 后端分别使用 `/Od /Zi`（debug）、`/O2`（release）、`/O2 /Zi`（relwithdebinfo）、`/O1`（minsize）；MSVC 的调试符号/PDB 由链接器管理，当前不自动删除。release 约 1.4 MB、minsize 约 1.1 MB（Linux x86_64、Hello world、默认运行时实测）。
+
+当前 LLVM 后端还不为 Mylis 源码生成 DWARF，`debug` 的 `-g` 主要保留生成代码（MIR-C 的 C 源或 LLVM IR）与静态运行时的调试信息，暂不支持 Mylis 源码行号级断点。
 
 约定：`import` 一律从搜索根写（`import "model/User.myl"`）；`pub class User` 必须放在 `User.myl` 里（`MYL002`）。
 

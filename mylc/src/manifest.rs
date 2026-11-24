@@ -7,9 +7,11 @@
 //! [build]
 //! paths = ["src", "lib"]      # 模块搜索根（相对工程根，按序）
 //! backend = "llvm"            # 可选：llvm（默认）/ mir / ast / ir
+//! profile = "release"         # 可选：debug / release / relwithdebinfo / minsize
 //!
 //! [targets.myapp]
 //! kind = "exe"                # exe | static | shared
+//! profile = "debug"           # 可选：覆盖 [build].profile
 //! entry = "src/app.myl"
 //! out = "build/myapp"         # 可省略：默认 build/<target 名>
 //!
@@ -30,12 +32,87 @@ pub enum TargetKind {
     Shared,
 }
 
+/// 构建 profile：优化级别、是否生成调试信息、是否在最终链接时裁剪调试段。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BuildProfile {
+    Debug,
+    Release,
+    RelWithDebInfo,
+    MinSize,
+}
+
+impl Default for BuildProfile {
+    fn default() -> Self {
+        BuildProfile::Release
+    }
+}
+
+impl BuildProfile {
+    pub fn parse(s: &str) -> Option<BuildProfile> {
+        let key: String = s
+            .chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_ascii_lowercase();
+        match key.as_str() {
+            "debug" => Some(BuildProfile::Debug),
+            "release" => Some(BuildProfile::Release),
+            "relwithdebinfo" | "relwithdeb" => Some(BuildProfile::RelWithDebInfo),
+            "minsize" | "size" => Some(BuildProfile::MinSize),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BuildProfile::Debug => "debug",
+            BuildProfile::Release => "release",
+            BuildProfile::RelWithDebInfo => "relwithdebinfo",
+            BuildProfile::MinSize => "minsize",
+        }
+    }
+
+    /// GNU/Clang 风格的优化参数。
+    pub fn opt_flag(self) -> &'static str {
+        match self {
+            BuildProfile::Debug => "-O0",
+            BuildProfile::Release | BuildProfile::RelWithDebInfo => "-O2",
+            BuildProfile::MinSize => "-Os",
+        }
+    }
+
+    pub fn wants_debug_info(self) -> bool {
+        matches!(self, BuildProfile::Debug | BuildProfile::RelWithDebInfo)
+    }
+
+    /// 最终链接的裁剪参数：release 只删调试段，minsize 连符号表一起删。
+    pub fn link_strip_flag(self) -> Option<&'static str> {
+        match self {
+            BuildProfile::Release => Some("-Wl,-S"),
+            BuildProfile::MinSize => Some("-Wl,-s"),
+            BuildProfile::Debug | BuildProfile::RelWithDebInfo => None,
+        }
+    }
+
+    /// MSVC/cl.exe 风格的优化参数。
+    pub fn msvc_flags(self) -> &'static [&'static str] {
+        match self {
+            BuildProfile::Debug => &["/Od", "/Zi"],
+            BuildProfile::Release => &["/O2"],
+            BuildProfile::RelWithDebInfo => &["/O2", "/Zi"],
+            BuildProfile::MinSize => &["/O1"],
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Target {
     pub name: String,
     pub kind: TargetKind,
     pub entry: String,
     pub out: Option<String>,
+    /// 目标级 profile；缺省继承 `[build].profile`。
+    pub profile: Option<BuildProfile>,
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +173,8 @@ pub struct Manifest {
     pub paths: Vec<String>,
     /// `[build] backend`：llvm（默认）/ mir / ast / ir
     pub backend: Option<String>,
+    /// `[build] profile`：debug / release / relwithdebinfo / minsize
+    pub profile: BuildProfile,
     pub targets: Vec<Target>,
     /// 包模式的库入口，例如 `src/lib.myl`
     pub lib_entry: Option<String>,
@@ -117,6 +196,17 @@ fn unquote(s: &str) -> String {
     s.trim().trim_matches('"').trim_matches('\'').to_string()
 }
 
+fn parse_profile(path: &Path, value: &str) -> Result<BuildProfile, String> {
+    let raw = unquote(value);
+    BuildProfile::parse(&raw).ok_or_else(|| {
+        format!(
+            "{}: 未知构建 profile `{}`；可选：debug / release / relwithdebinfo / minsize",
+            path.display(),
+            raw
+        )
+    })
+}
+
 fn parse_array(s: &str) -> Vec<String> {
     let v = s.trim().trim_start_matches('[').trim_end_matches(']');
     v.split(',')
@@ -133,6 +223,7 @@ impl Manifest {
         let mut version = String::new();
         let mut paths = Vec::new();
         let mut backend: Option<String> = None;
+        let mut profile = BuildProfile::Release;
         let mut targets: Vec<Target> = Vec::new();
         let mut lib_entry: Option<String> = None;
         let mut dependencies: Vec<Dependency> = Vec::new();
@@ -155,6 +246,7 @@ impl Manifest {
                         kind: TargetKind::Exe,
                         entry: String::new(),
                         out: None,
+                        profile: None,
                     });
                 }
                 continue;
@@ -172,8 +264,9 @@ impl Manifest {
                 "build" => match k.trim() {
                     "paths" => paths = parse_array(v),
                     "backend" => backend = Some(unquote(v)),
+                    "profile" => profile = parse_profile(path, v)?,
                     _ => {}
-                }
+                },
                 "lib" => match k.trim() {
                     "entry" => lib_entry = Some(unquote(v)),
                     _ => {}
@@ -238,6 +331,7 @@ impl Manifest {
                         }
                         "entry" => t.entry = unquote(v),
                         "out" => t.out = Some(unquote(v)),
+                        "profile" => t.profile = Some(parse_profile(path, v)?),
                         _ => {}
                     }
                 }
@@ -256,7 +350,7 @@ impl Manifest {
             paths = vec!["src".to_string(), "lib".to_string()];
         }
         Ok(Manifest {
-            name, version, paths, backend, targets, lib_entry, dependencies,
+            name, version, paths, backend, profile, targets, lib_entry, dependencies,
             native_includes, native_link_files, native_link_dirs, native_link_libs,
         })
     }
@@ -427,6 +521,7 @@ fn resolve_mylib(dep: &Dependency, base: &Path, offline: bool) -> Result<(PathBu
         version: lib.version.clone(),
         paths: Vec::new(),
         backend: None,
+        profile: BuildProfile::Release,
         targets: Vec::new(),
         lib_entry: None,
         dependencies: Vec::new(),
@@ -690,4 +785,58 @@ pub fn build_graph_with_pins_offline(root_manifest: &Path, pins: Option<&LockPin
     walk_graph(base, &root_man.dependencies, &mut chain, &mut graph, &mut stack, pins, offline)?;
     graph.packages.sort_by(|a, b| (a.name.as_str(), a.version.as_str()).cmp(&(b.name.as_str(), b.version.as_str())));
     Ok(graph)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_parses_aliases_case_insensitively() {
+        for s in ["debug", "DEBUG", "release", "relwithdebinfo", "relwith-deb", "relwith_deb", "minsize", "size"] {
+            assert!(BuildProfile::parse(s).is_some(), "profile `{}` 应可解析", s);
+        }
+        assert_eq!(BuildProfile::parse("relwith_deb"), Some(BuildProfile::RelWithDebInfo));
+        assert_eq!(BuildProfile::parse("size"), Some(BuildProfile::MinSize));
+    }
+
+    #[test]
+    fn profile_strip_flags() {
+        assert_eq!(BuildProfile::Debug.link_strip_flag(), None);
+        assert_eq!(BuildProfile::Release.link_strip_flag(), Some("-Wl,-S"));
+        assert_eq!(BuildProfile::RelWithDebInfo.link_strip_flag(), None);
+        assert_eq!(BuildProfile::MinSize.link_strip_flag(), Some("-Wl,-s"));
+    }
+
+    #[test]
+    fn profile_rejects_unknown_value() {
+        assert_eq!(BuildProfile::parse("fast"), None);
+        assert_eq!(BuildProfile::parse(""), None);
+    }
+
+    #[test]
+    fn manifest_reads_build_and_target_profile() {
+        let path = std::env::temp_dir().join(format!("mylis-profile-test-{}.toml", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"
+[project]
+name = "demo"
+
+[build]
+paths = ["src"]
+profile = "debug"
+
+[targets.app]
+kind = "exe"
+profile = "relwithdebinfo"
+entry = "src/main.myl"
+"#,
+        )
+        .unwrap();
+        let man = Manifest::load(&path).unwrap();
+        assert_eq!(man.profile, BuildProfile::Debug);
+        assert_eq!(man.targets[0].profile, Some(BuildProfile::RelWithDebInfo));
+        let _ = std::fs::remove_file(&path);
+    }
 }

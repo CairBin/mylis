@@ -1708,7 +1708,7 @@ class Point {
 
 ## 17.5 工程结构（`mylis.toml`）
 
-一个目录 + 一份 `mylis.toml` 即一个工程；**无依赖解析、无锁文件、不联网**，依赖就是源码里的 `import`：
+一个目录 + 一份 `mylis.toml` 即一个工程。基础工程可以只靠源码里的 `import`；包依赖使用 `[dependencies]`，支持本地 path、Git、`.mylib` 和 registry，解析结果写入 `mylis.lock`，`--offline` 可限制联网：
 
 ```toml
 [project]
@@ -1717,14 +1717,18 @@ name = "myapp"
 [build]
 paths = ["src", "lib"]        # 模块搜索根（相对工程根；缺省即这两项）
 backend = "llvm"              # 可选：llvm（默认）/ mir / ast / ir
+profile = "release"           # 可选：debug / release / relwithdebinfo / minsize
 
 [targets.myapp]
 kind = "exe"                  # exe | static | shared
+profile = "debug"             # 可省略；覆盖 [build].profile
 entry = "src/app.myl"
 out = "build/myapp"           # 可省略，默认 build/<target 名>
 ```
 
-命令：`mylc build [target]`、`mylc run [target]`、`mylc test`；单文件写法（`mylc app.myl`）不受影响。
+命令：`mylc build [target]`、`mylc run [target]`、`mylc test`；单文件写法（`mylc app.myl`）不受影响。构建 profile 可用 `mylc build --debug` / `--release` / `--profile <name>` 临时覆盖清单。
+
+profile 只影响优化级别、调试信息和最终链接裁剪，不改变语言语义与 `--emit-*` 中间产物。
 `make all` 默认构建 LLVM 后端 + 自研 GC，把整套（`mylc`、`myls`、`std/`、`std-posix/` 或 `std-win32/`、`myrt/`、`gc/`、运行时库与六个 std native 库）收进 `bin/`，
 拷贝 `bin/` 即可分发（`bin/` 自身就是 mylc 认定的 root；外部 C/clang 工具链仍需在目标机可用）。
 

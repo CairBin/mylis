@@ -1,6 +1,7 @@
 //! 命令行参数解析（与驱动逻辑分离，便于单测与后续扩展子命令）。
 
 use crate::i18n::{self, Lang};
+use mylc::manifest::BuildProfile;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -41,13 +42,15 @@ pub struct Args {
     pub embed_shared: Option<String>,
     /// 后端选择：None => LLVM（默认），mir => MIR-C，ast/c => AST-C
     pub backend: Option<String>,
+    /// 构建 profile；None 时由最近的 mylis.toml `[build].profile` 决定。
+    pub profile: Option<BuildProfile>,
     /// 自动加入 std 源码与当前平台 native 产物。
     pub std: bool,
 }
 
 pub fn usage() {
     eprintln!(
-        "{}\n\n{}\n\n{}\n  -o <path>        {}\n  --static         {}\n  --shared         {}\n  --embed-runtime  {}\n  --emit-c <path>  {}\n  --emit-ir <path> {}\n  --emit-llvm <path> {}\n  --emit-mylib <path> {}\n  --embed-static <path>  把静态库嵌入 .mylib（仅 --emit-mylib）\n  --embed-shared <path>  把动态库嵌入 .mylib（仅 --emit-mylib）\n  --backend <name> {}\n  --check          {}
+        "{}\n\n{}\n\n{}\n  -o <path>        {}\n  --static         {}\n  --shared         {}\n  --embed-runtime  {}\n  --emit-c <path>  {}\n  --emit-ir <path> {}\n  --emit-llvm <path> {}\n  --emit-mylib <path> {}\n  --embed-static <path>  把静态库嵌入 .mylib（仅 --emit-mylib）\n  --embed-shared <path>  把动态库嵌入 .mylib（仅 --emit-mylib）\n  --backend <name> {}\n  --debug          {}\n  --release        {}\n  --profile <name> {}\n  --check          {}
   --update-lock    {}\n  --offline        {}\n\n{}\n  -l <name>        {}\n  -L <dir>         {}\n  --link <file>    {}\n  --link-mylib <file> {}\n  --std            {}\n\n{}\n  --run            {}\n  -I <dir>         {}\n  --cc <program>   {}\n  --lang zh|en     {}\n  -v               {}",
         i18n::t("usage.head"),
         i18n::t("usage.usage"),
@@ -61,6 +64,9 @@ pub fn usage() {
         i18n::t("usage.emitllvm"),
         i18n::t("usage.emmylib"),
         i18n::t("usage.backend"),
+        i18n::t("usage.debug"),
+        i18n::t("usage.release"),
+        i18n::t("usage.profile"),
         i18n::t("usage.check"),
         "重新生成 mylis.lock（registry/path 依赖都会重写）",
         i18n::t("usage.offline"),
@@ -86,9 +92,39 @@ fn need(argv: &[String], i: usize, key: &'static str) -> Result<String, String> 
     }
 }
 
+fn set_profile(slot: &mut Option<BuildProfile>, profile: BuildProfile) -> Result<(), String> {
+    if let Some(old) = slot {
+        if *old != profile {
+            return Err(format!(
+                "--debug / --release / --profile 冲突：已经指定 `{}`，又指定 `{}`",
+                old.as_str(),
+                profile.as_str()
+            ));
+        }
+    }
+    *slot = Some(profile);
+    Ok(())
+}
+
+fn parse_profile_arg(name: &str) -> Result<BuildProfile, String> {
+    BuildProfile::parse(name).ok_or_else(|| {
+        format!(
+            "未知构建 profile `{}`；可选：debug / release / relwithdebinfo / minsize",
+            name
+        )
+    })
+}
+
 pub enum Command {
     Compile(Args),
-    Build { target: Option<String>, run: bool, update_lock: bool, offline: bool, std: bool },
+    Build {
+        target: Option<String>,
+        run: bool,
+        update_lock: bool,
+        offline: bool,
+        std: bool,
+        profile: Option<BuildProfile>,
+    },
     Test,
 }
 
@@ -102,18 +138,28 @@ pub fn parse() -> Result<Command, String> {
             let mut update_lock = false;
             let mut offline = false;
             let mut std = false;
-            for a in &argv[1..] {
-                if a == "--update-lock" {
-                    update_lock = true;
-                } else if a == "--offline" {
-                    offline = true;
-                } else if a == "--std" {
-                    std = true;
-                } else if !a.starts_with('-') {
-                    target = Some(a.clone());
+            let mut profile = None;
+            let mut i = 1;
+            while i < argv.len() {
+                match argv[i].as_str() {
+                    "--update-lock" => update_lock = true,
+                    "--offline" => offline = true,
+                    "--std" => std = true,
+                    "--debug" => set_profile(&mut profile, BuildProfile::Debug)?,
+                    "--release" => set_profile(&mut profile, BuildProfile::Release)?,
+                    "--profile" => {
+                        i += 1;
+                        let name = argv
+                            .get(i)
+                            .ok_or_else(|| "--profile 需要参数：debug | release | relwithdebinfo | minsize".to_string())?;
+                        set_profile(&mut profile, parse_profile_arg(name)?)?;
+                    }
+                    a if !a.starts_with('-') => target = Some(a.to_string()),
+                    _ => {}
                 }
+                i += 1;
             }
-            Ok(Command::Build { target, run, update_lock, offline, std })
+            Ok(Command::Build { target, run, update_lock, offline, std, profile })
         }
         Some("test") => Ok(Command::Test),
         _ => parse_args().map(Command::Compile),
@@ -148,6 +194,7 @@ pub fn parse_args() -> Result<Args, String> {
         embed_static: None,
         embed_shared: None,
         backend: None,
+        profile: None,
         std: false,
     };
     let mut i = 0;
@@ -204,6 +251,13 @@ pub fn parse_args() -> Result<Args, String> {
             "--backend" => {
                 i += 1;
                 a.backend = Some(need(&argv, i, "err.backend_name")?);
+            }
+            "--debug" => set_profile(&mut a.profile, BuildProfile::Debug)?,
+            "--release" => set_profile(&mut a.profile, BuildProfile::Release)?,
+            "--profile" => {
+                i += 1;
+                let v = need(&argv, i, "err.profile_value")?;
+                set_profile(&mut a.profile, parse_profile_arg(&v)?)?;
             }
             "-o" | "--out" => {
                 i += 1;

@@ -243,9 +243,11 @@ fn manifest_depends_std(
 pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
     // 清单里的 native 链接参数：相对清单目录解析，和命令行参数合并。
     let mut owned = args.clone();
+    let mut manifest_profile = None;
     if let Some(src_dir) = Path::new(&owned.src).parent() {
         if let Some(mpath) = manifest::locate_from(src_dir) {
             if let Ok(m) = manifest::Manifest::load(&mpath) {
+                manifest_profile = Some(m.profile);
                 let base = mpath.parent().unwrap_or(Path::new("."));
                 for inc in m.native_includes {
                     let p = Path::new(&inc);
@@ -268,6 +270,9 @@ pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
             }
         }
     }
+    if owned.profile.is_none() {
+        owned.profile = manifest_profile;
+    }
     if !owned.std && (source_uses_std(&owned.src) || manifest_uses_std(&owned.src)) {
         if let Err(e) = crate::cli::apply_std_defaults(&mut owned) {
             eprintln!("mylc: {}", e);
@@ -275,6 +280,7 @@ pub fn compile_one(args: &Args, extra_includes: &[String]) -> i32 {
         }
     }
     let args = &owned;
+    let profile = args.profile.unwrap_or_default();
     let root = find_root();
     let project = manifest::locate().and_then(|p| p.parent().map(|x| x.to_path_buf()));
     // 包模式：入口文件所在包有依赖时，首次构建生成 mylis.lock；已有锁文件不静默改写。
@@ -884,10 +890,25 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
         if cfg!(all(windows, target_env = "gnu")) {
             cmd.arg("--target=x86_64-w64-windows-gnu");
         }
-        cmd.arg("-O2").arg("-Xclang").arg("-opaque-pointers");
+        cmd.arg(profile.opt_flag())
+            .arg("-Xclang")
+            .arg("-opaque-pointers");
+        if profile.wants_debug_info() {
+            cmd.arg("-g");
+        }
     } else {
         for f in &tc.cflags {
             cmd.arg(f);
+        }
+        cmd.arg(profile.opt_flag());
+        if profile.wants_debug_info() {
+            cmd.arg("-g");
+        }
+    }
+    if let Some(strip) = profile.link_strip_flag() {
+        if matches!(args.mode, Mode::Exe | Mode::Shared) && !runtime_is_msvc {
+            // release 只删调试段；minsize 连符号表一起删。静态库没有最终链接，不传。
+            cmd.arg(strip);
         }
     }
     cmd.arg(format!("-I{}", lay.myrt_inc.display()))
@@ -1071,7 +1092,14 @@ eprintln!("mylc: {}", i18n::t("err.no_gc"));
 }
 
 /// `mylc build [target]` / `mylc run [target]`：按工程清单构建
-pub fn build(only: &Option<String>, run_after: bool, update_lock: bool, offline: bool, std: bool) -> i32 {
+pub fn build(
+    only: &Option<String>,
+    run_after: bool,
+    update_lock: bool,
+    offline: bool,
+    std: bool,
+    profile: Option<manifest::BuildProfile>,
+) -> i32 {
     let mpath = match manifest::locate() {
         Some(p) => p,
         None => {
@@ -1100,6 +1128,7 @@ pub fn build(only: &Option<String>, run_after: bool, update_lock: bool, offline:
             kind: TargetKind::Static,
             entry: man.lib_entry.clone().unwrap_or_default(),
             out: None,
+            profile: None,
         }]
     } else {
         man.targets.clone()
@@ -1142,6 +1171,7 @@ pub fn build(only: &Option<String>, run_after: bool, update_lock: bool, offline:
             offline,
             link_mylibs: Vec::new(),
             backend: man.backend.clone(),
+            profile: profile.or(t.profile).or(Some(man.profile)),
             mode,
             run: false,
             verbose: false,
@@ -1242,6 +1272,7 @@ pub fn test() -> i32 {
             offline: false,
             link_mylibs: Vec::new(),
             backend: None,
+            profile: None,
             mode: Mode::Exe,
             run: false,
             verbose: false,
@@ -1362,8 +1393,12 @@ fn emit_msvc(
 ) -> i32 {
     let gc_c = lay.myrt_inc.join("gc").join("gc_simple.c");
 
+    let profile = args.profile.unwrap_or_default();
     let mut cmd = Command::new(&lay.cc);
     for f in &tc.cflags {
+        cmd.arg(f);
+    }
+    for f in profile.msvc_flags() {
         cmd.arg(f);
     }
     cmd.arg("/I").arg(&lay.myrt_inc);

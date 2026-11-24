@@ -15,7 +15,9 @@ fn main() {
     };
     let code = match cmd {
         cli::Command::Compile(a) => driver::run(a),
-        cli::Command::Build { target, run, update_lock, offline, std } => driver::build(&target, run, update_lock, offline, std),
+        cli::Command::Build { target, run, update_lock, offline, std, profile } => {
+            driver::build(&target, run, update_lock, offline, std, profile)
+        }
         cli::Command::Test => driver::test(),
     };
     std::process::exit(code);
