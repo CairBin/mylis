@@ -1345,6 +1345,7 @@ const MSVC_RT_SYSTEM_LIBS: &[&str] = &[
     "ole32.lib",
     "oleaut32.lib",
     "shell32.lib",
+    "synchronization.lib",
 ];
 
 /// Rust std（windows-gnu）静态库引用的系统库；GCC/clang 用 `-l<name>`。
@@ -1357,6 +1358,7 @@ const WINDOWS_GNU_RT_SYSTEM_LIBS: &[&str] = &[
     "ole32",
     "oleaut32",
     "shell32",
+    "synchronization",
 ];
 
 fn add_windows_system_libs(cmd: &mut Command, libs: &[String], dash_l: bool) {

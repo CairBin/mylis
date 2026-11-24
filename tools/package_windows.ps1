@@ -88,7 +88,7 @@ $manifest = [ordered]@{
     myrt = "build/mylrt.lib"
     mylgc = "build/mylgc.lib"
     simple = "build/gc_simple.lib"
-    system_libs = @("ws2_32.lib","ntdll.lib","userenv.lib","advapi32.lib","bcrypt.lib","ole32.lib","oleaut32.lib","shell32.lib")
+    system_libs = @("ws2_32.lib","ntdll.lib","userenv.lib","advapi32.lib","bcrypt.lib","ole32.lib","oleaut32.lib","shell32.lib","synchronization.lib")
 } | ConvertTo-Json -Compress
 Set-Content -Path (Join-Path $Root "build\mylis-build.json") -Value $manifest -Encoding ascii
 Set-Content -Path (Join-Path $Dist "mylis-build.json") -Value $manifest -Encoding ascii

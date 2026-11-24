@@ -90,7 +90,7 @@ ifeq ($(OS),Windows_NT)
     MANIFEST_CC  := $(notdir $(CC))
     MANIFEST_AR  := $(notdir $(AR))
     # Rust std（windows-gnu）静态库引用的系统库；链接时加 -l 前缀。
-    WIN_RT_LIBS  := ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32
+    WIN_RT_LIBS  := ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32 synchronization
     MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
     STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,libmylis_file.a libmylis_io.a libmylis_time.a libmylis_net.a libmylis_event.a libmylis_process.a)
   else
@@ -115,7 +115,7 @@ ifeq ($(OS),Windows_NT)
     MANIFEST_CC  := cl
     MANIFEST_AR  := lib
     # Rust std（windows-msvc）静态库引用的系统库；cl / clang 都需要显式带上。
-    WIN_RT_LIBS  := ws2_32.lib ntdll.lib userenv.lib advapi32.lib bcrypt.lib ole32.lib oleaut32.lib shell32.lib
+    WIN_RT_LIBS  := ws2_32.lib ntdll.lib userenv.lib advapi32.lib bcrypt.lib ole32.lib oleaut32.lib shell32.lib synchronization.lib
     # RT_NO_STD=1 表示 freestanding 运行时，不额外链 Windows 系统库。
     MANIFEST_SYS_LIBS = $(if $(RT_NO_STD),,$(WIN_RT_LIBS))
     STD_WIN_LIBS := $(addprefix $(STD_WIN_DIR)/,mylis_file.lib mylis_io.lib mylis_time.lib mylis_net.lib mylis_event.lib mylis_process.lib)

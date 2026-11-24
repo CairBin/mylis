@@ -537,7 +537,7 @@ MinGW 分支默认：
 - 构建族：`TOOLCHAIN_FAMILY=mingw`
 - 运行时/GC：`build/libmylrt.a`、`build/libmylgc.a`、`build/libgc_simple.a`
 - std 侧车：`build/std-win32/native/libmylis_*.a`
-- 系统库：`ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32`
+- 系统库：`ws2_32 ntdll userenv advapi32 bcrypt ole32 oleaut32 shell32 synchronization`
 
 `make` 会拒绝混搭：`TOOLCHAIN_FAMILY=mingw` 必须配 `CARGO_TARGET=*-windows-gnu`、`CC=gcc|clang`、`AR=ar|llvm-ar`；MSVC 则必须配 `*-windows-msvc`、`cl|clang-cl`、`lib`。
 
