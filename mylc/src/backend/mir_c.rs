@@ -770,6 +770,45 @@ fn emit(p: &MirProgram, want_main: bool, prog: &Program) -> String {
     }
     out.push('\n');
 
+    // 无函数体的顶层函数是外部 C 符号。没有 @header 时必须自己声明，
+    // 否则 GCC 14+ 会把调用处的隐式声明直接判为错误。
+    for d in &prog.decls {
+        if d.kind != crate::ast::DeclKind::Fn
+            || d.body.is_some()
+            || d.owner.is_some()
+            || d.c_header.is_some()
+            || prog.modules.get(d.mod_id).map(|m| m.stem == "Mylrt_bind").unwrap_or(false)
+        {
+            continue;
+        }
+        let ret = match cty(&d.ret) {
+            Some(t) => t,
+            None => {
+                errors.push(format!("{}: unsupported return type {}", d.name, d.ret));
+                continue;
+            }
+        };
+        let mut params = Vec::new();
+        for (i, p) in d.params.iter().enumerate() {
+            match cty(&p.ty) {
+                Some(t) => params.push(format!("{} p{}", t, i)),
+                None => {
+                    errors.push(format!("{}: unsupported param type {}", d.name, p.ty));
+                }
+            }
+        }
+        if params.len() != d.params.len() {
+            continue;
+        }
+        out.push_str(&format!(
+            "extern {} {}({});\n",
+            ret,
+            d.name,
+            if params.is_empty() { "void".to_string() } else { params.join(", ") }
+        ));
+    }
+    out.push('\n');
+
     for el in &arrays {
         if let Some(fmt) = fmt_c_elem(el, "a->items[i]", p) {
             out.push_str(&format!(
