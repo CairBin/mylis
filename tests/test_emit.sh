@@ -8,6 +8,11 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MYLC="$ROOT/build/mylc"
 GC=${MYLIS_GC_ROOT:-$HOME/mylis-toolchain}
+if [ -f "$ROOT/build/libmylgc.a" ]; then
+    GC_LIBS="$ROOT/build/libmylgc.a"
+else
+    GC_LIBS="$ROOT/build/libgc_boehm.a $GC/lib/libgc.a"
+fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
@@ -20,14 +25,14 @@ echo "== 1/4 静态库 + C 客户端"
 "$MYLC" --backend mir --static mathlib.myl -o libmathlib.a
 cp "$ROOT"/tests/lib/client.c .
 "$CC" -std=c11 -O2 $INC -I. client.c libmathlib.a \
-    "$ROOT/build/libmylrt.a" "$ROOT/build/libgc_boehm.a" "$GC/lib/libgc.a" -lm -lpthread -ldl -o client_static
+    "$ROOT/build/libmylrt.a" $GC_LIBS -lm -lpthread -ldl -o client_static
 ./client_static > static.out
 grep -q "add=5 scaled=12" static.out && echo "  ok 静态库链接"
 
 echo "== 2/4 动态库 + C 客户端"
 "$MYLC" --backend mir --shared mathlib.myl -o libmathlib.so
 "$CC" -std=c11 -O2 $INC -I. client.c -L. -lmathlib \
-    "$ROOT/build/libmylrt.a" "$ROOT/build/libgc_boehm.a" "$GC/lib/libgc.a" -Wl,-rpath,"$WORK" -o client_shared
+    "$ROOT/build/libmylrt.a" $GC_LIBS -Wl,-rpath,"$WORK" -o client_shared
 ./client_shared > shared.out
 grep -q "add=5 scaled=12" shared.out && echo "  ok 动态库链接"
 

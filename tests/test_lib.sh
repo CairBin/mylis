@@ -7,6 +7,12 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 export PATH="$HOME/.cargo/bin:$PATH"
 GC=${MYLIS_GC_ROOT:-$HOME/mylis-toolchain}
+# 默认运行时后端是自研 GC；只有没有 libmylgc.a 时才回退到 Boehm。
+if [ -f "$ROOT/build/libmylgc.a" ]; then
+    GC_LIBS="$ROOT/build/libmylgc.a"
+else
+    GC_LIBS="$ROOT/build/libgc_boehm.a $GC/lib/libgc.a"
+fi
 
 cd "$WORK"
 cp "$ROOT"/tests/lib/* .
@@ -17,11 +23,11 @@ echo "== 1/3 编译库"
 echo "== 2/3 链接 C 客户端"
 if [ -n "${MYLIS_WIN_CC:-}" ]; then
     "$MYLIS_WIN_CC" -std=c11 -O2 -I"$ROOT/myrt" -I"$GC/include" -I. \
-        client.c libmathlib.a "$ROOT/build/libmylrt.a" "$ROOT/build/libgc_boehm.a" "$GC/lib/libgc.a" \
+        client.c libmathlib.a "$ROOT/build/libmylrt.a" $GC_LIBS \
         -static -static-libgcc -o client.exe
 else
     gcc -std=c11 -O2 -I"$ROOT/myrt" -I"$GC/include" -I. \
-        client.c libmathlib.a "$ROOT/build/libmylrt.a" "$ROOT/build/libgc_boehm.a" "$GC/lib/libgc.a" \
+        client.c libmathlib.a "$ROOT/build/libmylrt.a" $GC_LIBS \
         -lm -lpthread -ldl -o client
 fi
 

@@ -42,8 +42,13 @@ done
 RT="$ROOT/build/libmylrt.a"
 GCROOT=${MYLIS_GC_ROOT:-$HOME/mylis-toolchain}
 GCINC="$GCROOT/include"
-GCLIB="$GCROOT/lib/libgc.a"
-BOEHM="$ROOT/build/libgc_boehm.a"
+if [ -f "$ROOT/build/libmylgc.a" ]; then
+    GC_LIBS="$ROOT/build/libmylgc.a"
+else
+    GC_LIBS="$ROOT/build/libgc_boehm.a $GCROOT/lib/libgc.a"
+fi
+GC_OK=1
+for lib in $GC_LIBS; do [ -f "$lib" ] || GC_OK=0; done
 CINC="-I$ROOT/myrt -I$GCINC -I$ROOT/tests/lib"
 for mode in static shared; do
     d="$TMP/$mode"; mkdir -p "$d"
@@ -52,12 +57,12 @@ for mode in static shared; do
     "$MYLC" --backend llvm --cc "$CC" --$mode tests/lib/mathlib.myl -o "$out" >"$TMP/lib.log" 2>&1 || ok=0
     [ -f "$out" ] || ok=0
     [ -f "$d/libmathlib.h" ] || ok=0
-    if [ $ok -eq 1 ] && [ -f "$RT" ] && [ -f "$GCLIB" ] && [ -f "$BOEHM" ]; then
+    if [ $ok -eq 1 ] && [ -f "$RT" ] && [ "$GC_OK" -eq 1 ]; then
         cp tests/lib/client.c "$d/"
         if [ "$mode" = static ]; then
-            "$CC" -std=c11 -O2 $CINC -I"$d" "$d/client.c" "$out" "$RT" "$BOEHM" "$GCLIB" -lm -lpthread -ldl -o "$d/client" >>"$TMP/lib.log" 2>&1 || ok=0
+            "$CC" -std=c11 -O2 $CINC -I"$d" "$d/client.c" "$out" "$RT" $GC_LIBS -lm -lpthread -ldl -o "$d/client" >>"$TMP/lib.log" 2>&1 || ok=0
         else
-            "$CC" -std=c11 -O2 $CINC -I"$d" "$d/client.c" -L"$d" -lmathlib "$RT" "$BOEHM" "$GCLIB" -Wl,-rpath,"$d" -lm -lpthread -ldl -o "$d/client" >>"$TMP/lib.log" 2>&1 || ok=0
+            "$CC" -std=c11 -O2 $CINC -I"$d" "$d/client.c" -L"$d" -lmathlib "$RT" $GC_LIBS -Wl,-rpath,"$d" -lm -lpthread -ldl -o "$d/client" >>"$TMP/lib.log" 2>&1 || ok=0
         fi
         [ $ok -eq 1 ] && { "$d/client" >"$d/out" 2>/dev/null || ok=0; }
         [ $ok -eq 1 ] && ! grep -q "add=5 scaled=12 greet=hello, library!" "$d/out" && ok=0
