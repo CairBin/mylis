@@ -215,7 +215,7 @@ impl<'a> Codegen<'a> {
                         if i > 0 {
                             sig.push_str(", ");
                         }
-                        sig.push_str(&format!("{} p_{}", self.ctype(&p.ty), p.name));
+                        sig.push_str(&format!("{} p_{}", self.ffi_param_ctype(&p.ty), p.name));
                     }
                     sig.push_str(");");
                     self.line(&sig);
@@ -444,6 +444,15 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// @header FFI 的数组参数在 C ABI 上是元素指针，Mylis 内部是 MylA_* 结构指针。
+    /// 包装器参数用 void* 承接，避免把 MylA_* 直接传给 int64_t* 造成类型错误。
+    fn ffi_param_ctype(&self, t: &Type) -> String {
+        match t {
+            Type::Array(_) => "void*".to_string(),
+            _ => self.ctype(t),
+        }
+    }
+
     pub(super) fn ffi_name(&self, id: usize) -> String {
         format!("FFI_{}_{}", self.prefix(id), self.prog.decls[id].name)
     }
@@ -649,7 +658,7 @@ impl<'a> Codegen<'a> {
             if i > 0 {
                 sig.push_str(", ");
             }
-            sig.push_str(&format!("{} p_{}", self.ctype(&p.ty), p.name));
+            sig.push_str(&format!("{} p_{}", self.ffi_param_ctype(&p.ty), p.name));
         }
         sig.push_str(") {");
         self.line(&sig);
