@@ -1,22 +1,26 @@
 // CRC-32（IEEE 802.3，多项式 EDB88320），供 gzip/zip 校验使用。
 pub class Crc32 {
+    // 16 项半字节查找表：常量表避免每次调用重建 256 项数组；
+    // 同时避开 GCC 15 在“256×8”嵌套循环上的错误优化（曾使 GzipApi(ast) SIGSEGV）。
     static fn Table() -> u32[] {
-        u32[] values = new u32[256];
-        i32 i = 0;
-        while (i < 256) {
-            u32 value = i as u32;
-            i32 bit = 0;
-            while (bit < 8) {
-                if ((value & (1 as u32)) != (0 as u32)) {
-                    value = ((-306674912) as u32) ^ (value >> 1);
-                } else {
-                    value = value >> 1;
-                }
-                bit = bit + 1;
-            }
-            values[i] = value;
-            i = i + 1;
-        }
+        u32[] values = [
+            0 as u32,
+            498536548 as u32,
+            997073096 as u32,
+            651767980 as u32,
+            1994146192 as u32,
+            1802195444 as u32,
+            1303535960 as u32,
+            1342533948 as u32,
+            (-306674912) as u32,
+            (-267894940) as u32,
+            (-690574296) as u32,
+            (-882789492) as u32,
+            (-1687895376) as u32,
+            (-2032938284) as u32,
+            (-1608008328) as u32,
+            (-1114548964) as u32
+        ];
         return values;
     }
 
@@ -26,8 +30,9 @@ pub class Crc32 {
         crc = crc - (1 as u32);
         i64 i = 0;
         while (i < (data.len() as i64)) {
-            u32 index = (crc ^ (data[i] as u32)) & (255 as u32);
-            crc = values[index] ^ (crc >> 8);
+            crc = crc ^ (data[i] as u32);
+            crc = (crc >> 4) ^ values[(crc & (15 as u32)) as i64];
+            crc = (crc >> 4) ^ values[(crc & (15 as u32)) as i64];
             i = i + 1;
         }
         return crc ^ ((0 as u32) - (1 as u32));
